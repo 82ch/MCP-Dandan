@@ -40,6 +40,15 @@ namespace CursorProcessTree
         static StreamWriter logWriter;
         static readonly object logLock = new();
 
+        // --- log tailing 상태 관리 ---
+        static readonly ConcurrentDictionary<string, long> fileOffsets = new();
+
+        // --- PID별 최근 네트워크 연결 (IP:Port) 저장 ---
+        static readonly ConcurrentDictionary<int, string> pidConnections = new();
+
+        // --- PID별 이미 본 원격지(IP:Port) 캐시 ---
+        static readonly ConcurrentDictionary<int, HashSet<string>> seenConnections = new();
+
         // 제외할 경로
         static readonly string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         static readonly string[] excludePrefixes = new[]
@@ -107,7 +116,6 @@ namespace CursorProcessTree
                     treeMap[info.ParentPid].Add(info.Pid);
                 }
 
-                // 타입 추론
                 string inferredType = InferType(info.Name, info.CmdLine) ?? "unknown";
                 _pidTypeMap[info.Pid] = inferredType;
 
@@ -140,6 +148,8 @@ namespace CursorProcessTree
 
                         processMap.Remove(pid);
                         mcpPids.Remove(pid);
+                        pidConnections.TryRemove(pid, out _);
+                        seenConnections.TryRemove(pid, out _);
                     }
                 }
             };
@@ -246,6 +256,36 @@ namespace CursorProcessTree
             if (eventType == "[WRITE]" && isMcpLog)
             {
                 lock (mcpPids) mcpPids.Add(pid);
+
+                // --- log tail 읽기 ---
+                try
+                {
+                    long lastOffset = fileOffsets.GetOrAdd(normPath, 0);
+                    using (var fs = new FileStream(normPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    {
+                        fs.Seek(lastOffset, SeekOrigin.Begin);
+                        using (var reader = new StreamReader(fs))
+                        {
+                            string newContent = reader.ReadToEnd();
+                            if (!string.IsNullOrWhiteSpace(newContent))
+                            {
+                                pidConnections.TryGetValue(pid, out var connInfo);
+
+                                Console.ForegroundColor = ConsoleColor.Magenta;
+                                Console.WriteLine($"[LOG CONTENT] {normPath} (PID={pid}{(connInfo != null ? $", Remote={connInfo}" : "")})");
+                                Console.ResetColor();
+                                Console.WriteLine(newContent);
+
+                                LogLine($"[LOG CONTENT] {normPath} (PID={pid}{(connInfo != null ? $", Remote={connInfo}" : "")})\n{newContent}");
+                            }
+                        }
+                        fileOffsets[normPath] = fs.Length; // 오프셋 갱신
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogLine($"[ERROR] Failed to read {normPath}: {ex.Message}");
+                }
             }
 
             int indent = GetIndentLevel(pid);
@@ -279,6 +319,25 @@ namespace CursorProcessTree
                 size = Convert.ToInt32(data.size);
             }
             catch { }
+
+            string connKey = $"{daddr}:{dport}";
+            var set = seenConnections.GetOrAdd(pid, _ => new HashSet<string>());
+
+            lock (set)
+            {
+                if (set.Contains(connKey))
+                {
+                    // 이미 본 원격지면 생략
+                    return;
+                }
+                set.Add(connKey);
+            }
+
+            // --- PID별 최근 원격지 저장 ---
+            if (!string.IsNullOrEmpty(daddr) && dport > 0)
+            {
+                pidConnections[pid] = connKey;
+            }
 
             int indent = GetIndentLevel(pid);
             string spaces = new string(' ', indent * 2);
