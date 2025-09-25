@@ -137,6 +137,12 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CursorRunner.cs" />
+    <Compile Include="FileEventHandler.cs" />
+    <Compile Include="McpTagManager.cs" />
+    <Compile Include="NetworkEventHandler.cs" />
+    <Compile Include="ProcessEventRegistrar.cs" />
+    <Compile Include="ProcessTracker.cs" />
     <Compile Include="Program.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
