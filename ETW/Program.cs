@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
@@ -28,28 +29,19 @@ namespace CursorProcessTree
         static readonly Dictionary<ulong, string> fileKeyPath = new();
         static readonly HashSet<int> mcpPids = new();
 
-        // 타입 추론 결과 (PID -> type)
         static readonly ConcurrentDictionary<int, string> _pidTypeMap = new();
 
-        // Root PID
         static int rootPid = -1;
         static string targetProcess = "";
 
-        // 로그 파일
         static readonly string logPath = "etw_events_log.txt";
         static StreamWriter logWriter;
         static readonly object logLock = new();
 
-        // --- log tailing 상태 관리 ---
         static readonly ConcurrentDictionary<string, long> fileOffsets = new();
-
-        // --- PID별 최근 네트워크 연결 (IP:Port) 저장 ---
         static readonly ConcurrentDictionary<int, string> pidConnections = new();
-
-        // --- PID별 이미 본 원격지(IP:Port) 캐시 ---
         static readonly ConcurrentDictionary<int, HashSet<string>> seenConnections = new();
 
-        // 제외할 경로
         static readonly string userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
         static readonly string[] excludePrefixes = new[]
         {
@@ -57,6 +49,34 @@ namespace CursorProcessTree
             Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "cursor") + Path.DirectorySeparatorChar,
             Path.Combine(userProfile, ".cursor", "extensions") + Path.DirectorySeparatorChar
         };
+
+        // ===================== MCP 콜 스코프 추적 =====================
+        class TagState
+        {
+            public int UnknownDepth;
+            public HashSet<string> ActiveIds = new(StringComparer.OrdinalIgnoreCase);
+            public int EffectiveDepth => UnknownDepth + ActiveIds.Count;
+        }
+
+        static readonly ConcurrentDictionary<int, ConcurrentDictionary<string, TagState>> tagStates =
+            new();
+
+        static readonly ConcurrentDictionary<int, ConcurrentDictionary<string, string>> activeRemoteByPidTag =
+            new();
+
+        static readonly Regex ReStartAction = new(@"Handling\s+CallTool\s+action\s+for\s+tool\s+'([^']+)'",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex ReCallingWithId = new(@"Calling\s+tool\s+'([^']+)'\s+with\s+toolCallId:\s*([^\s]+)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex ReSuccess = new(@"Successfully\s+called\s+tool\s+'([^']+)'",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex ReFail = new(@"Failed\s+to\s+call\s+tool\s+'([^']+)'",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex ReSuccessWithId = new(@"Successfully.*toolCallId:\s*([^\s]+)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        static readonly Regex ReFailWithId = new(@"Failed.*toolCallId:\s*([^\s]+)",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        // ===============================================================
 
         static void Main(string[] args)
         {
@@ -148,6 +168,8 @@ namespace CursorProcessTree
 
                         processMap.Remove(pid);
                         mcpPids.Remove(pid);
+                        tagStates.TryRemove(pid, out _);
+                        activeRemoteByPidTag.TryRemove(pid, out _);
                         pidConnections.TryRemove(pid, out _);
                         seenConnections.TryRemove(pid, out _);
                     }
@@ -222,7 +244,6 @@ namespace CursorProcessTree
                 if (fk != 0 && fileKeyPath.TryGetValue(fk, out var prev))
                     oldPath = prev;
 
-                // 자기 자신의 로그 파일 rename 이벤트 제외
                 if (string.Equals(newPath, logPath, StringComparison.OrdinalIgnoreCase) ||
                     string.Equals(oldPath, logPath, StringComparison.OrdinalIgnoreCase))
                     return;
@@ -254,10 +275,15 @@ namespace CursorProcessTree
             session.Source.Kernel.UdpIpRecv += data =>
                 HandleNetworkEvent("[UDP RECV]", data.ProcessID, data);
 
-            session.Source.Process();
+            try
+            {
+                session.Source.Process();
+            }
+            catch (Exception ex)
+            {
+                try { LogLine("[FATAL] " + ex.Message); } catch { }
+            }
         }
-
-        // ---------------- Helpers ----------------
 
         static void LogLine(string line)
         {
@@ -281,19 +307,43 @@ namespace CursorProcessTree
             return false;
         }
 
+        static bool TryNormalizePath(string path, out string normPath, out string fileName)
+        {
+            normPath = null;
+            fileName = null;
+            if (string.IsNullOrWhiteSpace(path)) return false;
+
+            try
+            {
+                if (path.IndexOfAny(Path.GetInvalidPathChars()) >= 0) return false;
+                normPath = path.Replace('/', '\\');
+                fileName = Path.GetFileName(normPath);
+                return !string.IsNullOrEmpty(fileName);
+            }
+            catch { return false; }
+        }
+
+        static string ExtractServerTag(string normPath)
+        {
+            try
+            {
+                string lower = Path.GetFileNameWithoutExtension(normPath).ToLowerInvariant();
+                var match = Regex.Match(lower, @"user-([a-z0-9]+)", RegexOptions.IgnoreCase);
+                if (match.Success)
+                    return match.Groups[1].Value;
+                return "mcp";
+            }
+            catch { return "mcp"; }
+        }
+
         static void HandleFileEvent(string eventType, int pid, string path)
         {
             if (!IsChildOfTarget(pid)) return;
-            if (string.IsNullOrWhiteSpace(path)) return;
+            if (!TryNormalizePath(path, out var normPath, out var fileName)) return;
 
-            string normPath = path.Replace('/', '\\');
-            string fileName = Path.GetFileName(normPath);
-
-            // 자기 자신의 로그 파일은 제외
             if (string.Equals(normPath, logPath, StringComparison.OrdinalIgnoreCase))
                 return;
 
-            // MCP 로그 파일 (.log 이름 안에 "MCP" 포함) 체크
             bool isMcpLog = fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) &&
                             fileName.IndexOf("MCP", StringComparison.OrdinalIgnoreCase) >= 0;
 
@@ -303,7 +353,6 @@ namespace CursorProcessTree
             {
                 lock (mcpPids) mcpPids.Add(pid);
 
-                // --- log tail 읽기 ---
                 try
                 {
                     long lastOffset = fileOffsets.GetOrAdd(normPath, 0);
@@ -315,6 +364,9 @@ namespace CursorProcessTree
                             string newContent = reader.ReadToEnd();
                             if (!string.IsNullOrWhiteSpace(newContent))
                             {
+                                string tag = ExtractServerTag(normPath);
+                                UpdateTagStateFromLog(pid, tag, newContent);
+
                                 pidConnections.TryGetValue(pid, out var connInfo);
 
                                 Console.ForegroundColor = ConsoleColor.Magenta;
@@ -325,7 +377,7 @@ namespace CursorProcessTree
                                 LogLine($"[LOG CONTENT] {normPath} (PID={pid}{(connInfo != null ? $", Remote={connInfo}" : "")})\n{newContent}");
                             }
                         }
-                        fileOffsets[normPath] = fs.Length; // 오프셋 갱신
+                        fileOffsets[normPath] = fs.Length;
                     }
                 }
                 catch (Exception ex)
@@ -334,7 +386,6 @@ namespace CursorProcessTree
                 }
             }
 
-            // --- 로그 파일에는 모든 이벤트 기록 ---
             LogLine($"{eventType} File {normPath} (PID={pid})");
 
             if (eventType == "[WRITE]" || eventType == "[DELETE]" || eventType.StartsWith("[RENAME]"))
@@ -345,6 +396,66 @@ namespace CursorProcessTree
                 Console.ForegroundColor = ConsoleColor.Yellow;
                 Console.WriteLine($"{spaces}{eventType} File {normPath} (PID={pid})");
                 Console.ResetColor();
+            }
+        }
+
+        static void UpdateTagStateFromLog(int pid, string tag, string content)
+        {
+            var pidMap = tagStates.GetOrAdd(pid, _ => new ConcurrentDictionary<string, TagState>());
+            var state = pidMap.GetOrAdd(tag, _ => new TagState());
+
+            int startUnknown = ReStartAction.Matches(content).Count;
+            if (startUnknown > 0)
+                state.UnknownDepth += startUnknown;
+
+            foreach (Match m in ReCallingWithId.Matches(content))
+            {
+                var id = m.Groups[2]?.Value;
+                if (!string.IsNullOrWhiteSpace(id))
+                    state.ActiveIds.Add(id);
+            }
+
+            foreach (Match m in ReSuccessWithId.Matches(content))
+            {
+                var id = m.Groups[1]?.Value;
+                if (!string.IsNullOrWhiteSpace(id))
+                    state.ActiveIds.Remove(id);
+            }
+            foreach (Match m in ReFailWithId.Matches(content))
+            {
+                var id = m.Groups[1]?.Value;
+                if (!string.IsNullOrWhiteSpace(id))
+                    state.ActiveIds.Remove(id);
+            }
+
+            int endGeneric = ReSuccess.Matches(content).Count + ReFail.Matches(content).Count;
+            for (int i = 0; i < endGeneric; i++)
+            {
+                if (state.UnknownDepth > 0) state.UnknownDepth--;
+                else if (state.ActiveIds.Count > 0)
+                {
+                    var any = state.ActiveIds.First();
+                    state.ActiveIds.Remove(any);
+                }
+            }
+
+            // === 추가된 부분: 성공/실패 시 태그 완전 종료 ===
+            if (ReSuccess.IsMatch(content) || ReFail.IsMatch(content))
+            {
+                state.ActiveIds.Clear();
+                state.UnknownDepth = 0;
+                if (activeRemoteByPidTag.TryGetValue(pid, out var tagMap))
+                {
+                    tagMap.TryRemove(tag, out _);
+                }
+            }
+
+            if (state.EffectiveDepth <= 0)
+            {
+                if (activeRemoteByPidTag.TryGetValue(pid, out var tagMap))
+                {
+                    tagMap.TryRemove(tag, out _);
+                }
             }
         }
 
@@ -370,33 +481,70 @@ namespace CursorProcessTree
             }
             catch { }
 
-            string connKey = $"{daddr}:{dport}";
-            var set = seenConnections.GetOrAdd(pid, _ => new HashSet<string>());
+            if (string.IsNullOrEmpty(daddr) || dport <= 0) return;
+            string dest = $"{daddr}:{dport}";
 
-            lock (set)
+            if (!tagStates.TryGetValue(pid, out var pidTagMap) || pidTagMap.Count == 0) return;
+
+            var activeTags = pidTagMap.Where(kv => kv.Value.EffectiveDepth > 0)
+                                      .Select(kv => kv.Key)
+                                      .ToList();
+            if (activeTags.Count == 0) return;
+
+            string chosenTag = null;
+
+            if (activeRemoteByPidTag.TryGetValue(pid, out var remoteMap))
             {
-                if (set.Contains(connKey))
+                foreach (var t in activeTags)
                 {
-                    // 이미 본 원격지면 생략
+                    if (remoteMap.TryGetValue(t, out var bound) && string.Equals(bound, dest, StringComparison.OrdinalIgnoreCase))
+                    {
+                        chosenTag = t;
+                        break;
+                    }
+                }
+            }
+
+            if (chosenTag == null)
+            {
+                if (activeTags.Count == 1)
+                {
+                    chosenTag = activeTags[0];
+                    var map = activeRemoteByPidTag.GetOrAdd(pid, _ => new ConcurrentDictionary<string, string>());
+                    map[chosenTag] = dest;
+                }
+                else
+                {
                     return;
                 }
-                set.Add(connKey);
             }
 
-            // --- PID별 최근 원격지 저장 ---
-            if (!string.IsNullOrEmpty(daddr) && dport > 0)
+            if (!pidTagMap.TryGetValue(chosenTag, out var state) || state.EffectiveDepth <= 0)
+                return;
+
+            var tagRemoteMap = activeRemoteByPidTag.GetOrAdd(pid, _ => new ConcurrentDictionary<string, string>());
+            if (tagRemoteMap.TryGetValue(chosenTag, out var boundDest))
             {
-                pidConnections[pid] = connKey;
+                if (!string.Equals(boundDest, dest, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
             }
+            else
+            {
+                tagRemoteMap[chosenTag] = dest;
+            }
+
+            pidConnections[pid] = dest;
 
             int indent = GetIndentLevel(pid);
             string spaces = new string(' ', indent * 2);
 
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"{spaces}{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size}");
+            Console.WriteLine($"{spaces}{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size} [tag={chosenTag}]");
             Console.ResetColor();
 
-            LogLine($"{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size}");
+            LogLine($"{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size} [tag={chosenTag}]");
         }
 
         static void PrintProcessEvent(string type, ProcessInfo info, string typeLabel, ConsoleColor color)
