@@ -56,11 +56,13 @@ namespace ETW
                 Console.WriteLine($"[ERROR] Kernel provider attach failed: {ex.GetType().Name} - {ex.Message}");
             }
 
+            // 기본 네트워크 관련 프로바이더
             foreach (var p in NetProviders)
             {
                 try
                 {
-                    session.EnableProvider(p);
+                    session.EnableProvider(p, Microsoft.Diagnostics.Tracing.TraceEventLevel.Informational, ulong.MaxValue);
+                    Console.WriteLine($"[+] NetProvider {p} enabled");
                 }
                 catch (Exception ex)
                 {
@@ -68,13 +70,36 @@ namespace ETW
                 }
             }
 
+            // NamedPipe
             try
             {
-                session.EnableProvider("Microsoft-Windows-NamedPipe");
+                session.EnableProvider("Microsoft-Windows-NamedPipe", Microsoft.Diagnostics.Tracing.TraceEventLevel.Informational, ulong.MaxValue);
+                Console.WriteLine("[+] NamedPipe provider enabled");
             }
             catch (Exception ex)
             {
                 Console.WriteLine($"[WARN] NamedPipe provider attach failed: {ex.GetType().Name} - {ex.Message}");
+            }
+
+            // --- 추가 프로바이더들 ---
+            try
+            {
+                session.EnableProvider("Microsoft-Windows-Schannel", Microsoft.Diagnostics.Tracing.TraceEventLevel.Informational, ulong.MaxValue);
+                Console.WriteLine("[+] Schannel provider enabled (TLS handshake/SNI)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] Schannel provider attach failed: {ex.GetType().Name} - {ex.Message}");
+            }
+
+            try
+            {
+                session.EnableProvider("Microsoft-Quic", Microsoft.Diagnostics.Tracing.TraceEventLevel.Informational, ulong.MaxValue);
+                Console.WriteLine("[+] MsQuic provider enabled (QUIC/HTTP3)");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[WARN] MsQuic provider attach failed: {ex.GetType().Name} - {ex.Message}");
             }
 
             var source = session.Source;
@@ -92,7 +117,7 @@ namespace ETW
 
             try
             {
-                source.Process(); // 원래 여기서 죽음 → try/catch로 보호
+                source.Process(); // try/catch로 보호
             }
             catch (Exception ex)
             {
