@@ -149,5 +149,26 @@ namespace CursorProcessTree
             }
             return depth;
         }
+
+        // --- [추가] 부모 PID 가져오기 ---
+        public static int GetParentPid(int pid)
+        {
+            if (processMap.TryGetValue(pid, out var info))
+                return info.ParentPid;
+            return -1;
+        }
+
+        // --- [추가] 조상 중 MCP 태그가 있는 PID 찾기 ---
+        public static int FindTaggedAncestor(int pid)
+        {
+            int current = pid;
+            while (current > 0 && processMap.ContainsKey(current))
+            {
+                if (McpTagManager.tagStates.ContainsKey(current))
+                    return current;
+                current = processMap[current].ParentPid;
+            }
+            return -1;
+        }
     }
 }

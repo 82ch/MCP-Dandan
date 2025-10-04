@@ -1,8 +1,9 @@
-﻿using System;
-using System.Collections.Generic;              
-using Microsoft.Diagnostics.Tracing;            
+﻿using Microsoft.Diagnostics.Tracing;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using Microsoft.Diagnostics.Tracing.Session;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace CursorProcessTree
 {
@@ -104,7 +105,7 @@ namespace CursorProcessTree
             session.Source.Kernel.FileIORename += data =>
                 FileEventHandler.HandleRenameEvent(data);
 
-            // --- Network events ---
+            // --- Network events (Kernel TCP/UDP) ---
             session.Source.Kernel.TcpIpSend += data =>
                 NetworkEventHandler.HandleNetworkEvent("[TCP SEND]", data.ProcessID, data);
             session.Source.Kernel.TcpIpRecv += data =>

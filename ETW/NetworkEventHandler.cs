@@ -7,12 +7,9 @@ namespace CursorProcessTree
     {
         public static void HandleNetworkEvent(string eventType, int pid, dynamic data)
         {
-            if (!ProcessTracker.IsChildOfTarget(pid)) return;
-
-            lock (ProcessTracker.mcpPids)
-            {
-                if (!ProcessTracker.mcpPids.Contains(pid)) return;
-            }
+            // 필터 통합 처리
+            if (!ETWFilter.ShouldHandleNetworkEvent(eventType, pid, data))
+                return;
 
             string saddr = "", daddr = "";
             int sport = -1, dport = -1, size = -1;
@@ -27,70 +24,79 @@ namespace CursorProcessTree
             }
             catch { }
 
-            if (string.IsNullOrEmpty(daddr) || dport <= 0) return;
             string dest = $"{daddr}:{dport}";
 
-            if (!McpTagManager.tagStates.TryGetValue(pid, out var pidTagMap) || pidTagMap.Count == 0) return;
+            // --- 태그 상속 처리 ---
+            int effectivePid = pid;
+            System.Collections.Concurrent.ConcurrentDictionary<string, McpTagManager.TagState> pidTagMap = null;
 
-            var activeTags = pidTagMap.Where(kv => kv.Value.EffectiveDepth > 0)
-                                      .Select(kv => kv.Key)
-                                      .ToList();
-            if (activeTags.Count == 0) return;
+            while (effectivePid > 0)
+            {
+                if (McpTagManager.tagStates.TryGetValue(effectivePid, out pidTagMap) && pidTagMap.Count > 0)
+                    break;
+                effectivePid = ProcessTracker.GetParentPid(effectivePid);
+            }
 
             string chosenTag = null;
 
-            if (McpTagManager.activeRemoteByPidTag.TryGetValue(pid, out var remoteMap))
+            if (pidTagMap != null && pidTagMap.Count > 0)
             {
-                foreach (var t in activeTags)
+                var activeTags = pidTagMap
+                    .Where(kv => kv.Value.EffectiveDepth > 0)
+                    .Select(kv => kv.Key)
+                    .ToList();
+
+                if (activeTags.Count > 0)
                 {
-                    if (remoteMap.TryGetValue(t, out var bound) && string.Equals(bound, dest, StringComparison.OrdinalIgnoreCase))
+                    if (McpTagManager.activeRemoteByPidTag.TryGetValue(effectivePid, out var remoteMap))
                     {
-                        chosenTag = t;
-                        break;
+                        foreach (var t in activeTags)
+                        {
+                            if (remoteMap.TryGetValue(t, out var bound) &&
+                                string.Equals(bound, dest, StringComparison.OrdinalIgnoreCase))
+                            {
+                                chosenTag = t;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (chosenTag == null && activeTags.Count == 1)
+                    {
+                        chosenTag = activeTags[0];
+                        var map = McpTagManager.activeRemoteByPidTag.GetOrAdd(
+                            effectivePid,
+                            _ => new System.Collections.Concurrent.ConcurrentDictionary<string, string>()
+                        );
+                        map[chosenTag] = dest;
                     }
                 }
             }
 
-            if (chosenTag == null)
-            {
-                if (activeTags.Count == 1)
-                {
-                    chosenTag = activeTags[0];
-                    var map = McpTagManager.activeRemoteByPidTag.GetOrAdd(pid, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, string>());
-                    map[chosenTag] = dest;
-                }
-                else
-                {
-                    return;
-                }
-            }
+            // --- Fallback: 태그가 전혀 없을 경우 ---
+            if (string.IsNullOrEmpty(chosenTag))
+                chosenTag = "unlabeled";
 
-            if (!pidTagMap.TryGetValue(chosenTag, out var state) || state.EffectiveDepth <= 0)
-                return;
-
-            var tagRemoteMap = McpTagManager.activeRemoteByPidTag.GetOrAdd(pid, _ => new System.Collections.Concurrent.ConcurrentDictionary<string, string>());
-            if (tagRemoteMap.TryGetValue(chosenTag, out var boundDest))
-            {
-                if (!string.Equals(boundDest, dest, StringComparison.OrdinalIgnoreCase))
-                {
-                    return;
-                }
-            }
-            else
-            {
-                tagRemoteMap[chosenTag] = dest;
-            }
-
+            // 연결 정보는 실제 네트워크 pid 기준으로 저장
             ProcessTracker.pidConnections[pid] = dest;
 
             int indent = ProcessTracker.GetIndentLevel(pid);
             string spaces = new string(' ', indent * 2);
 
+            // tag가 unlabeled면 출력문에서만 제거
+            string tagText = string.Equals(chosenTag, "unlabeled", StringComparison.OrdinalIgnoreCase)
+                ? ""
+                : $" [tag={chosenTag}]";
+
             Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"{spaces}{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size} [tag={chosenTag}]");
+            Console.WriteLine(
+                $"{spaces}{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size}{tagText}"
+            );
             Console.ResetColor();
 
-            ProcessTracker.LogLine($"{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size} [tag={chosenTag}]");
+            ProcessTracker.LogLine(
+                $"{eventType} PID={pid} {saddr}:{sport} -> {daddr}:{dport}, Size={size}{tagText}"
+            );
         }
     }
 }

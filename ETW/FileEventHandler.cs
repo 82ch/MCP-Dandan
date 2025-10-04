@@ -40,10 +40,11 @@ namespace CursorProcessTree
             HandleFileEvent(eventType, data.ProcessID, data.FileName);
         }
 
-        // ⬇️ 여기만 수정됨
         public static void HandleRenameEvent(TraceEvent data)
         {
-            if (!ProcessTracker.IsChildOfTarget(data.ProcessID)) return;
+            // 필터 통합 처리
+            if (!ETWFilter.ShouldHandleRename(data))
+                return;
 
             var fk = ProcessTracker.TryGetULong(data, "FileKey") ?? 0UL;
             string newPath = data.PayloadByName("FileName")?.ToString();
@@ -51,12 +52,6 @@ namespace CursorProcessTree
 
             if (fk != 0 && ProcessTracker.fileKeyPath.TryGetValue(fk, out var prev))
                 oldPath = prev;
-
-            if (string.Equals(newPath, ProcessTracker.logPath, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(oldPath, ProcessTracker.logPath, StringComparison.OrdinalIgnoreCase))
-                return;
-
-            if (ProcessTracker.IsPathExcluded(oldPath) || ProcessTracker.IsPathExcluded(newPath)) return;
 
             int indent = ProcessTracker.GetIndentLevel(data.ProcessID);
             string spaces = new string(' ', indent * 2);
@@ -70,21 +65,18 @@ namespace CursorProcessTree
 
             ProcessTracker.LogLine($"[RENAME] PID={data.ProcessID}, {oldPath} -> {newPath}");
 
-            if (fk != 0) ProcessTracker.fileKeyPath[fk] = newPath;
+            if (fk != 0)
+                ProcessTracker.fileKeyPath[fk] = newPath;
         }
 
         public static void HandleFileEvent(string eventType, int pid, string path)
         {
-            if (!ProcessTracker.IsChildOfTarget(pid)) return;
-            if (!TryNormalizePath(path, out var normPath, out var fileName)) return;
-
-            if (string.Equals(normPath, ProcessTracker.logPath, StringComparison.OrdinalIgnoreCase))
+            // 필터 통합 처리
+            if (!ETWFilter.ShouldHandleFileEvent(eventType, pid, path, out var normPath, out var fileName))
                 return;
 
             bool isMcpLog = fileName.EndsWith(".log", StringComparison.OrdinalIgnoreCase) &&
                             fileName.IndexOf("MCP", StringComparison.OrdinalIgnoreCase) >= 0;
-
-            if (!isMcpLog && ProcessTracker.IsPathExcluded(normPath)) return;
 
             if (eventType == "[WRITE]" && isMcpLog)
             {
@@ -136,6 +128,7 @@ namespace CursorProcessTree
             }
         }
 
+        // 🔹 ETWFilter에서 재사용될 수 있도록 유지
         public static bool TryNormalizePath(string path, out string normPath, out string fileName)
         {
             normPath = null;

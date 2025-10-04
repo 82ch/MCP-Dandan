@@ -33,15 +33,18 @@ namespace CursorProcessTree
                 return;
             }
 
-            ProcessTracker.logWriter = new StreamWriter(ProcessTracker.logPath, false, System.Text.Encoding.UTF8) { AutoFlush = true };
+            ProcessTracker.logWriter = new StreamWriter(ProcessTracker.logPath, false, System.Text.Encoding.UTF8)
+            {
+                AutoFlush = true
+            };
 
             using var session = new TraceEventSession("CursorObserverSession");
+
             session.EnableKernelProvider(
                 KernelTraceEventParser.Keywords.Process |
                 KernelTraceEventParser.Keywords.FileIO |
                 KernelTraceEventParser.Keywords.FileIOInit |
-                KernelTraceEventParser.Keywords.NetworkTCPIP |
-                KernelTraceEventParser.Keywords.ImageLoad
+                KernelTraceEventParser.Keywords.NetworkTCPIP
             );
 
             // 등록
