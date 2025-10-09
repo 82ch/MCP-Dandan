@@ -3,7 +3,9 @@ using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
+using System.Xml.Linq;
 
 namespace ETW
 {
@@ -30,7 +32,8 @@ namespace ETW
                 {
                     "Process" => BuildProcess(data, pid, pname, cmd),
                     "File" => BuildFile(data, pid),
-                    "MCP" => BuildMcp(data, pid, pname, cmd),
+                    "NetWork" => BuildNetwork(data,pid,pname,cmd),
+                    "MCP" => BuildMcp(data),
                     _ => new { }
                 }
             };
@@ -81,8 +84,8 @@ namespace ETW
             };
         }
 
-        // Builds the payload for MCP/network events (Send/Recv/Connect)
-        private static object BuildMcp(TraceEvent data, int pid, string pname, string cmd)
+        // Builds the payload for network events (Send/Recv/Connect)
+        private static object BuildNetwork(TraceEvent data, int pid, string pname, string cmd)
         {
             var net = data as TcpIpTraceData;
             string mcpTag = McpHelper.DetermineMcp(pid, cmd, null);
@@ -107,6 +110,20 @@ namespace ETW
                 dst = net?.daddr?.ToString() ?? string.Empty,
                 dport = net?.dport ?? 0,
                 bytes = net?.size ?? 0
+            };
+        }
+
+        // Builds the payload for MCP events (Send/Recv/Connect)
+        private static object BuildMcp(TraceEvent data)
+        {
+            var rawBytes = (byte[])data.PayloadByName("data");
+            string decoded = Encoding.UTF8.GetString(rawBytes);
+            return new
+            {
+                task = "Hard Code merong",
+                transport = "stdio", //TODO: This is hard coding
+                src = data.PayloadByName("SrcPid"),
+                messsage = decoded
             };
         }
     }

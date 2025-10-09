@@ -1,4 +1,5 @@
 ﻿using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Parsers.Kernel;
 using System;
 using System.IO;
@@ -142,7 +143,7 @@ namespace ETW
                 Console.ResetColor();
 
                 // JSON 출력
-                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "MCP"));
+                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "Network"));
 
                 Console.ForegroundColor = ConsoleColor.Green;
                 Console.Out.WriteLine($"    ├─ Image={ShortPath(img)}");
@@ -155,14 +156,54 @@ namespace ETW
             source.Kernel.TcpIpSend += ev =>
             {
                 if (!ProcessTracker.TrackedPids.ContainsKey(ev.ProcessID)) return;
-                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "MCP")); // JSON 출력
+                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "Network")); // JSON 출력
             };
 
             source.Kernel.TcpIpRecv += ev =>
             {
                 if (!ProcessTracker.TrackedPids.ContainsKey(ev.ProcessID)) return;
-                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "MCP")); // JSON 출력
+                Console.WriteLine(EventDataFormatter.ToStandardJson(ev, "Network")); // JSON 출력
             };
+
+            // -------------------------------
+            // Local Mcp Server IPC 이벤트 
+            // -------------------------------
+            if (source is ETWTraceEventSource etwSource)
+            {
+                var parser = new DynamicTraceEventParser(etwSource);
+
+                parser.All += data =>
+                {
+                    // LocalMcpServerIpcGuid == "7d38387a-bf0b-4dcf-8d8e-b8558542d874"
+                    if (data.ProviderGuid == new Guid("7d38387a-bf0b-4dcf-8d8e-b8558542d874"))
+                    {
+                        Console.ForegroundColor = ConsoleColor.DarkGreen;
+                        Console.WriteLine($"[Local Mcp Server Ipc] {data.ProviderName}.{data.EventName}");
+
+                        foreach (var name in data.PayloadNames)
+                        {
+                            object value = data.PayloadByName(name);
+
+                            // 바이너리 필드 디코딩
+                            if (name == "data" && value is byte[] bytes)
+                            {
+                                string decoded = System.Text.Encoding.UTF8.GetString(bytes);
+                                Console.WriteLine($"    ├─ {name}  = {decoded}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"    ├─ {name} = {value}");
+                            }
+                        }
+
+                        Console.ResetColor();
+
+                        //JSON 출력
+                        Console.WriteLine(EventDataFormatter.ToStandardJson(data, "MCP")); // JSON 출력
+                    }
+
+                };
+            }
         }
 
         static string ShortPath(string path) => string.IsNullOrEmpty(path) ? "" : Path.GetFileName(path);

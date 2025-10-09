@@ -1,4 +1,5 @@
-﻿using Microsoft.Diagnostics.Tracing.Parsers;
+﻿using Microsoft.Diagnostics.Tracing;
+using Microsoft.Diagnostics.Tracing.Parsers;
 using Microsoft.Diagnostics.Tracing.Session;
 using System;
 using System.Threading;
@@ -12,6 +13,8 @@ namespace ETW
             "Microsoft-Windows-TCPIP",
             "Microsoft-Windows-Kernel-Network",
         };
+
+        private static readonly Guid LocalMcpServerIpcGuid = new Guid("7d38387a-bf0b-4dcf-8d8e-b8558542d874");
 
         public static void RunEtw(ManualResetEventSlim stopEvt)
         {
@@ -47,6 +50,8 @@ namespace ETW
             {
                 session.EnableKernelProvider(keywords);
                 session.EnableProvider("Microsoft-Windows-Kernel-File", Microsoft.Diagnostics.Tracing.TraceEventLevel.Verbose, ulong.MaxValue);
+                session.EnableProvider(LocalMcpServerIpcGuid, TraceEventLevel.Verbose, ulong.MaxValue);
+                Console.WriteLine($"[+] LocalMcpServerIpcGuid Provider {LocalMcpServerIpcGuid} enabled");
             }
             catch (Exception ex)
             {
