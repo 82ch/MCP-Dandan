@@ -13,7 +13,8 @@ namespace ETW
             Console.ForegroundColor = ConsoleColor.Yellow;
             Console.Write("Enter process name to monitor (ex: claude.exe): ");
             Console.ResetColor();
-            ProcessTracker.TargetProcName = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+            //ProcessTracker.TargetProcName = (Console.ReadLine() ?? "").Trim().ToLowerInvariant();
+            ProcessTracker.TargetProcName = "claude.exe";
 
             if (string.IsNullOrWhiteSpace(ProcessTracker.TargetProcName))
             {
