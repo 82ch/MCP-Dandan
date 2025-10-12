@@ -5,20 +5,22 @@ using System;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
-using System.Xml.Linq;
 
 namespace ETW
 {
     public static class EventDataFormatter
     {
-        // Converts a TraceEvent into a standard JSON object based on the event type.
+        // ---------------------------------------------------------------------
+        // 기본 버전
+        // ---------------------------------------------------------------------
         public static string ToStandardJson(TraceEvent data, string eventType)
         {
             long tsNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000L;
 
             int pid = data.ProcessID;
             string pname = data.ProcessName ?? string.Empty;
-            // Retrieve the recorded command line for this PID, if available
+
+            // ProcCmdline에 저장된 값
             string cmd = ProcessTracker.ProcCmdline.TryGetValue(pid, out var recordedCmd) ? recordedCmd : null;
 
             var result = new
@@ -32,7 +34,7 @@ namespace ETW
                 {
                     "Process" => BuildProcess(data, pid, pname, cmd),
                     "File" => BuildFile(data, pid),
-                    "NetWork" => BuildNetwork(data,pid,pname,cmd),
+                    "NetWork" => BuildNetwork(data, pid, pname, cmd),
                     "MCP" => BuildMcp(data),
                     _ => new { }
                 }
@@ -41,16 +43,53 @@ namespace ETW
             return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = false });
         }
 
-        // Builds the payload for Process events (Start/Stop)
+        // ---------------------------------------------------------------------
+        // 오버로드 버전
+        // ---------------------------------------------------------------------
+        public static string ToStandardJson(TraceEvent data, string eventType, string recoveredCmdline)
+        {
+            long tsNano = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000L;
+
+            int pid = data.ProcessID;
+            string pname = data.ProcessName ?? string.Empty;
+
+            string cmd = recoveredCmdline ?? string.Empty;
+
+            var result = new
+            {
+                ts = tsNano,
+                producer = "agent-core",
+                pid = pid,
+                pname = pname,
+                eventType = eventType,
+                data = eventType switch
+                {
+                    "Process" => BuildProcess(data, pid, pname, cmd),
+                    "File" => BuildFile(data, pid),
+                    "NetWork" => BuildNetwork(data, pid, pname, cmd),
+                    "MCP" => BuildMcp(data),
+                    _ => new { }
+                }
+            };
+
+            return JsonSerializer.Serialize(result, new JsonSerializerOptions { WriteIndented = false });
+        }
+
+        // ---------------------------------------------------------------------
+        // Process 이벤트 JSON 구성
+        // ---------------------------------------------------------------------
         private static object BuildProcess(TraceEvent data, int pid, string pname, string cmd)
         {
             var proc = data as ProcessTraceData;
             int parentPid = proc?.ParentID ?? -1;
             string parentName = ProcessTracker.TrackedPids.TryGetValue(parentPid, out var pName) ? pName : "<unknown>";
             string imageFilename = proc?.ImageFileName ?? string.Empty;
+
+            bool isStart = data.EventName.IndexOf("Start", StringComparison.OrdinalIgnoreCase) >= 0;
+
             return new
             {
-                task = data.EventName.Contains("Start") ? "Start" : "Stop",
+                task = isStart ? "Start" : "Stop",
                 pid = pid,
                 pname = pname,
                 parent = new { pid = parentPid, name = parentName },
@@ -60,21 +99,20 @@ namespace ETW
             };
         }
 
-        // Builds the payload for File events (Read/Write/Delete/etc.)
+        // ---------------------------------------------------------------------
+        // File 이벤트 JSON 구성
+        // ---------------------------------------------------------------------
         private static object BuildFile(TraceEvent data, int pid)
         {
             string filePath = string.Empty;
-            // Extract file path from payload if present
+
             if (data.PayloadNames.Contains("FileName"))
-            {
                 filePath = data.PayloadByName("FileName")?.ToString() ?? string.Empty;
-            }
-            // Determine the MCP tag for this file event
+
             string mcpTag = string.Empty;
             if (ProcessTracker.ProcCmdline.TryGetValue(pid, out var tag))
-            {
                 mcpTag = McpHelper.DetermineMcp(pid, tag, filePath);
-            }
+
             return new
             {
                 task = data.EventName.ToUpperInvariant(),
@@ -84,16 +122,18 @@ namespace ETW
             };
         }
 
-        // Builds the payload for network events (Send/Recv/Connect)
+        // ---------------------------------------------------------------------
+        // Network 이벤트 JSON 구성
+        // ---------------------------------------------------------------------
         private static object BuildNetwork(TraceEvent data, int pid, string pname, string cmd)
         {
             var net = data as TcpIpTraceData;
             string mcpTag = McpHelper.DetermineMcp(pid, cmd, null);
-            // Determine task based on event name
+
             string task;
-            if (data.EventName.Contains("Send"))
+            if (data.EventName.IndexOf("Send", StringComparison.OrdinalIgnoreCase) >= 0)
                 task = "SEND";
-            else if (data.EventName.Contains("Recv"))
+            else if (data.EventName.IndexOf("Recv", StringComparison.OrdinalIgnoreCase) >= 0)
                 task = "RECV";
             else
                 task = "CONNECT";
@@ -113,20 +153,29 @@ namespace ETW
             };
         }
 
-        // Builds the payload for MCP events (Send/Recv/Connect)
+        // ---------------------------------------------------------------------
+        // MCP 이벤트 JSON 구성
+        // ---------------------------------------------------------------------
         private static object BuildMcp(TraceEvent data)
         {
-            var rawBytes = (byte[])data.PayloadByName("data");
+            // 안전 처리: payload가 없는 경우 방어
+            byte[] rawBytes = Array.Empty<byte>();
+            if (data.PayloadNames.Contains("data") && data.PayloadByName("data") is byte[] b)
+                rawBytes = b;
+
             string decoded = Encoding.UTF8.GetString(rawBytes);
 
-            bool isRecv = (bool)data.PayloadByName("task");  
-            string task = isRecv ? "SEND" : "RECV"; //0:recv 1:send
+            bool isRecv = false;
+            if (data.PayloadNames.Contains("task") && data.PayloadByName("task") is bool t)
+                isRecv = t;
+
+            string task = isRecv ? "SEND" : "RECV"; // 0=recv, 1=send
 
             return new
             {
                 task = task,
-                transport = "stdio", //TODO: This is hard coding
-                src = data.PayloadByName("SrcPid"),
+                transport = "stdio",
+                src = data.PayloadNames.Contains("SrcPid") ? data.PayloadByName("SrcPid") : null,
                 messsage = decoded
             };
         }
