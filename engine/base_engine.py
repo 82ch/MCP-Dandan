@@ -83,7 +83,7 @@ class BaseEngine(ABC):
         self._running = False
 
     def _init_kafka(self):
-        """Kafka Consumer/Produfcer 초기화"""
+        """Kafka Consumer/Producer 초기화"""
         # Consumer 초기화 (여러 토픽 구독)
         self.consumer = KafkaConsumer(
             *self.input_topics,
