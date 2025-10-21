@@ -29,7 +29,7 @@ public partial class Program
             Console.WriteLine("[!] Invalid process name entered. Exiting.");
             return;
         }
-        MCPRegistry.ReadConfigFile();
+        MCPRegistry.LoadConfig();
 
         Console.WriteLine($"[+] Monitoring will start when {TargetProcName}.exe is launched.");
 

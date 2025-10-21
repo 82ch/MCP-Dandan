@@ -93,7 +93,7 @@ public static class MCPRegistry
         // 그 외(.exe, .com 등)는 그대로 반환
         return fullPath;
     }
-    public static void ReadConfigFile()
+    public static void LoadConfig()
     {
         try
         {
@@ -134,10 +134,70 @@ public static class MCPRegistry
                     Console.WriteLine($"[INFO] Loaded MCP server config from '{config}': {name} <- {cmdline}");
                 }
             }
+            // --- 2. Claude의 경우, Claude Extentions 폴더 추가로 스캔 ---
+            if (Program.TargetProcName == "claude")
+            {
+                LoadClaudeExtensions();
+            }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[ERROR] Exception while reading config file: {ex.Message}");
+        }
+    }
+    private static string ExpandVariables(string input, string dir)
+    {
+        if (string.IsNullOrEmpty(input))
+            return input;
+        string expanded = input
+            .Replace("${__dirname}", dir, StringComparison.OrdinalIgnoreCase);
+
+        if (expanded.Contains(" ") && !expanded.StartsWith("\""))
+        {
+            return $"\"{expanded}\"";
+        }
+        return expanded;
+    }
+
+
+    private static void LoadClaudeExtensions()
+    {
+        string extensionsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude", "Claude Extensions");
+        if (!Directory.Exists(extensionsPath))
+        {
+            Console.WriteLine($"[INFO] Claude extensions directory not found: {extensionsPath}");
+            return;
+        }
+
+        foreach (string dir in Directory.GetDirectories(extensionsPath))
+        {
+            string manifestPath = Path.Combine(dir, "manifest.json");
+            try
+            {
+                string json = File.ReadAllText(manifestPath);
+                var root = JsonNode.Parse(json);
+
+                var config = root?["server"]?["mcp_config"];
+                string? name = root?["name"]?.GetValue<string>();
+
+                string? cmd = config?["command"]?.GetValue<string>();
+                var args = config?["args"]?.AsArray();
+
+                if (!string.IsNullOrEmpty(cmd) && args != null)
+                {
+                    string? full = GetFullCommandLine(cmd);
+                    string[] expArgs = args.Select(arg =>
+                        ExpandVariables(arg?.ToString() ?? string.Empty, dir)
+                    ).ToArray();
+                    string cmdline = $"{full} {string.Join(" ", expArgs)}";
+                    Config[cmdline] = name;
+                    Console.WriteLine($"[INFO] Loaded MCP extension config from '{manifestPath}': {name} <- {cmdline}");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Failed to process extentions '{manifestPath}': {ex.Message}");
+            }
         }
     }
 
@@ -157,7 +217,7 @@ public static class MCPRegistry
         }
         if (Program.TargetProcName == "cursor")
         {
-           
+
         }
 
         // 3) 어느 것도 매칭되지 않으면 MCPHost로 기본 설정 
