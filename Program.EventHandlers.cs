@@ -89,11 +89,11 @@ public partial class Program
     {
         if (data.ProviderGuid == GowonMonGuid)
         {
-            bool task = Convert.ToBoolean(data.PayloadByName("Task"));
+            bool task = Convert.ToBoolean(data.PayloadByName("task"));
             string taskname = task ? "Send" : "Recv";
-            UInt32 len = Convert.ToUInt32(data.PayloadByName("IoSize"));
-            bool flag = Convert.ToBoolean(data.PayloadByName("IoFlags"));
-            var raw = (byte[])data.PayloadByName("IoData");
+            UInt32 len = Convert.ToUInt32(data.PayloadByName("tototalLEN"));
+            bool flag = Convert.ToBoolean(data.PayloadByName("truncated"));
+            var raw = (byte[])data.PayloadByName("data");
             string msg = System.Text.Encoding.UTF8.GetString(raw);
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine($"[MCP {taskname}] " +
