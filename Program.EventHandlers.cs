@@ -91,7 +91,7 @@ public partial class Program
         {
             bool task = Convert.ToBoolean(data.PayloadByName("task"));
             string taskname = task ? "Send" : "Recv";
-            UInt32 len = Convert.ToUInt32(data.PayloadByName("tototalLEN"));
+            UInt32 len = Convert.ToUInt32(data.PayloadByName("tototalLen"));
             bool flag = Convert.ToBoolean(data.PayloadByName("truncated"));
             var raw = (byte[])data.PayloadByName("data");
             string msg = System.Text.Encoding.UTF8.GetString(raw);

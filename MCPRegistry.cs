@@ -18,8 +18,8 @@ public static class MCPRegistry
 {
     private static readonly Dictionary<string, string> ConfigFilePath = new Dictionary<string, string>
     {
-        { "claude","C:\\Users\\chlwn\\AppData\\Roaming\\Claude\\claude_desktop_config.json" },
-        { "cursor", "C:\\Users\\chlwn\\.cursor\\mcp.json" }
+        { "claude", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude", "claude_desktop_config.json") },
+        { "cursor", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "mcp.json") }
     };
     private static readonly Dictionary<string, string> Config = new(StringComparer.OrdinalIgnoreCase); // CommandLine(대소문자 무시) to ServerName
     private static readonly Dictionary<int, string> MCPNameTag = new(); // PID to Name Tag
