@@ -93,8 +93,24 @@ public partial class Program
             string taskname = task ? "Send" : "Recv";
             UInt32 len = Convert.ToUInt32(data.PayloadByName("tototalLen"));
             bool flag = Convert.ToBoolean(data.PayloadByName("truncated"));
-            var raw = (byte[])data.PayloadByName("data");
-            string msg = System.Text.Encoding.UTF8.GetString(raw);
+
+            // 안전한 변환 처리
+            object payloadData = data.PayloadByName("data");
+            string msg;
+
+            if (payloadData is byte[] bytes)
+            {
+                msg = Encoding.UTF8.GetString(bytes);
+            }
+            else if (payloadData is string s)
+            {
+                msg = s;
+            }
+            else
+            {
+                msg = $"[Unsupported data type: {payloadData?.GetType().Name}]";
+            }
+
             Console.ForegroundColor = ConsoleColor.Cyan;
             Console.WriteLine($"[MCP {taskname}] " +
                 $"Time: {data.TimeStamp.ToLocalTime()}, " +
@@ -105,7 +121,7 @@ public partial class Program
                 $"Message: {msg}");
             Console.ResetColor();
         }
-
     }
+
 }
 
