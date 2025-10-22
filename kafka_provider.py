@@ -1,4 +1,5 @@
 from kafka_producer import SimpleKafkaProducer
+from config_loader import ConfigLoader
 from datetime import datetime
 import subprocess
 import json
@@ -90,16 +91,22 @@ def run_process_and_send(process_path, producer):
 def main():
     """프로세스 출력을 Kafka로 전송하는 예제"""
 
-    # Kafka 브로커 주소 설정 (로컬 환경 예시)
-    brokers = ['localhost:9092']
+    # 설정 파일 로드
+    config = ConfigLoader()
+
+    # Kafka 브로커 주소 설정
+    brokers = config.get_kafka_brokers()
 
     # Producer 인스턴스 생성
-    producer = SimpleKafkaProducer(brokers, client_id='my-kafka-app')
+    client_id = config.get_client_id()
+    producer = SimpleKafkaProducer(brokers, client_id=client_id)
 
     # 실행할 프로세스 경로 설정
-    # # 예시: 'C:\\path\\to\\your\\program.exe' 또는 'python script.py'
-    # process_path = "C:\\Users\\jeong\\OneDrive\\Desktop\\bob\\82ch-observer\\bin\\Debug\\net9.0\\MCPTrace.exe"
-    process_path = "C:\\Users\\jeong\\OneDrive\\Desktop\\bob\\82ch-claude-observer\\ETW\\bin\\Debug\\ETW.exe"
+    process_path = config.get_process_path()
+
+    if not process_path:
+        print('오류: config.conf에 process_path가 설정되지 않았습니다.')
+        return
 
     try:
         # Kafka 서버에 연결

@@ -5,6 +5,7 @@ from typing import Any, Optional, List
 from kafka import KafkaConsumer, KafkaProducer
 import json
 from datetime import datetime
+from config_loader import ConfigLoader
 
 
 class BaseEngine(ABC):
@@ -17,23 +18,28 @@ class BaseEngine(ABC):
     """
 
     def __init__(self,
-                 kafka_brokers: List[str],
                  input_topics: List[str],
                  output_topic: str,
-                 consumer_group: str = "analysis-engine"):
+                 consumer_group: str):
         """
         Args:
-            kafka_brokers: Kafka 브로커 주소 리스트
             input_topics: 입력 토픽 리스트 (여러 개 구독 가능)
             output_topic: 출력 토픽
-            consumer_group: Consumer 그룹 ID
+            consumer_group: Consumer 그룹 ID (필수, 각 엔진은 고유한 그룹을 가져야 함)
         """
-        self.kafka_brokers = kafka_brokers
+        # 설정 파일에서 모든 설정 로드
+        config = ConfigLoader()
+        self.kafka_brokers = config.get_kafka_brokers()
         self.input_topics = input_topics
         self.output_topic = output_topic
         self.consumer_group = consumer_group
 
-        self._queue = Queue(maxsize=1000)
+        # 성능 튜닝 파라미터 로드
+        self._queue_maxsize = config.get_queue_maxsize()
+        self._poll_timeout_ms = config.get_poll_timeout_ms()
+        self._queue_timeout = config.get_queue_timeout()
+
+        self._queue = Queue(maxsize=self._queue_maxsize)
         self._input_thread: Optional[Thread] = None
         self._process_thread: Optional[Thread] = None
         self._stop_event = Event()
@@ -103,13 +109,13 @@ class BaseEngine(ABC):
         """입력 메서드: Kafka에서 데이터를 받아 큐에 저장"""
         while not self._stop_event.is_set():
             try:
-                # Kafka에서 메시지 읽기 (타임아웃 1초)
-                messages = self.consumer.poll(timeout_ms=1000)
+                # Kafka에서 메시지 읽기 (설정된 타임아웃 사용)
+                messages = self.consumer.poll(timeout_ms=self._poll_timeout_ms)
 
                 for records in messages.values():
                     for record in records:
-                        # 큐에 데이터 저장
-                        self._queue.put(record.value)
+                        # 큐에 데이터 저장 (큐가 가득 차면 빌 때까지 무한 대기)
+                        self._queue.put(record.value, block=True)
 
             except Exception:
                 pass
@@ -118,8 +124,8 @@ class BaseEngine(ABC):
         """처리 루프: 큐에서 데이터를 가져와 process() 실행 후 출력"""
         while not self._stop_event.is_set():
             try:
-                # 큐에서 데이터 가져오기
-                data = self._queue.get(timeout=0.1)
+                # 큐에서 데이터 가져오기 (설정된 타임아웃 사용)
+                data = self._queue.get(timeout=self._queue_timeout)
 
                 try:
                     # 처리 로직 실행

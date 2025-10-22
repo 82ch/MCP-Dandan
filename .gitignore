@@ -137,3 +137,6 @@ Thumbs.db
 *.txt.bak
 *.old
 readme.txt
+
+# config
+.conf

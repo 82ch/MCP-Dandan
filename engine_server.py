@@ -1,4 +1,5 @@
 from engine.sensitive_file_engine import SensitiveFileEngine
+from config_loader import ConfigLoader
 import time
 import signal
 import sys
@@ -23,22 +24,24 @@ def main():
     print("Integrated Analysis Engine Server")
     print("=" * 60)
 
-    # Kafka 브로커 설정
-    kafka_brokers = ['localhost:9092']
+    # 설정 파일 로드
+    config = ConfigLoader()
 
     # 민감 파일 탐지 엔진 생성
-    sensitive_engine = SensitiveFileEngine(
-        kafka_brokers=kafka_brokers,
-        output_topic='results'
-    )
+    sensitive_engine = SensitiveFileEngine()
     engines.append(sensitive_engine)
+
+    # 출력용 정보 가져오기
+    kafka_brokers = config.get_kafka_brokers()
+    sensitive_input_topics = config.get_sensitive_file_input_topics()
+    sensitive_output_topic = config.get_sensitive_file_output_topic()
 
     print(f"\n설정:")
     print(f"  - Kafka 브로커: {kafka_brokers}")
     print(f"\n실행 중인 엔진:")
     print(f"  1. Sensitive File Detector Engine")
-    print(f"     • 입력 토픽: File")
-    print(f"     • 출력 토픽: results")
+    print(f"     • 입력 토픽: {', '.join(sensitive_input_topics)}")
+    print(f"     • 출력 토픽: {sensitive_output_topic}")
     print(f"     • 탐지 대상: SSH 키, 암호화폐 지갑, 브라우저 쿠키 등")
 
     try:

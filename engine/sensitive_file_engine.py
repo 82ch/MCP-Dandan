@@ -1,5 +1,6 @@
 from engine.base_engine import BaseEngine
-from typing import Any, List
+from config_loader import ConfigLoader
+from typing import Any
 import re
 
 
@@ -11,17 +12,15 @@ class SensitiveFileEngine(BaseEngine):
     민감한 파일 접근을 탐지합니다.
     """
 
-    def __init__(self, kafka_brokers: List[str], output_topic: str):
-        """
-        Args:
-            kafka_brokers: Kafka 브로커 주소 리스트
-            output_topic: 출력 토픽
-        """
+    def __init__(self):
+        """민감 파일 탐지 엔진 초기화"""
+        # 설정 파일에서 엔진별 설정 로드
+        config = ConfigLoader()
+
         super().__init__(
-            kafka_brokers=kafka_brokers,
-            input_topics=['File'],
-            output_topic=output_topic,
-            consumer_group='sensitive-file-engine'
+            consumer_group=config.get_sensitive_file_consumer_group(),
+            input_topics=config.get_sensitive_file_input_topics(),
+            output_topic=config.get_sensitive_file_output_topic()
         )
 
         # Critical 패턴 (항상 차단해야 함)
