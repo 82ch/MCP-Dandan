@@ -139,4 +139,4 @@ Thumbs.db
 readme.txt
 
 # config
-.conf
+*.conf
