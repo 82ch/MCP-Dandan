@@ -91,7 +91,7 @@ public partial class Program
         {
             bool task = Convert.ToBoolean(data.PayloadByName("task"));
             string taskname = task ? "Send" : "Recv";
-            UInt32 len = Convert.ToUInt32(data.PayloadByName("tototalLen"));
+            UInt32 len = Convert.ToUInt32(data.PayloadByName("totalLen"));
             bool flag = Convert.ToBoolean(data.PayloadByName("truncated"));
 
             // 안전한 변환 처리
