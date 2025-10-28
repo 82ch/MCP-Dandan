@@ -16,16 +16,26 @@ using System.Threading.Tasks;
 
 public static class MCPRegistry
 {
+    // 기본적으로 호스트별 예상 config 파일 경로
     private static readonly Dictionary<string, string> ConfigFilePath = new Dictionary<string, string>
     {
         { "claude", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Claude", "claude_desktop_config.json") },
         { "cursor", Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".cursor", "mcp.json") }
     };
-    private static readonly Dictionary<string, string> Config = new(StringComparer.OrdinalIgnoreCase); // CommandLine(대소문자 무시) to ServerName
-    private static readonly Dictionary<int, string> MCPNameTag = new(); // PID to Name Tag
+
+    // CommandLine (키) -> ServerName (값)
+    // 대소문자 무시
+    private static readonly Dictionary<string, string> Config = new(StringComparer.OrdinalIgnoreCase);
+
+    // PID -> name tag
+    private static readonly Dictionary<int, string> MCPNameTag = new();
+
+    // 간단한 락 객체 (동시성 안전)
+    private static readonly object _lock = new object();
 
     public static string? GetFullCommandLine(string cmd)
     {
+        // Try to resolve to a full path; if not possible, return null to let caller handle fallback.
         string? fullPath = GetFullPath(cmd);
         if (fullPath == null)
         {
@@ -40,9 +50,16 @@ public static class MCPRegistry
     /// </summary>
     static string? GetFullPath(string command)
     {
-        // 명령어가 이미 경로를 포함하면 바로 반환
-        if (File.Exists(command))
-            return Path.GetFullPath(command);
+        if (string.IsNullOrEmpty(command))
+            return null;
+
+        // 이미 경로를 포함하면 바로 반환
+        try
+        {
+            if (File.Exists(command))
+                return Path.GetFullPath(command);
+        }
+        catch { /* 경로 권한 등 이유로 실패할 수 있음 */ }
 
         string? pathEnv = Environment.GetEnvironmentVariable("PATH");
         if (string.IsNullOrEmpty(pathEnv))
@@ -60,15 +77,17 @@ public static class MCPRegistry
             string trimmed = dir.Trim();
             if (trimmed.Length == 0) continue;
 
-            // e.g., "C:\Program Files\nodejs\npx"
             string candidate = Path.Combine(trimmed, command);
 
-            // 확장자 붙여서 검사
             foreach (string ext in exts)
             {
                 string candidateWithExt = candidate + ext;
-                if (File.Exists(candidateWithExt))
-                    return Path.GetFullPath(candidateWithExt);
+                try
+                {
+                    if (File.Exists(candidateWithExt))
+                        return Path.GetFullPath(candidateWithExt);
+                }
+                catch { }
             }
         }
 
@@ -83,16 +102,15 @@ public static class MCPRegistry
         var ext = Path.GetExtension(fullPath).ToLowerInvariant();
         var systemDir = Environment.GetFolderPath(Environment.SpecialFolder.System);
 
-        // .cmd, .bat -> cmd.exe /c "<path>"
         if (ext == ".cmd" || ext == ".bat")
         {
             var cmdExe = Path.Combine(systemDir, "cmd.exe");
             return $"{cmdExe} /c \"{fullPath}\"";
         }
 
-        // 그 외(.exe, .com 등)는 그대로 반환
         return fullPath;
     }
+
     public static void LoadConfig()
     {
         try
@@ -117,7 +135,7 @@ public static class MCPRegistry
             // 각 서버 설정을 순회하며 처리
             foreach (var server in mcpServers)
             {
-                string name = server.Key; // "weather", "filesystem" 등
+                string name = server.Key ?? ""; // "weather", "filesystem" 등
                 var cmd_args = server.Value;
 
                 string? cmd = cmd_args?["command"]?.GetValue<string>();
@@ -125,16 +143,23 @@ public static class MCPRegistry
 
                 if (!string.IsNullOrEmpty(cmd) && args != null)
                 {
-                    // "full"와 "args" 배열을 합쳐 하나의 전체 커맨드라인 문자열로 만듭니다.
+                    // GetFullCommandLine 실패시 원본 cmd로 대체
                     string? full = GetFullCommandLine(cmd);
-                    string cmdline = $"{full} {string.Join(" ", args.Select(arg => arg.ToString()))}";
+                    if (string.IsNullOrEmpty(full))
+                        full = cmd;
 
-                    // MCPServers 딕셔너리에 저장합니다.
-                    Config[cmdline] = name;
+                    string[] safeArgs = args.Select(a => a?.ToString() ?? string.Empty).ToArray();
+                    string cmdline = $"{full} {string.Join(" ", safeArgs)}".Trim();
+
+                    lock (_lock)
+                    {
+                        Config[cmdline] = name;
+                    }
                     Console.WriteLine($"[INFO] Loaded MCP server config from '{config}': {name} <- {cmdline}");
                 }
             }
-            // --- 2. Claude의 경우, Claude Extentions 폴더 추가로 스캔 ---
+
+            // --- 2. Claude의 경우, Claude Extensions 폴더 추가로 스캔 ---
             if (Program.TargetProcName == "claude")
             {
                 LoadClaudeExtensions();
@@ -145,12 +170,12 @@ public static class MCPRegistry
             Console.WriteLine($"[ERROR] Exception while reading config file: {ex.Message}");
         }
     }
+
     private static string ExpandVariables(string input, string dir)
     {
         if (string.IsNullOrEmpty(input))
             return input;
-        string expanded = input
-            .Replace("${__dirname}", dir, StringComparison.OrdinalIgnoreCase);
+        string expanded = input.Replace("${__dirname}", dir, StringComparison.OrdinalIgnoreCase);
 
         if (expanded.Contains(" ") && !expanded.StartsWith("\""))
         {
@@ -158,7 +183,6 @@ public static class MCPRegistry
         }
         return expanded;
     }
-
 
     private static void LoadClaudeExtensions()
     {
@@ -186,30 +210,86 @@ public static class MCPRegistry
                 if (!string.IsNullOrEmpty(cmd) && args != null)
                 {
                     string? full = GetFullCommandLine(cmd);
+                    if (string.IsNullOrEmpty(full))
+                        full = cmd;
+
                     string[] expArgs = args.Select(arg =>
                         ExpandVariables(arg?.ToString() ?? string.Empty, dir)
                     ).ToArray();
-                    string cmdline = $"{full} {string.Join(" ", expArgs)}";
-                    Config[cmdline] = name;
+                    string cmdline = $"{full} {string.Join(" ", expArgs)}".Trim();
+
+                    lock (_lock)
+                    {
+                        Config[cmdline] = name ?? "";
+                    }
                     Console.WriteLine($"[INFO] Loaded MCP extension config from '{manifestPath}': {name} <- {cmdline}");
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Failed to process extentions '{manifestPath}': {ex.Message}");
+                Console.WriteLine($"[ERROR] Failed to process extensions '{manifestPath}': {ex.Message}");
             }
         }
     }
 
+    /// <summary>
+    /// 주어진 PID와 커맨드라인을 기반으로 MCP 서버인지 판정하고, 태그를 설정합니다.
+    /// 판정되면 TrackedPids에 추가하여 File I/O 추적 대상을 보장합니다.
+    /// </summary>
     public static string Submit(int pid, string cmd)
     {
-        // 1) Config 파일에 정의된 커맨드라인과 일치하는지 먼저 확인
-        if (Config.TryGetValue(cmd, out string? ServerName))
+        if (cmd == null) cmd = "";
+
+        // 1) Config 딕셔너리의 키들을 돌면서 부분 매칭으로 탐색 (대소문자 무시)
+        lock (_lock)
         {
-            Console.WriteLine($"[INFO] Registered MCP server by config: PID={pid}, Server='{ServerName}'");
-            return SetNameTag(pid, ServerName);
+            foreach (var kv in Config)
+            {
+                string knownCmd = kv.Key ?? "";
+                string serverName = kv.Value ?? "";
+
+                if (string.IsNullOrWhiteSpace(knownCmd))
+                    continue;
+
+                // 부분 매칭: knownCmd contains cmd OR cmd contains knownCmd (both ways)
+                try
+                {
+                    if (!string.IsNullOrEmpty(cmd) &&
+                        knownCmd.IndexOf(cmd, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Console.WriteLine($"[INFO] Registered MCP server by config (knownCmd contains cmd): PID={pid}, Server='{serverName}'");
+                        SetNameTag(pid, serverName);
+                        TryAddTrackedPid(pid);
+                        return serverName;
+                    }
+
+                    if (!string.IsNullOrEmpty(cmd) &&
+                        cmd.IndexOf(knownCmd, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        Console.WriteLine($"[INFO] Registered MCP server by config (cmd contains knownCmd): PID={pid}, Server='{serverName}'");
+                        SetNameTag(pid, serverName);
+                        TryAddTrackedPid(pid);
+                        return serverName;
+                    }
+
+                    // 추가: 공백/따옴표 등으로 다르지만 부분 토큰이 일치하는 경우를 위해 토큰 매칭도 시도
+                    var knownTokens = knownCmd.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+                    foreach (var token in knownTokens)
+                    {
+                        if (!string.IsNullOrEmpty(token) && cmd.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                        {
+                            Console.WriteLine($"[INFO] Registered MCP server by token match: PID={pid}, Server='{serverName}', Token='{token}'");
+                            SetNameTag(pid, serverName);
+                            TryAddTrackedPid(pid);
+                            return serverName;
+                        }
+                    }
+                }
+                catch { /* 비교 실패는 무시하고 계속 */ }
+            }
         }
-        // MCP 서버 자동 감지 (Cursor 등에서 /d /s /c 옵션으로 인해 불일치 시)
+
+        // 2) 정규식 기반 자동 감지
         var match = System.Text.RegularExpressions.Regex.Match(
             cmd,
             @"@modelcontextprotocol\/server-([a-zA-Z0-9_-]+)",
@@ -219,41 +299,69 @@ public static class MCPRegistry
         if (match.Success)
         {
             string serverName = match.Groups[1].Value;
-            Console.WriteLine($"[INFO] Registered MCP server by config: PID={pid}, Server='{serverName}'");
-            return SetNameTag(pid, serverName);
+            Console.WriteLine($"[INFO] Registered MCP server by regex: PID={pid}, Server='{serverName}'");
+            SetNameTag(pid, serverName);
+            TryAddTrackedPid(pid);
+            return serverName;
         }
 
-        // 2) Config 파일에 매칭되는 것이 없을 경우, MCP Host에 따라 전용 로직 수행
+        // 3) 호스트별 전용 로직 (확장 포인트)
         if (Program.TargetProcName == "claude")
         {
-
+            // 필요하면 claude 전용 heuristic 을 추가
         }
         if (Program.TargetProcName == "cursor")
         {
-
+            // 필요하면 cursor 전용 heuristic 을 추가
         }
 
-        // 3) 어느 것도 매칭되지 않으면 MCPHost로 기본 설정 
-        return SetNameTag(pid, Program.TargetProcName);
+        // 4) 어떤 것도 매칭되지 않으면 기본적으로 Host 이름으로 태그를 설정하고,
+        //    상황에 따라 Tracked에 추가 (대부분 Submit이 자식 프로세스에서 호출되므로 추가)
+        var finalName = SetNameTag(pid, Program.TargetProcName);
+        TryAddTrackedPid(pid);
+        return finalName;
+    }
+
+    /// <summary>
+    /// 안전하게 TrackedPids에 추가 시도 (Program.TrackedPids는 외부에 선언된 컬렉션)
+    /// </summary>
+    private static void TryAddTrackedPid(int pid)
+    {
+        try
+        {
+            // Program.TrackedPids 가 public/static 으로 선언되어 있어야 접근 가능
+            Program.TrackedPids.Add(pid);
+        }
+        catch { /* 안전하게 무시 */ }
     }
 
     public static void Remove(int pid)
     {
-        MCPNameTag.Remove(pid);
+        lock (_lock)
+        {
+            if (MCPNameTag.ContainsKey(pid))
+                MCPNameTag.Remove(pid);
+        }
     }
 
     public static string SetNameTag(int pid, string name)
     {
-        MCPNameTag[pid] = name;
-        return name;
+        lock (_lock)
+        {
+            MCPNameTag[pid] = name ?? string.Empty;
+        }
+        return name ?? string.Empty;
     }
 
     public static string GetNameTag(int pid)
     {
-        if (MCPNameTag.TryGetValue(pid, out string? name))
+        lock (_lock)
         {
-            return name;
+            if (MCPNameTag.TryGetValue(pid, out string? name))
+            {
+                return name ?? string.Empty;
+            }
         }
-        return string.Empty; // 찾지 못하면 빈 문자열 반환
+        return string.Empty;
     }
 }
