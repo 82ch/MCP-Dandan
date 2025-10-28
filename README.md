@@ -224,18 +224,7 @@ enabled = true
   "reference": ["id-1761033313696000000"],
   "result": {
     "detector": "SensitiveFile",
-    "severity": "critical",
-    "findings": [
-      {
-        "category": "critical",
-        "pattern": "\\.ssh[/\\\\]id_rsa$",
-        "file_path": "C:\\Users\\user\\.ssh\\id_rsa",
-        "reason": "SSH private key access"
-      }
-    ],
-    "event_type": "File",
-    "file_path": "C:\\Users\\user\\.ssh\\id_rsa",
-    "original_event": { ... }
+    { ... }
   }
 }
 ```
