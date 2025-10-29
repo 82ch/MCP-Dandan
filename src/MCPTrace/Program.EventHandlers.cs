@@ -6,18 +6,14 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
-using static System.Runtime.InteropServices.JavaScript.JSType;
-
 
 public partial class Program
 {
     /// 새 프로세스가 시작될 때 호출되는 이벤트 핸들러입니다.
     private static void HandleProcessStart(ProcessTraceData data)
     {
-
         bool isTargetProcess = data.ProcessName.Equals(TargetProcName, StringComparison.OrdinalIgnoreCase);
         bool isChildOfTarget = TrackedPids.Contains(data.ParentID);
-
         if (isChildOfTarget || isTargetProcess)
         {
             string mcpNameTag = MCPRegistry.GetNameTag(data.ParentID);
@@ -34,7 +30,6 @@ public partial class Program
                 mcpNameTag = MCPRegistry.SetNameTag(data.ProcessID, mcpNameTag);
             }
             TrackedPids.Add(data.ProcessID);
-
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[PROCESS Start] " +
                               $"Time: {data.TimeStamp.ToLocalTime()}, " +
@@ -42,7 +37,7 @@ public partial class Program
                               $"PID: {data.ProcessID}, " +
                               $"Parent PID: {data.ParentID}, " +
                               $"Command Line: {data.CommandLine} ");
-            Console.ForegroundColor = ConsoleColor.DarkCyan; // 태그는 다른 색상으로 
+            Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine($"└─ MCP Name Tag: '{mcpNameTag}'");
             Console.ResetColor();
         }
@@ -61,16 +56,10 @@ public partial class Program
             Console.ResetColor();
         }
     }
+
     private static void HandleFileIORead(FileIOReadWriteTraceData data)
     {
-        //if (TrackedPids.Contains(data.ProcessID))
-        //{
-        //    Console.ForegroundColor = ConsoleColor.Yellow;
-        //    Console.WriteLine($"[FILE Read] PID: {data.ProcessID} -> '{data.FileName}' ({data.IoSize} bytes)");
-        //    Console.ResetColor();
-        //}
-        //PrintAllFields(data, "READ");
-
+        // File I/O Read 처리 로직 (필요시 구현)
     }
 
     /// <summary>
@@ -78,50 +67,22 @@ public partial class Program
     /// </summary>
     private static void HandleFileIOWrite(FileIOReadWriteTraceData data)
     {
-        //if (TrackedPids.Contains(data.ProcessID))
-        //{
-        //    Console.ForegroundColor = ConsoleColor.Yellow;
-        //    Console.WriteLine($"[FILE Write] PID: {data.ProcessID} -> '{data.FileName}' ({data.IoSize} bytes)");
-        //    Console.ResetColor();
-        //}
+        // File I/O Write 처리 로직 (필요시 구현)
     }
-    private static void HandleMCP(TraceEvent data)
+
+    /// <summary>
+    /// 파일 생성 이벤트에 대한 이벤트 핸들러입니다.
+    /// </summary>
+    private static void HandleFileIOCreate(FileIOCreateTraceData data)
     {
-        if (data.ProviderGuid == GowonMonGuid)
-        {
-            bool task = Convert.ToBoolean(data.PayloadByName("task"));
-            string taskname = task ? "Send" : "Recv";
-            UInt32 len = Convert.ToUInt32(data.PayloadByName("totalLen"));
-            bool flag = Convert.ToBoolean(data.PayloadByName("truncated"));
-
-            // 안전한 변환 처리
-            object payloadData = data.PayloadByName("data");
-            string msg;
-
-            if (payloadData is byte[] bytes)
-            {
-                msg = Encoding.UTF8.GetString(bytes);
-            }
-            else if (payloadData is string s)
-            {
-                msg = s;
-            }
-            else
-            {
-                msg = $"[Unsupported data type: {payloadData?.GetType().Name}]";
-            }
-
-            Console.ForegroundColor = ConsoleColor.Cyan;
-            Console.WriteLine($"[MCP {taskname}] " +
-                $"Time: {data.TimeStamp.ToLocalTime()}, " +
-                $"Name: {data.ProcessName}.exe, " +
-                $"PID: {data.ProcessID}, " +
-                $"Length: {len} bytes, " +
-                $"Flag: {flag}, " +
-                $"Message: {msg}");
-            Console.ResetColor();
-        }
+        // File I/O Create 처리 로직 (필요시 구현)
     }
 
+    /// <summary>
+    /// 파일 이름 변경 이벤트에 대한 동적 이벤트 핸들러입니다.
+    /// </summary>
+    private static void HandleFileIORenameDynamic(TraceEvent data)
+    {
+        // File I/O Rename 처리 로직 (필요시 구현)
+    }
 }
-

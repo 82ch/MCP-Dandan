@@ -168,3 +168,6 @@ $RECYCLE.BIN/
 
 # Mac
 .DS_Store
+
+**/[Bb]in/
+**/[Oo]bj/
