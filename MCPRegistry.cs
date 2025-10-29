@@ -234,13 +234,27 @@ public static class MCPRegistry
 
     /// <summary>
     /// 주어진 PID와 커맨드라인을 기반으로 MCP 서버인지 판정하고, 태그를 설정합니다.
-    /// 판정되면 TrackedPids에 추가하여 File I/O 추적 대상을 보장합니다.
     /// </summary>
     public static string Submit(int pid, string cmd)
     {
         if (cmd == null) cmd = "";
 
-        // 1) Config 딕셔너리의 키들을 돌면서 부분 매칭으로 탐색 (대소문자 무시)
+        // 1) 정규식 기반 자동 감지 (가장 명확한 매칭이므로 먼저 시도)
+        var match = System.Text.RegularExpressions.Regex.Match(
+            cmd,
+            @"@modelcontextprotocol[/\\]server-([a-zA-Z0-9_-]+)",
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase
+        );
+
+        if (match.Success)
+        {
+            string serverName = match.Groups[1].Value;
+            Console.WriteLine($"[INFO] Registered MCP server by regex: PID={pid}, Server='{serverName}'");
+            SetNameTag(pid, serverName);
+            return serverName;
+        }
+
+        // 2) Config 딕셔너리의 키들을 돌면서 매칭으로 탐색 (대소문자 무시)
         lock (_lock)
         {
             foreach (var kv in Config)
@@ -251,58 +265,41 @@ public static class MCPRegistry
                 if (string.IsNullOrWhiteSpace(knownCmd))
                     continue;
 
-                // 부분 매칭: knownCmd contains cmd OR cmd contains knownCmd (both ways)
                 try
                 {
-                    if (!string.IsNullOrEmpty(cmd) &&
-                        knownCmd.IndexOf(cmd, StringComparison.OrdinalIgnoreCase) >= 0)
-                    {
-                        Console.WriteLine($"[INFO] Registered MCP server by config (knownCmd contains cmd): PID={pid}, Server='{serverName}'");
-                        SetNameTag(pid, serverName);
-                        TryAddTrackedPid(pid);
-                        return serverName;
-                    }
-
+                    // 전체 매칭 (완전 일치 또는 포함 관계)
                     if (!string.IsNullOrEmpty(cmd) &&
                         cmd.IndexOf(knownCmd, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        Console.WriteLine($"[INFO] Registered MCP server by config (cmd contains knownCmd): PID={pid}, Server='{serverName}'");
+                        Console.WriteLine($"[INFO] Registered MCP server by config match: PID={pid}, Server='{serverName}'");
                         SetNameTag(pid, serverName);
-                        TryAddTrackedPid(pid);
                         return serverName;
                     }
 
-                    // 추가: 공백/따옴표 등으로 다르지만 부분 토큰이 일치하는 경우를 위해 토큰 매칭도 시도
-                    var knownTokens = knownCmd.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-                    foreach (var token in knownTokens)
+                    // 실행 파일명 기반 매칭 (예: python.exe, node.exe 등)
+                    // knownCmd에서 주요 실행 파일 추출
+                    var knownTokens = knownCmd.Split(new[] { ' ', '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+
+                    // 의미있는 토큰만 필터링 (최소 길이 5자 이상, 경로 구분자나 인자가 아닌 것)
+                    var significantTokens = knownTokens.Where(t =>
+                        t.Length >= 5 &&
+                        !t.StartsWith("-") &&
+                        !t.StartsWith("/") &&
+                        (t.Contains(".exe") || t.Contains(".py") || t.Contains(".js") || t.Contains("server"))
+                    ).ToList();
+
+                    foreach (var token in significantTokens)
                     {
-                        if (!string.IsNullOrEmpty(token) && cmd.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
+                        if (cmd.IndexOf(token, StringComparison.OrdinalIgnoreCase) >= 0)
                         {
                             Console.WriteLine($"[INFO] Registered MCP server by token match: PID={pid}, Server='{serverName}', Token='{token}'");
                             SetNameTag(pid, serverName);
-                            TryAddTrackedPid(pid);
                             return serverName;
                         }
                     }
                 }
                 catch { /* 비교 실패는 무시하고 계속 */ }
             }
-        }
-
-        // 2) 정규식 기반 자동 감지
-        var match = System.Text.RegularExpressions.Regex.Match(
-            cmd,
-            @"@modelcontextprotocol\/server-([a-zA-Z0-9_-]+)",
-            System.Text.RegularExpressions.RegexOptions.IgnoreCase
-        );
-
-        if (match.Success)
-        {
-            string serverName = match.Groups[1].Value;
-            Console.WriteLine($"[INFO] Registered MCP server by regex: PID={pid}, Server='{serverName}'");
-            SetNameTag(pid, serverName);
-            TryAddTrackedPid(pid);
-            return serverName;
         }
 
         // 3) 호스트별 전용 로직 (확장 포인트)
@@ -315,24 +312,9 @@ public static class MCPRegistry
             // 필요하면 cursor 전용 heuristic 을 추가
         }
 
-        // 4) 어떤 것도 매칭되지 않으면 기본적으로 Host 이름으로 태그를 설정하고,
-        //    상황에 따라 Tracked에 추가 (대부분 Submit이 자식 프로세스에서 호출되므로 추가)
+        // 4) 어떤 것도 매칭되지 않으면 기본적으로 Host 이름으로 태그를 설정
         var finalName = SetNameTag(pid, Program.TargetProcName);
-        TryAddTrackedPid(pid);
         return finalName;
-    }
-
-    /// <summary>
-    /// 안전하게 TrackedPids에 추가 시도 (Program.TrackedPids는 외부에 선언된 컬렉션)
-    /// </summary>
-    private static void TryAddTrackedPid(int pid)
-    {
-        try
-        {
-            // Program.TrackedPids 가 public/static 으로 선언되어 있어야 접근 가능
-            Program.TrackedPids.Add(pid);
-        }
-        catch { /* 안전하게 무시 */ }
     }
 
     public static void Remove(int pid)
