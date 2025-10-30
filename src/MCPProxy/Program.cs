@@ -1,42 +1,58 @@
 ﻿using System;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipes;
 using System.Linq;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
+using System.Threading.Tasks;
 
 namespace MCPProxy
 {
     public class Program
     {
-        private static StreamWriter? pipeWriter;
+        private static TcpClient? collectorClient;
+        private static StreamWriter? collectorWriter;
         private static Process? targetProcess;
 
         public static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
 
-            InitPipe();
+            // 디버깅: 시작 메시지
+            File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}] MCPProxy started, PID={Process.GetCurrentProcess().Id}\n");
+
+            InitCollector();
             StartProxy(args);
         }
 
         /// <summary>
-        /// ETW Agent(MCPTrace.exe)와 NamedPipe 연결 시도
+        /// Collector TCP 연결
         /// </summary>
-        private static void InitPipe()
+        private static void InitCollector()
         {
             try
             {
-                var pipe = new NamedPipeClientStream(".", "MCPTracePipe", PipeDirection.Out);
-                pipe.Connect(3000); // 타임아웃 3초
-                pipeWriter = new StreamWriter(pipe) { AutoFlush = true };
+                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] Attempting to connect to 127.0.0.1:8888...\n");
+
+                collectorClient = new TcpClient();
+                collectorClient.Connect("127.0.0.1", 8888);
+
+                var stream = collectorClient.GetStream();
+                collectorWriter = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+
+                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] Successfully connected to Collector!\n");
             }
-            catch
+            catch (Exception ex)
             {
-                // Pipe 연결 실패해도 MCPProxy는 독립적으로 동작해야 함
-                pipeWriter = null;
+                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] Failed to connect: {ex.GetType().Name}: {ex.Message}\n");
+
+                collectorWriter = null;
             }
         }
 
@@ -62,13 +78,16 @@ namespace MCPProxy
             targetProcess = new Process { StartInfo = startInfo };
             targetProcess.Start();
 
+            File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                $"[{DateTime.Now:HH:mm:ss}] Started target process: PID={targetProcess.Id}, Command={command}\n");
+
             // STDIO 중계 스레드
             new Thread(ForwardStdin) { IsBackground = true }.Start();
             new Thread(ForwardStdout) { IsBackground = true }.Start();
             new Thread(ForwardStderr) { IsBackground = true }.Start();
 
             targetProcess.WaitForExit();
-            SendPipeEvent("proxy_exit", $"Process exited with code {targetProcess.ExitCode}");
+            SendToCollector("proxy_exit", $"Process exited with code {targetProcess.ExitCode}");
         }
 
         /// <summary>
@@ -83,7 +102,7 @@ namespace MCPProxy
             {
                 writer.WriteLine(line);
                 writer.Flush();
-                SendPipeEvent("client_to_server", line);
+                SendToCollector("client_to_server", line);
             }
         }
 
@@ -97,12 +116,12 @@ namespace MCPProxy
             while ((line = reader.ReadLine()) != null)
             {
                 Console.WriteLine(line);
-                SendPipeEvent("server_to_client", line);
+                SendToCollector("server_to_client", line);
             }
         }
 
         /// <summary>
-        /// Target stderr → Proxy stderr + Pipe 이벤트
+        /// Target stderr → Proxy stderr + Collector
         /// </summary>
         private static void ForwardStderr()
         {
@@ -111,29 +130,44 @@ namespace MCPProxy
             while ((line = reader.ReadLine()) != null)
             {
                 Console.Error.WriteLine(line);
-                SendPipeEvent("server_stderr", line);
+                SendToCollector("server_stderr", line);
             }
         }
 
         /// <summary>
-        /// Pipe로 ETW Agent에 JSON 메시지 전송
+        /// Collector로 로그 전송
         /// </summary>
-        private static void SendPipeEvent(string dir, string data)
+        private static void SendToCollector(string type, string message)
         {
             try
             {
+                if (collectorWriter == null)
+                {
+                    return;
+                }
+
                 var json = JsonSerializer.Serialize(new
                 {
-                    type = "rpc_message",
-                    direction = dir,
-                    pid = targetProcess?.Id ?? 0,
-                    data
+                    timestamp = DateTime.UtcNow.ToString("o"),
+                    source = "proxy",
+                    type,
+                    data = new
+                    {
+                        pid = targetProcess?.Id ?? 0,
+                        message
+                    }
                 });
-                pipeWriter?.WriteLine(json);
+
+                // 길이 헤더 추가
+                collectorWriter.WriteLine($"{json.Length}");
+                collectorWriter.WriteLine(json);
             }
-            catch
+            catch (Exception ex)
             {
-                // Pipe 끊겨도 조용히 무시
+                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
+                    $"[{DateTime.Now:HH:mm:ss}] Send error: {ex.Message}\n");
+
+                collectorWriter = null;
             }
         }
     }
