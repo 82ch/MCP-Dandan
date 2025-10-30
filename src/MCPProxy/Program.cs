@@ -19,11 +19,6 @@ namespace MCPProxy
         public static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
-
-            // 디버깅: 시작 메시지
-            File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}] MCPProxy started, PID={Process.GetCurrentProcess().Id}\n");
-
             InitCollector();
             StartProxy(args);
         }
@@ -35,23 +30,14 @@ namespace MCPProxy
         {
             try
             {
-                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] Attempting to connect to 127.0.0.1:8888...\n");
-
                 collectorClient = new TcpClient();
                 collectorClient.Connect("127.0.0.1", 8888);
 
                 var stream = collectorClient.GetStream();
                 collectorWriter = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
-
-                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] Successfully connected to Collector!\n");
             }
-            catch (Exception ex)
+            catch
             {
-                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] Failed to connect: {ex.GetType().Name}: {ex.Message}\n");
-
                 collectorWriter = null;
             }
         }
@@ -77,9 +63,6 @@ namespace MCPProxy
 
             targetProcess = new Process { StartInfo = startInfo };
             targetProcess.Start();
-
-            File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                $"[{DateTime.Now:HH:mm:ss}] Started target process: PID={targetProcess.Id}, Command={command}\n");
 
             // STDIO 중계 스레드
             new Thread(ForwardStdin) { IsBackground = true }.Start();
@@ -135,16 +118,13 @@ namespace MCPProxy
         }
 
         /// <summary>
-        /// Collector로 로그 전송
+        /// Collector로 이벤트 전송
         /// </summary>
         private static void SendToCollector(string type, string message)
         {
             try
             {
-                if (collectorWriter == null)
-                {
-                    return;
-                }
+                if (collectorWriter == null) return;
 
                 var json = JsonSerializer.Serialize(new
                 {
@@ -162,11 +142,8 @@ namespace MCPProxy
                 collectorWriter.WriteLine($"{json.Length}");
                 collectorWriter.WriteLine(json);
             }
-            catch (Exception ex)
+            catch
             {
-                File.AppendAllText("C:\\Users\\ey896\\mcpproxy_debug.log",
-                    $"[{DateTime.Now:HH:mm:ss}] Send error: {ex.Message}\n");
-
                 collectorWriter = null;
             }
         }
