@@ -124,6 +124,7 @@ namespace Collector
                 {
                     "etw" => ConsoleColor.Green,
                     "proxy" => ConsoleColor.Cyan,
+                    "mitm" => ConsoleColor.Blue,
                     _ => ConsoleColor.White
                 };
 

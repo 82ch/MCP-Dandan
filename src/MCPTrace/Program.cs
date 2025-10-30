@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
@@ -28,12 +29,13 @@ public partial class Program
         InitCollector();
 
         var cts = new CancellationTokenSource();
-
+        Proxy.StartWatcherAsync(cts.Token);
         // 종료 시 세션 정리 & 정상 종료 처리
         AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupETWSessions();
         Console.CancelKeyPress += (s, e) =>
         {
             Console.WriteLine("\n[*] Ctrl+C detected. Stopping ...");
+            Proxy.StopProxy();
             cts.Cancel();
             CleanupETWSessions();
             e.Cancel = false;
