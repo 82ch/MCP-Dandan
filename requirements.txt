@@ -1,1 +1,2 @@
-kafka-python==2.0.2
+# No external dependencies required
+# All components use Python standard library (queue, threading, subprocess, etc.)

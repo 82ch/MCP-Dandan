@@ -1,5 +1,5 @@
 from engine.base_engine import BaseEngine
-from config_loader import ConfigLoader
+from queue import Queue
 from typing import Any
 import re
 
@@ -12,15 +12,19 @@ class SensitiveFileEngine(BaseEngine):
     민감한 파일 접근을 탐지합니다.
     """
 
-    def __init__(self):
-        """민감 파일 탐지 엔진 초기화"""
-        # 설정 파일에서 엔진별 설정 로드
-        config = ConfigLoader()
+    def __init__(self, input_queue: Queue, log_queue: Queue):
+        """
+        민감 파일 탐지 엔진 초기화
 
+        Args:
+            input_queue: 입력 큐
+            log_queue: 로그 큐
+        """
         super().__init__(
-            consumer_group=config.get_sensitive_file_consumer_group(),
-            input_topics=config.get_sensitive_file_input_topics(),
-            output_topic=config.get_sensitive_file_output_topic()
+            input_queue=input_queue,
+            log_queue=log_queue,
+            name='SensitiveFileEngine',
+            event_types=['File']  # File 이벤트만 처리
         )
 
         # Critical 패턴 (항상 차단해야 함)
@@ -92,19 +96,16 @@ class SensitiveFileEngine(BaseEngine):
         """
         File 이벤트를 분석하여 민감한 파일 접근 탐지
 
+        BaseEngine에서 이미 File 이벤트만 필터링되어 전달됩니다.
+
         Args:
-            data: 입력 이벤트 (dict)
+            data: 입력 이벤트 (dict) - File 이벤트만 전달됨
 
         Returns:
             탐지 결과 (탐지되지 않으면 None)
         """
         # 들어오는 모든 값 콘솔 출력
         print(f"[SensitiveFileEngine] 입력 데이터: {data}")
-
-        # File 이벤트가 아니면 무시
-        if data.get('eventType') != 'File':
-            print(f"[SensitiveFileEngine] File 이벤트 아님, 무시: eventType={data.get('eventType')}")
-            return None
 
         # filePath 추출 (최상위 또는 data 객체 내부)
         file_path = data.get('filePath')

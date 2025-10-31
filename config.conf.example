@@ -1,69 +1,67 @@
 # ============================================================================
-# 82ch-engine-re 설정 파일
+# 82ch-engine 설정 파일
 # ============================================================================
-# 이 파일은 Kafka 기반 분석 엔진 시스템의 모든 설정을 관리합니다.
+# 이 파일은 큐 기반 분석 엔진 시스템의 모든 설정을 관리합니다.
 #
 # 주요 구성 요소:
-#   1. [kafka] - Kafka 브로커 및 공통 설정
-#   2. [engine] - BaseEngine 성능 튜닝 파라미터
-#   3. [kafka_producer] - SimpleKafkaProducer 설정 (kafka_provider.py 전용)
-#   4. [process] - 외부 프로세스 실행 설정 (kafka_provider.py)
-#   5. [sensitive_file_engine] - 민감 파일 탐지 엔진 설정
+#   1. [system] - 시스템 전역 큐 설정
+#   2. [event_provider] - 외부 프로세스 실행 설정
+#   3. [log_writer] - 로그 파일 저장 설정
+#   4. [sensitive_file_engine] - 민감 파일 탐지 엔진 설정
 # ============================================================================
 
-[kafka]
-# ===== Kafka 브로커 설정 =====
-# Kafka 브로커 주소 (쉼표로 구분, 여러 브로커 지원)
-# 예: localhost:9092,localhost:9093
-brokers = localhost:9092
+[system]
+# ===== 시스템 전역 큐 설정 =====
 
-[kafka_producer]
-# ===== SimpleKafkaProducer 설정 (kafka_provider.py 전용) =====
-# 주의: 이 설정은 BaseEngine의 KafkaProducer와는 별개입니다!
-#      개발이 진행됨에 따라 삭제될 예정이니 해당 변수를 사용하지 마십시오!
-#       SimpleKafkaProducer는 외부 프로세스 출력을 Kafka로 전송하는 용도입니다.
+# 메인 이벤트 큐 최대 크기 (모든 이벤트 저장)
+# - 클수록 버스트 트래픽에 유리하지만 메모리 사용 증가
+# - 작으면 메모리 절약
+# - 큐가 가득 차면 이벤트가 차단됨 (메시지 손실 방지)
+main_queue_maxsize = 10000
 
-# 클라이언트 ID (Kafka 서버에서 식별용)
-client_id = my-kafka-app
+# 각 엔진별 입력 큐 최대 크기
+# - 각 엔진이 받을 이벤트 복사본을 저장하는 큐
+engine_queue_maxsize = 1000
 
-# ===== 외부 프로세스 실행 설정 (kafka_provider.py) =====
-# kafka_provider.py가 실행할 외부 프로세스의 경로
+# 이벤트 로그 큐 최대 크기 (입력 이벤트 로깅용)
+event_log_queue_maxsize = 5000
+
+# 결과 로그 큐 최대 크기 (엔진 결과 저장)
+result_log_queue_maxsize = 5000
+
+# 큐 get 타임아웃 (초)
+# - 큐에서 데이터를 가져올 때 대기 시간
+# - 응답성과 CPU 사용의 균형
+queue_timeout = 0.1
+
+[event_provider]
+# ===== 외부 프로세스 실행 설정 =====
 
 # 외부 프로세스 실행 경로
 # ★ 중요: 환경에 맞게 반드시 수정하세요! ★
 # 예: C:\path\to\your\observer.exe
-process_path = C:\Users\jeong\OneDrive\Desktop\bob\82ch-claude-observer\ETW\bin\Debug\ETW.exe
+process_path = C:\Users\jeong\82ch-claude-observer\ETW\bin\Debug\ETW.exe
 
-[engine]
-# ===== BaseEngine 성능 튜닝 파라미터 =====
-# 이 설정들은 모든 분석 엔진(BaseEngine 상속)에 공통으로 적용됩니다.
+[log_writer]
+# ===== 로그 파일 저장 설정 =====
 
-# 내부 큐 최대 크기 (처리 대기 메시지 수)
-# - 클수록 버스트 트래픽에 유리하지만 메모리 사용 증가
-# - 작으면 메모리 절약
-# - 큐가 가득 차면 빌 때까지 대기 (메시지 손실 방지)
-queue_maxsize = 1000
+# 로그 파일 저장 경로
+log_directory = ./logs
 
-# Kafka Consumer poll 타임아웃 (밀리초)
-# - Kafka에서 메시지를 가져올 때 최대 대기 시간
-# - 높으면 대기 시간 증가, 낮으면 CPU 사용 증가
-poll_timeout_ms = 1000
+# 로그 파일명 접두사 (날짜가 자동으로 추가됨)
+# 예: engine_results_20250128.jsonl
+log_filename_prefix = engine_results
 
-# 내부 큐 get 타임아웃 (초)
-# - 처리 스레드가 큐에서 메시지를 가져올 때 대기 시간
-# - 응답성과 CPU 사용의 균형
-queue_timeout = 0.1
+# 로그 파일 최대 크기 (MB)
+# - 이 크기를 초과하면 새 파일로 로테이션
+max_log_file_size = 100
+
+# 로그 파일 최대 개수 (로테이션)
+# - 오래된 파일부터 삭제
+max_log_files = 10
 
 [sensitive_file_engine]
 # ===== 민감 파일 탐지 엔진 설정 =====
-# SensitiveFileEngine 전용 설정
 
-# Consumer 그룹 ID
-consumer_group = sensitive-file-engine
-
-# 입력 토픽 (쉼표로 구분, 여러 토픽 구독 가능)
-# 예: File,Registry,Network
-input_topics = File
-
-# 출력 토픽
-output_topic = results
+# 엔진 활성화 여부
+enabled = true

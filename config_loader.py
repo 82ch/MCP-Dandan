@@ -15,6 +15,12 @@ class ConfigLoader:
         Args:
             config_path: 설정 파일 경로 (기본값: config.conf)
         """
+        # 스크립트 파일의 디렉토리를 기준으로 설정 파일 경로를 찾음
+        if not os.path.isabs(config_path):
+            # 상대 경로인 경우, 이 파일이 있는 디렉토리를 기준으로 변환
+            script_dir = os.path.dirname(os.path.abspath(__file__))
+            config_path = os.path.join(script_dir, config_path)
+
         self.config_path = config_path
         self.config = configparser.ConfigParser()
 
@@ -23,44 +29,50 @@ class ConfigLoader:
 
         self.config.read(config_path, encoding='utf-8')
 
-    # Kafka 설정
-    def get_kafka_brokers(self) -> List[str]:
-        """Kafka 브로커 주소 리스트"""
-        brokers_str = self.config.get('kafka', 'brokers', fallback='localhost:9092')
-        return [broker.strip() for broker in brokers_str.split(',')]
+    # System 설정
+    def get_main_queue_maxsize(self) -> int:
+        """메인 이벤트 큐 최대 크기"""
+        return self.config.getint('system', 'main_queue_maxsize', fallback=10000)
 
-    # Kafka Producer 설정 (삭제 예정)
-    def get_client_id(self) -> str:
-        """클라이언트 ID"""
-        return self.config.get('kafka_producer', 'client_id', fallback='my-kafka-app')
+    def get_engine_queue_maxsize(self) -> int:
+        """각 엔진별 입력 큐 최대 크기"""
+        return self.config.getint('system', 'engine_queue_maxsize', fallback=1000)
 
-    def get_process_path(self) -> str:
-        """외부 프로세스 실행 경로"""
-        return self.config.get('kafka_producer', 'process_path', fallback='')
+    def get_event_log_queue_maxsize(self) -> int:
+        """이벤트 로그 큐 최대 크기"""
+        return self.config.getint('system', 'event_log_queue_maxsize', fallback=5000)
 
-    # Engine 설정
-    def get_queue_maxsize(self) -> int:
-        """큐 최대 크기"""
-        return self.config.getint('engine', 'queue_maxsize', fallback=1000)
-
-    def get_poll_timeout_ms(self) -> int:
-        """Kafka poll 타임아웃 (밀리초)"""
-        return self.config.getint('engine', 'poll_timeout_ms', fallback=1000)
+    def get_result_log_queue_maxsize(self) -> int:
+        """결과 로그 큐 최대 크기"""
+        return self.config.getint('system', 'result_log_queue_maxsize', fallback=5000)
 
     def get_queue_timeout(self) -> float:
         """큐 get 타임아웃 (초)"""
-        return self.config.getfloat('engine', 'queue_timeout', fallback=0.1)
+        return self.config.getfloat('system', 'queue_timeout', fallback=0.1)
+
+    # Event Provider 설정
+    def get_process_path(self) -> str:
+        """외부 프로세스 실행 경로"""
+        return self.config.get('event_provider', 'process_path', fallback='')
+
+    # Log Writer 설정
+    def get_log_directory(self) -> str:
+        """로그 파일 저장 경로"""
+        return self.config.get('log_writer', 'log_directory', fallback='./logs')
+
+    def get_log_filename_prefix(self) -> str:
+        """로그 파일명 접두사"""
+        return self.config.get('log_writer', 'log_filename_prefix', fallback='engine_results')
+
+    def get_max_log_file_size(self) -> int:
+        """로그 파일 최대 크기 (MB)"""
+        return self.config.getint('log_writer', 'max_log_file_size', fallback=100)
+
+    def get_max_log_files(self) -> int:
+        """로그 파일 최대 개수"""
+        return self.config.getint('log_writer', 'max_log_files', fallback=10)
 
     # Sensitive File Engine 설정
-    def get_sensitive_file_consumer_group(self) -> str:
-        """민감 파일 엔진 Consumer 그룹 ID"""
-        return self.config.get('sensitive_file_engine', 'consumer_group', fallback='sensitive-file-engine')
-
-    def get_sensitive_file_input_topics(self) -> List[str]:
-        """민감 파일 엔진 입력 토픽 리스트"""
-        topics_str = self.config.get('sensitive_file_engine', 'input_topics', fallback='File')
-        return [topic.strip() for topic in topics_str.split(',')]
-
-    def get_sensitive_file_output_topic(self) -> str:
-        """민감 파일 엔진 출력 토픽"""
-        return self.config.get('sensitive_file_engine', 'output_topic', fallback='results')
+    def get_sensitive_file_enabled(self) -> bool:
+        """민감 파일 엔진 활성화 여부"""
+        return self.config.getboolean('sensitive_file_engine', 'enabled', fallback=True)
