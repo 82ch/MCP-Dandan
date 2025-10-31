@@ -24,12 +24,8 @@ public static class Proxy
     // Program.cs에서 cts.Token 넘겨서 호출하는 진입점 (유지)
     public static void StartWatcherAsync(CancellationToken token)
     {
-        // 기존 동작을 유지하기 위해 약간의 지연(초기화 시간)
-        Thread.Sleep(3000);
-
         // Collector에 연결 시도
         ConnectToCollector();
-
         var th = new Thread(() => WatchLoop(token));
         th.IsBackground = true;
         th.Start();
@@ -91,29 +87,35 @@ public static class Proxy
     {
         try
         {
-            string target = Program.TargetProcName.ToLowerInvariant();
+            // Program.TargetProcName 이 targetName.exe 인 경우만 필터링
+            string targetName = Program.TargetProcName;
+            if (!targetName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                targetName += ".exe";
 
-            foreach (var p in Process.GetProcesses())
+            // targetName.exe만 WMI에서 조회
+            string wql = $"SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '{targetName}'";
+            using var searcher = new ManagementObjectSearcher(wql);
+            var results = searcher.Get();
+
+            foreach (ManagementObject mo in results)
             {
                 try
                 {
-                    string name = p.ProcessName.ToLowerInvariant();
-                    if (!name.Contains(target))
-                        continue;
+                    int pid = Convert.ToInt32(mo["ProcessId"]);
+                    string? cmd = mo["CommandLine"]?.ToString();
 
-                    string cmdline = GetCommandLine(p);
-                    if (string.IsNullOrEmpty(cmdline))
-                        continue;
+                    // 디버그 로그 (원하면 주석처리 가능)
+                    // Console.WriteLine($"[ProxyRunner] claude PID={pid}, CmdLine='{cmd}'");
 
-                    if (cmdline.IndexOf(TARGET_SUBSTR, StringComparison.OrdinalIgnoreCase) >= 0)
+                    // network.mojom.NetworkService 포함된 프로세스만 반환
+                    if (!string.IsNullOrEmpty(cmd) &&
+                        cmd.IndexOf(TARGET_SUBSTR, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
-                        // 대상 발견
-                        return p;
+                        return Process.GetProcessById(pid);
                     }
                 }
                 catch
                 {
-                    // 프로세스 접근 불가 등은 무시
                     continue;
                 }
             }
@@ -124,6 +126,7 @@ public static class Proxy
         }
         return null;
     }
+
 
     // Windows WMI 기반 CommandLine 조회
     private static string GetCommandLine(Process p)
@@ -174,12 +177,31 @@ public static class Proxy
                 try
                 {
                     var mitmData = JsonSerializer.Deserialize<JsonElement>(e.Data);
+
+                    // pid와 pname을 실제 타겟 프로세스 정보로 교체
+                    var modifiedData = new Dictionary<string, object>();
+                    foreach (var property in mitmData.EnumerateObject())
+                    {
+                        if (property.Name == "pid")
+                        {
+                            modifiedData["pid"] = targetPid;
+                        }
+                        else if (property.Name == "pname")
+                        {
+                            modifiedData["pname"] = Program.TargetProcName;
+                        }
+                        else
+                        {
+                            modifiedData[property.Name] = property.Value;
+                        }
+                    }
+
                     var collectorEvent = new
                     {
                         source = "mitm",
                         type = "MCP",
                         timestamp = DateTime.UtcNow.ToString("o"),
-                        data = mitmData
+                        data = modifiedData
                     };
                     string json = JsonSerializer.Serialize(collectorEvent);
                     SendToCollector(json);
@@ -289,13 +311,15 @@ public static class Proxy
                         StopProxy();
                     }
 
-                    Thread.Sleep(1000);
+                    Thread.Sleep(500);
                     continue;
                 }
 
                 if (_mitmProcess == null || _mitmProcess.HasExited)
                 {
                     Console.WriteLine($"[ProxyRunner] Target PID {pid} detected → starting mitmdump.");
+                    // 약간의 지연을 추가 (targetName 프로세스 초기화 시간 대기)
+                    Thread.Sleep(3000);
                     StartMitmDump(pid);
                     _currentPid = pid;
                 }
@@ -303,6 +327,8 @@ public static class Proxy
                 {
                     Console.WriteLine($"[ProxyRunner] Target PID changed {_currentPid} → {pid}, restarting mitmdump.");
                     StopProxy();
+                    // 약간의 지연을 추가 (targetName 프로세스 초기화 시간 대기)
+                    Thread.Sleep(3000);
                     StartMitmDump(pid);
                     _currentPid = pid;
                 }
