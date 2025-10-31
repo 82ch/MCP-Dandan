@@ -24,8 +24,6 @@
   powershell -ExecutionPolicy Bypass -File install-mitm-ca.ps1
   ```
 
-## ⚙️ config.json 설정
-
 # 🧩 MCP Proxy 사용법
 
 ## ⚙️ config.json 설정
