@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 
 public partial class Program
@@ -14,6 +15,7 @@ public partial class Program
     {
         bool isTargetProcess = data.ProcessName.Equals(TargetProcName, StringComparison.OrdinalIgnoreCase);
         bool isChildOfTarget = TrackedPids.Contains(data.ParentID);
+
         if (isChildOfTarget || isTargetProcess)
         {
             string mcpNameTag = MCPRegistry.GetNameTag(data.ParentID);
@@ -29,7 +31,9 @@ public partial class Program
             {
                 mcpNameTag = MCPRegistry.SetNameTag(data.ProcessID, mcpNameTag);
             }
+
             TrackedPids.Add(data.ProcessID);
+
             Console.ForegroundColor = ConsoleColor.Green;
             Console.WriteLine($"[PROCESS Start] " +
                               $"Time: {data.TimeStamp.ToLocalTime()}, " +
@@ -40,6 +44,17 @@ public partial class Program
             Console.ForegroundColor = ConsoleColor.DarkCyan;
             Console.WriteLine($"└─ MCP Name Tag: '{mcpNameTag}'");
             Console.ResetColor();
+
+            // Collector로 전송
+            SendToCollector("process_start", new
+            {
+                time = data.TimeStamp.ToLocalTime(),
+                name = data.ProcessName,
+                pid = data.ProcessID,
+                parent_pid = data.ParentID,
+                cmdline = data.CommandLine,
+                mcp_tag = mcpNameTag
+            });
         }
     }
 
@@ -54,6 +69,13 @@ public partial class Program
             Console.ForegroundColor = ConsoleColor.Red;
             Console.WriteLine($"[PROCESS Stop] Process stopped: {data.ProcessName} (PID: {data.ProcessID})");
             Console.ResetColor();
+
+            // Collector로 전송
+            SendToCollector("process_stop", new
+            {
+                name = data.ProcessName,
+                pid = data.ProcessID
+            });
         }
     }
 

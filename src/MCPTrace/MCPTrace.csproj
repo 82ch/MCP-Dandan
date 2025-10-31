@@ -10,6 +10,13 @@
 
 	<ItemGroup>
 		<PackageReference Include="Microsoft.Diagnostics.Tracing.TraceEvent" Version="3.1.26" />
+		<PackageReference Include="System.Management" Version="9.0.10" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Include="Logger.py">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
 	</ItemGroup>
 
 </Project>

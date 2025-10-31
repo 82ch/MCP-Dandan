@@ -5,9 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Pipes;
-using System.Security.AccessControl;
-using System.Security.Principal;
+using System.Net;
+using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -19,17 +18,24 @@ public partial class Program
     public static HashSet<int> TrackedPids = new();
     private static readonly HashSet<int> RootPids = new();
 
+    private static TcpClient? collectorClient;
+    private static StreamWriter? collectorWriter;
+
     static async Task Main()
     {
         Console.OutputEncoding = Encoding.UTF8;
 
-        var cts = new CancellationTokenSource();
+        // Collector 연결
+        InitCollector();
 
+        var cts = new CancellationTokenSource();
+        Proxy.StartWatcherAsync(cts.Token);
         // 종료 시 세션 정리 & 정상 종료 처리
         AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupETWSessions();
         Console.CancelKeyPress += (s, e) =>
         {
             Console.WriteLine("\n[*] Ctrl+C detected. Stopping ...");
+            Proxy.StopProxy();
             cts.Cancel();
             CleanupETWSessions();
             e.Cancel = false;
@@ -50,15 +56,32 @@ public partial class Program
         TargetProcName = choice == "2" ? "cursor" : "claude";
 
         Console.WriteLine($"\n[+] 선택된 프로세스: {TargetProcName}");
-        Console.WriteLine("[+] ETW 수집 및 Proxy 통신 대기 중...");
+        Console.WriteLine("[+] ETW 수집 중...");
         Console.WriteLine("Note: 반드시 관리자 권한으로 실행해야 합니다.\n");
 
-        StartPipeServer(cts.Token);
+        // MCP Config 로드
+        MCPRegistry.LoadConfig();
+
         await Task.Run(() => StartETWMonitoring(cts.Token));
 
         Console.WriteLine("[*] MCPTrace Agent 종료됨.");
     }
 
+    private static void InitCollector()
+    {
+        try
+        {
+            collectorClient = new TcpClient("127.0.0.1", 8888);
+            var stream = collectorClient.GetStream();
+            collectorWriter = new StreamWriter(stream, Encoding.UTF8) { AutoFlush = true };
+            Console.WriteLine("[+] Connected to Collector");
+        }
+        catch
+        {
+            Console.WriteLine("[-] Failed to connect to Collector (will run without logging)");
+            collectorWriter = null;
+        }
+    }
 
     private static void StartETWMonitoring(CancellationToken cancellationToken)
     {
@@ -110,104 +133,27 @@ public partial class Program
         Console.WriteLine("[*] ETW session stopped.");
     }
 
-
-    // Proxy로부터 로그 받는 NamedPipe 서버 (보안 ACL 적용)
-    private static void StartPipeServer(CancellationToken token)
-    {
-        Task.Run(() =>
-        {
-            while (!token.IsCancellationRequested)
-            {
-                try
-                {
-                    var pipeSecurity = new PipeSecurity();
-                    pipeSecurity.AddAccessRule(new PipeAccessRule(
-                        new SecurityIdentifier(WellKnownSidType.WorldSid, null),
-                        PipeAccessRights.ReadWrite,
-                        AccessControlType.Allow));
-
-                    using var server = NamedPipeServerStreamAcl.Create(
-                        "MCPTracePipe",
-                        PipeDirection.In,
-                        1,
-                        PipeTransmissionMode.Message,
-                        PipeOptions.Asynchronous,
-                        0, 0,
-                        pipeSecurity
-                    );
-
-                    Console.WriteLine("[Agent] Waiting for Proxy connection...");
-                    server.WaitForConnection();
-                    Console.WriteLine("[Agent] Proxy connected.");
-
-                    using var reader = new StreamReader(server, Encoding.UTF8);
-                    var buffer = new char[8192];
-
-                    while (server.IsConnected && !token.IsCancellationRequested)
-                    {
-                        int read = reader.Read(buffer, 0, buffer.Length);
-                        if (read > 0)
-                        {
-                            string message = new string(buffer, 0, read).Trim();
-                            if (!string.IsNullOrWhiteSpace(message))
-                                PrintPipeMessage(message);
-                        }
-                        else
-                        {
-                            Thread.Sleep(50);
-                        }
-                    }
-
-                    Console.WriteLine("[Agent] Proxy disconnected.");
-                }
-                catch (IOException)
-                {
-                    Console.WriteLine("[Agent] Proxy disconnected unexpectedly. Re-listening...");
-                    Thread.Sleep(500);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[Agent ERROR] {ex.Message}");
-                    Thread.Sleep(1000);
-                }
-            }
-        });
-    }
-
-
-    private static void PrintPipeMessage(string raw)
+    private static void SendToCollector(string type, object data)
     {
         try
         {
-            using var doc = JsonDocument.Parse(raw);
-            string type = doc.RootElement.GetProperty("type").GetString() ?? "";
-            string direction = doc.RootElement.TryGetProperty("direction", out var dirProp)
-                ? dirProp.GetString() ?? ""
-                : "";
-            string data = doc.RootElement.TryGetProperty("data", out var dataProp)
-                ? dataProp.GetString() ?? ""
-                : "";
+            var json = JsonSerializer.Serialize(new
+            {
+                timestamp = DateTime.UtcNow.ToString("o"),
+                source = "etw",
+                type,
+                data
+            });
 
-            Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine($"[PIPE] Type: {type}, Dir: {direction}");
-            Console.ResetColor();
-            Console.WriteLine($"        Data: {TruncateForDisplay(data)}");
+            // 길이 헤더 추가
+            collectorWriter?.WriteLine($"{json.Length}");
+            collectorWriter?.WriteLine(json);
         }
         catch
         {
-            Console.ForegroundColor = ConsoleColor.DarkYellow;
-            Console.WriteLine($"[PIPE RAW] {TruncateForDisplay(raw)}");
-            Console.ResetColor();
+            // 무시
         }
     }
-
-    private static string TruncateForDisplay(string text, int maxLength = 200)
-    {
-        if (text == null) return "";
-        if (text.Length <= maxLength) return text;
-        return text.Substring(0, maxLength) + "...";
-    }
-
 
     private static void CleanupETWSessions()
     {
@@ -227,5 +173,4 @@ public partial class Program
 
         Console.WriteLine("[Cleanup] ETW sessions cleaned up.");
     }
-
 }
