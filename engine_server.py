@@ -1,4 +1,5 @@
 from engine.sensitive_file_engine import SensitiveFileEngine
+from engine.semantic_gap_engine import SemanticGapEngine
 from config_loader import ConfigLoader
 from event_provider import EventProvider
 from event_distributor import EventDistributor
@@ -68,6 +69,16 @@ def main():
 
         engines.append(sensitive_engine)
         engine_queues['SensitiveFileEngine'] = sensitive_engine_queue
+
+    # Semantic Gap Engine
+    semantic_gap_queue = Queue(maxsize=config.get_engine_queue_maxsize())
+    semantic_gap_engine = SemanticGapEngine(
+        semantic_gap_queue,
+        result_log_queue,
+        detail_mode=False  # True로 설정하면 상세 JSON 결과
+    )
+    engines.append(semantic_gap_engine)
+    engine_queues['SemanticGapEngine'] = semantic_gap_queue
 
     print(f"\n실행 중인 엔진:")
     for i, engine in enumerate(engines, 1):
