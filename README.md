@@ -27,6 +27,7 @@
 # 🧩 MCP Proxy 사용법
 
 ## ⚙️ config.json 설정
+(etc. claude_desktop_config.json)
 빌드된 `MCPProxy.exe`의 경로를 `command`에 입력합니다.
 ```json
 {
