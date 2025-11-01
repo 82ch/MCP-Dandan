@@ -283,7 +283,7 @@ public static class Proxy
         {
             Console.WriteLine($"[ProxyRunner] Stopping mitmdump (PID={_mitmProcess.Id}) safely...");
             KillProcessTreeSafely(_mitmProcess.Id);
-            _mitmProcess.WaitForExit(3000);
+            _mitmProcess.WaitForExit(2000);
         }
         catch (Exception ex)
         {
