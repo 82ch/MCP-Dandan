@@ -7,12 +7,14 @@ using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 public static class Proxy
 {
     private static Process? _mitmProcess;
-    private static int _currentPid = 0;
+    private static int _currentPid = 0; // transparent 모드: 의미 없음(보조용)
     private static TcpClient? _collectorClient;
+    private static readonly object _procLock = new object();
 
     private const string TARGET_SUBSTR = "network.mojom.NetworkService";
     private const string MITM_EXE = "mitmdump";
@@ -21,14 +23,16 @@ public static class Proxy
     private const string COLLECTOR_HOST = "127.0.0.1";
     private const int COLLECTOR_PORT = 8888;
 
-    // Program.cs에서 cts.Token 넘겨서 호출하는 진입점
+    private static Thread? _watchThread;
+
     public static void StartWatcherAsync(CancellationToken token)
     {
-        // Collector에 연결 시도
         ConnectToCollector();
-        var th = new Thread(() => WatchLoop(token));
-        th.IsBackground = true;
-        th.Start();
+        EnsureTransparentMitmRunning();
+
+        _watchThread = new Thread(() => WatchLoop(token));
+        _watchThread.IsBackground = true;
+        _watchThread.Start();
     }
 
     private static void ConnectToCollector()
@@ -50,7 +54,6 @@ public static class Proxy
     {
         if (_collectorClient == null || !_collectorClient.Connected)
         {
-            // 재연결 시도
             ConnectToCollector();
             if (_collectorClient == null || !_collectorClient.Connected)
                 return;
@@ -60,39 +63,29 @@ public static class Proxy
         {
             var stream = _collectorClient.GetStream();
             var bytes = Encoding.UTF8.GetBytes(jsonData);
-
-            // 길이 전송 (CRLF 대신 LF만 사용)
             var lengthLine = Encoding.UTF8.GetBytes($"{bytes.Length}\n");
             stream.Write(lengthLine, 0, lengthLine.Length);
-
-            // 데이터 전송
             stream.Write(bytes, 0, bytes.Length);
-
-            // 구분자 전송
-            var separator = Encoding.UTF8.GetBytes("\n");
-            stream.Write(separator, 0, separator.Length);
-
+            stream.WriteByte((byte)'\n');
             stream.Flush();
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[ProxyRunner] Failed to send to Collector: {ex.Message}");
-            _collectorClient?.Close();
+            try { _collectorClient?.Close(); } catch { }
             _collectorClient = null;
         }
     }
 
-    // 대상 프로세스를 WMI(Win32_Process.CommandLine)로만 찾음
+    // NOTE: 기존 FindTargetProcess는 유지(필요 시 사용). transparent 모드에선 PID별 mitmdump를 띄우지 않습니다.
     private static Process? FindTargetProcess()
     {
         try
         {
-            // Program.TargetProcName 이 targetName.exe 인 경우만 필터링
             string targetName = Program.TargetProcName;
             if (!targetName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
                 targetName += ".exe";
 
-            // targetName.exe만 WMI에서 조회
             string wql = $"SELECT ProcessId, CommandLine FROM Win32_Process WHERE Name = '{targetName}'";
             using var searcher = new ManagementObjectSearcher(wql);
             var results = searcher.Get();
@@ -104,20 +97,13 @@ public static class Proxy
                     int pid = Convert.ToInt32(mo["ProcessId"]);
                     string? cmd = mo["CommandLine"]?.ToString();
 
-                    // 디버그 로그 (원하면 주석처리 가능)
-                    // Console.WriteLine($"[ProxyRunner] claude PID={pid}, CmdLine='{cmd}'");
-
-                    // network.mojom.NetworkService 포함된 프로세스만 반환
                     if (!string.IsNullOrEmpty(cmd) &&
                         cmd.IndexOf(TARGET_SUBSTR, StringComparison.OrdinalIgnoreCase) >= 0)
                     {
                         return Process.GetProcessById(pid);
                     }
                 }
-                catch
-                {
-                    continue;
-                }
+                catch { continue; }
             }
         }
         catch (Exception ex)
@@ -127,38 +113,18 @@ public static class Proxy
         return null;
     }
 
-
-    // Windows WMI 기반 CommandLine 조회
-    private static string GetCommandLine(Process p)
+    // transparent 미리 띄우기
+    private static void EnsureTransparentMitmRunning()
     {
-        try
+        lock (_procLock)
         {
-            if (!OperatingSystem.IsWindows())
-                return "";
-
-            using var searcher = new ManagementObjectSearcher(
-                $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {p.Id}");
-
-            foreach (var obj in searcher.Get().Cast<ManagementObject>())
-            {
-                string? cmd = obj["CommandLine"]?.ToString();
-                if (!string.IsNullOrEmpty(cmd))
-                    return cmd;
-            }
+            if (_mitmProcess != null && !_mitmProcess.HasExited) return;
         }
-        catch (Exception ex)
-        {
-            Console.Error.WriteLine($"[ProxyRunner:WMI] Error for PID {p.Id}: {ex.Message}");
-        }
-        return "";
-    }
 
-    private static void StartMitmDump(int targetPid)
-    {
         var psi = new ProcessStartInfo
         {
             FileName = MITM_EXE,
-            Arguments = $"--mode local:{targetPid} -p {MITM_PORT} -s \"{MITM_ADDON}\" --set http2=true --set stream_large_bodies=1 -v",
+            Arguments = $"--mode transparent -p {MITM_PORT} -s \"{MITM_ADDON}\" -v",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -167,82 +133,190 @@ public static class Proxy
             StandardErrorEncoding = System.Text.Encoding.UTF8
         };
 
-        _mitmProcess = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var proc = new Process { StartInfo = psi, EnableRaisingEvents = true };
 
-        _mitmProcess.OutputDataReceived += (s, e) =>
+        proc.OutputDataReceived += (s, e) =>
         {
-            if (!string.IsNullOrEmpty(e.Data) && e.Data.Contains("\"eventType\":\"MCP\""))
+            if (string.IsNullOrEmpty(e.Data)) return;
+            var line = e.Data.Trim();
+            if (!line.Contains("\"eventType\":\"MCP\"")) return;
+
+            try
             {
-                // MCP 이벤트를 Collector로 전송
-                try
-                {
-                    using var mitmDoc = JsonDocument.Parse(e.Data);
-                    var mitmRoot = mitmDoc.RootElement;
+                using var mitmDoc = JsonDocument.Parse(line);
+                var mitmRoot = mitmDoc.RootElement;
 
-                    var collectorEvent = new Dictionary<string, object>();
-                    
-                    // ts를 그대로 가져옴
-                    if (mitmRoot.TryGetProperty("ts", out var tsElement))
-                    {
-                        collectorEvent["ts"] = tsElement.GetInt64();
-                    }
-                    else
-                    {
-                        collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
-                    }
-                    
-                    // producer를 "mitm"으로 강제 설정
-                    collectorEvent["producer"] = "mitm";
-                    
-                    // 실제 타겟 프로세스 정보로 교체
-                    collectorEvent["pid"] = targetPid;
-                    collectorEvent["pname"] = Program.TargetProcName;
-                    
-                    // eventType 그대로 전달
-                    collectorEvent["eventType"] = "MCP";
-                    
-                    // data 그대로 전달
-                    if (mitmRoot.TryGetProperty("data", out var dataElement))
-                    {
-                        collectorEvent["data"] = JsonSerializer.Deserialize<object>(dataElement.GetRawText());
-                    }
+                var collectorEvent = new Dictionary<string, object>();
 
-                    string json = JsonSerializer.Serialize(collectorEvent);
-                    SendToCollector(json);
-                }
-                catch (Exception ex)
+                // ts (ns 단위)
+                if (mitmRoot.TryGetProperty("ts", out var tsElement))
                 {
-                    Console.Error.WriteLine($"[ProxyRunner] Failed to parse MCP event: {ex.Message}");
+                    collectorEvent["ts"] = tsElement.GetInt64();
                 }
+                else
+                {
+                    collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
+                }
+
+                // producer
+                collectorEvent["producer"] = "mitm";
+
+                // pid/pname (transparent 모드에서는 연결로부터 추론)
+                int pid = 0;
+                string pname = "unknown";
+                if (mitmRoot.TryGetProperty("data", out var dataElem))
+                {
+                    if (dataElem.TryGetProperty("src", out var srcElem))
+                    {
+                        string? src = srcElem.GetString();
+                        if (!string.IsNullOrEmpty(src))
+                        {
+                            var m = Regex.Match(src, @"(?<ip>[\d\.]+):(?<port>\d+)");
+                            if (m.Success)
+                            {
+                                string ip = m.Groups["ip"].Value;
+                                int port = int.Parse(m.Groups["port"].Value);
+                                pid = GetPidByLocalEndpoint(ip, port);
+                                if (pid != 0)
+                                {
+                                    try
+                                    {
+                                        pname = Process.GetProcessById(pid).ProcessName;
+                                    }
+                                    catch { pname = "unknown"; }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                collectorEvent["pid"] = pid;
+                collectorEvent["pname"] = pname;
+
+                // eventType
+                collectorEvent["eventType"] = "MCP";
+
+                // data
+                if (mitmRoot.TryGetProperty("data", out var dataElement))
+                {
+                    collectorEvent["data"] = JsonSerializer.Deserialize<object>(dataElement.GetRawText());
+                }
+
+                string json = JsonSerializer.Serialize(collectorEvent);
+                SendToCollector(json);
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[ProxyRunner] Failed to parse MCP event: {ex.Message}");
             }
         };
 
-        _mitmProcess.ErrorDataReceived += (s, e) =>
+
+        proc.ErrorDataReceived += (s, e) =>
         {
             if (!string.IsNullOrWhiteSpace(e.Data))
                 Console.Error.WriteLine($"[mitmdump:ERR] {e.Data}");
         };
 
-        _mitmProcess.Exited += (s, e) =>
+        proc.Exited += (sender, args) =>
         {
-            Console.WriteLine($"[ProxyRunner] mitmdump exited (PID={_currentPid})");
-            _mitmProcess = null;
-            _currentPid = 0;
+            try
+            {
+                var exitedProc = sender as Process;
+                int exitedPid = exitedProc?.Id ?? -1;
+                Console.WriteLine($"[ProxyRunner] transparent mitmdump exited (PID={exitedPid})");
+
+                lock (_procLock)
+                {
+                    if (ReferenceEquals(_mitmProcess, exitedProc))
+                    {
+                        _mitmProcess = null;
+                        _currentPid = 0;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.Error.WriteLine($"[ProxyRunner] Exited handler error: {ex.Message}");
+            }
         };
 
-        Console.WriteLine($"[ProxyRunner] Launching mitmdump for PID {targetPid}...");
+        Console.WriteLine("[ProxyRunner] Launching transparent mitmdump...");
         try
         {
-            _mitmProcess.Start();
-            _mitmProcess.BeginOutputReadLine();
-            _mitmProcess.BeginErrorReadLine();
+            lock (_procLock)
+            {
+                proc.Start();
+                proc.BeginOutputReadLine();
+                proc.BeginErrorReadLine();
+                _mitmProcess = proc;
+                _currentPid = 0;
+            }
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[ProxyRunner] Failed to start mitmdump: {ex.Message}");
-            _mitmProcess = null;
-            _currentPid = 0;
+            Console.Error.WriteLine($"[ProxyRunner] Failed to start transparent mitmdump: {ex.Message}");
+            lock (_procLock) { _mitmProcess = null; _currentPid = 0; }
         }
+    }
+
+    // Fallback method: netstat -ano parsing to map local endpoint -> pid (quick & dirty)
+    // NOTE: for production, replace with GetExtendedTcpTable P/Invoke for speed/accuracy.
+    private static int GetPidByLocalEndpoint(string ip, int port)
+    {
+        try
+        {
+            var psi = new ProcessStartInfo
+            {
+                FileName = "netstat",
+                Arguments = "-ano",
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true
+            };
+            using var p = Process.Start(psi);
+            if (p == null) return 0;
+            string output = p.StandardOutput.ReadToEnd();
+            p.WaitForExit(1000);
+
+            // parse lines like:
+            //  TCP    192.168.0.15:51779    160.79.104.10:443    ESTABLISHED    12345
+            var lines = output.Split(new[] { "\r\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var line in lines)
+            {
+                var trimmed = line.Trim();
+                if (!trimmed.StartsWith("TCP", StringComparison.OrdinalIgnoreCase) &&
+                    !trimmed.StartsWith("UDP", StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var parts = Regex.Split(trimmed, @"\s+");
+                if (parts.Length < 5) continue;
+                var local = parts[1];
+                var pidStr = parts[parts.Length - 1];
+
+                // local may be like [::]:80 or 0.0.0.0:8080 or 127.0.0.1:51779
+                if (!local.Contains(":")) continue;
+                var idx = local.LastIndexOf(':');
+                var localPortStr = local.Substring(idx + 1);
+                if (!int.TryParse(localPortStr, out int localPort)) continue;
+
+                // optionally check IP match
+                var localIp = local.Substring(0, idx);
+                // windows may show 0.0.0.0 or [::], so if ip is 0.0.0.0 treat as wildcard
+                if (localIp != "0.0.0.0" && localIp != "" && localIp != ip) continue;
+
+                if (localPort == port)
+                {
+                    if (int.TryParse(pidStr, out int pidVal))
+                        return pidVal;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ProxyRunner] GetPidByLocalEndpoint error: {ex.Message}");
+        }
+        return 0;
     }
 
     private static void KillProcessTreeSafely(int pid)
@@ -259,9 +333,11 @@ public static class Proxy
 
             if (!proc.HasExited)
             {
-                proc.CloseMainWindow();
+                try { proc.CloseMainWindow(); } catch { }
                 if (!proc.WaitForExit(1500))
-                    proc.Kill(true);
+                {
+                    try { proc.Kill(true); } catch { }
+                }
             }
         }
         catch (Exception ex)
@@ -272,18 +348,23 @@ public static class Proxy
 
     public static void StopProxy()
     {
-        if (_mitmProcess == null || _mitmProcess.HasExited)
+        Process? procSnapshot = null;
+        lock (_procLock)
         {
-            _mitmProcess = null;
-            _currentPid = 0;
+            procSnapshot = _mitmProcess;
+        }
+
+        if (procSnapshot == null)
+        {
+            lock (_procLock) { _mitmProcess = null; _currentPid = 0; }
             return;
         }
 
         try
         {
-            Console.WriteLine($"[ProxyRunner] Stopping mitmdump (PID={_mitmProcess.Id}) safely...");
-            KillProcessTreeSafely(_mitmProcess.Id);
-            _mitmProcess.WaitForExit(2000);
+            Console.WriteLine($"[ProxyRunner] Stopping mitmdump (PID={procSnapshot.Id}) safely...");
+            KillProcessTreeSafely(procSnapshot.Id);
+            try { procSnapshot.WaitForExit(3000); } catch { }
         }
         catch (Exception ex)
         {
@@ -291,50 +372,35 @@ public static class Proxy
         }
         finally
         {
-            _mitmProcess = null;
-            _currentPid = 0;
+            lock (_procLock)
+            {
+                if (ReferenceEquals(_mitmProcess, procSnapshot))
+                {
+                    _mitmProcess = null;
+                    _currentPid = 0;
+                }
+            }
         }
     }
 
     private static void WatchLoop(CancellationToken token)
     {
-        Console.WriteLine("[ProxyRunner] Started WMI-driven proxy watcher loop.");
+        Console.WriteLine("[ProxyRunner] Started WMI-driven proxy watcher loop (transparent mode).");
 
         while (!token.IsCancellationRequested)
         {
             try
             {
-                var proc = FindTargetProcess();
-                int pid = proc?.Id ?? 0;
-
-                if (pid == 0)
+                lock (_procLock)
                 {
-                    if (_mitmProcess != null && !_mitmProcess.HasExited)
+                    if (token.IsCancellationRequested) break;
+
+                    if (_mitmProcess == null || _mitmProcess.HasExited)
                     {
-                        Console.WriteLine($"[ProxyRunner] No valid target → stopping mitmdump.");
-                        StopProxy();
+                        Console.WriteLine("[ProxyRunner] transparent mitmdump not running → restarting.");
+                        Thread.Sleep(1000);
+                        EnsureTransparentMitmRunning();
                     }
-
-                    Thread.Sleep(500);
-                    continue;
-                }
-
-                if (_mitmProcess == null || _mitmProcess.HasExited)
-                {
-                    Console.WriteLine($"[ProxyRunner] Target PID {pid} detected → starting mitmdump.");
-                    // 약간의 지연을 추가 (targetName 프로세스 초기화 시간 대기)
-                    Thread.Sleep(2000);
-                    StartMitmDump(pid);
-                    _currentPid = pid;
-                }
-                else if (pid != _currentPid)
-                {
-                    Console.WriteLine($"[ProxyRunner] Target PID changed {_currentPid} → {pid}, restarting mitmdump.");
-                    StopProxy();
-                    // 약간의 지연을 추가 (targetName 프로세스 초기화 시간 대기)
-                    Thread.Sleep(2000);
-                    StartMitmDump(pid);
-                    _currentPid = pid;
                 }
             }
             catch (Exception ex)
@@ -342,10 +408,24 @@ public static class Proxy
                 Console.Error.WriteLine($"[ProxyRunner] Loop error: {ex.Message}");
             }
 
-            Thread.Sleep(1000);
+            Thread.Sleep(500);
+        }
+
+        Console.WriteLine("[ProxyRunner] Loop terminating...");
+    }
+
+    public static void StopAll()
+    {
+        Console.WriteLine("[ProxyRunner] Stop requested.");
+
+        // 루프 종료 보장
+        if (_watchThread != null && _watchThread.IsAlive)
+        {
+            Console.WriteLine("[ProxyRunner] Waiting for watcher loop to finish...");
+            _watchThread.Join(2000);
         }
 
         StopProxy();
-        Console.WriteLine("[ProxyRunner] Loop terminated.");
+        Console.WriteLine("[ProxyRunner] All stopped.");
     }
 }

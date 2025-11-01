@@ -35,7 +35,7 @@ public partial class Program
         Console.CancelKeyPress += (s, e) =>
         {
             Console.WriteLine("\n[*] Ctrl+C detected. Stopping ...");
-            Proxy.StopProxy();
+            Proxy.StopAll();
             cts.Cancel();
             CleanupETWSessions();
             e.Cancel = false;
