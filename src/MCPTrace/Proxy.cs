@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Management;
 using System.Threading;
@@ -13,10 +14,12 @@ public static class Proxy
     private static Process? _mitmProcess;
     private static int _currentPid = 0;
     private static TcpClient? _collectorClient;
+    private static int _consecutiveFailures = 0;
+    private const int MAX_CONSECUTIVE_FAILURES = 3;
 
     private const string TARGET_SUBSTR = "network.mojom.NetworkService";
     private const string MITM_EXE = "mitmdump";
-    private const string MITM_ADDON = "./Logger.py";
+    private const string MITM_ADDON = "Logger.py";
     private const int MITM_PORT = 8080;
     private const string COLLECTOR_HOST = "127.0.0.1";
     private const int COLLECTOR_PORT = 8888;
@@ -104,9 +107,6 @@ public static class Proxy
                     int pid = Convert.ToInt32(mo["ProcessId"]);
                     string? cmd = mo["CommandLine"]?.ToString();
 
-                    // 디버그 로그 (원하면 주석처리 가능)
-                    // Console.WriteLine($"[ProxyRunner] claude PID={pid}, CmdLine='{cmd}'");
-
                     // network.mojom.NetworkService 포함된 프로세스만 반환
                     if (!string.IsNullOrEmpty(cmd) &&
                         cmd.IndexOf(TARGET_SUBSTR, StringComparison.OrdinalIgnoreCase) >= 0)
@@ -127,38 +127,146 @@ public static class Proxy
         return null;
     }
 
-
-    // Windows WMI 기반 CommandLine 조회
-    private static string GetCommandLine(Process p)
+    private static string FindLoggerPyPath()
     {
+        // 1. 현재 실행 디렉토리에서 찾기
+        string currentDir = AppDomain.CurrentDomain.BaseDirectory;
+        string localPath = Path.Combine(currentDir, MITM_ADDON);
+        if (File.Exists(localPath))
+        {
+            Console.WriteLine($"[ProxyRunner] Found Logger.py at: {localPath}");
+            return localPath;
+        }
+
+        // 2. MCPTrace 프로젝트 디렉토리에서 찾기
         try
         {
-            if (!OperatingSystem.IsWindows())
-                return "";
+            DirectoryInfo? currentDirInfo = new DirectoryInfo(currentDir);
 
-            using var searcher = new ManagementObjectSearcher(
-                $"SELECT CommandLine FROM Win32_Process WHERE ProcessId = {p.Id}");
+            // bin 디렉토리 구조 파악
+            DirectoryInfo? binDir = null;
 
-            foreach (var obj in searcher.Get().Cast<ManagementObject>())
+            if (currentDirInfo.Parent?.Parent?.Name.Equals("bin", StringComparison.OrdinalIgnoreCase) == true)
             {
-                string? cmd = obj["CommandLine"]?.ToString();
-                if (!string.IsNullOrEmpty(cmd))
-                    return cmd;
+                binDir = currentDirInfo.Parent.Parent;
+            }
+            else if (currentDirInfo.Parent?.Name.Equals("bin", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                binDir = currentDirInfo.Parent;
+            }
+
+            if (binDir != null)
+            {
+                // MCPTrace 프로젝트 루트로 이동
+                DirectoryInfo? projectDir = binDir.Parent;
+                if (projectDir != null)
+                {
+                    string projectLoggerPath = Path.Combine(projectDir.FullName, MITM_ADDON);
+                    if (File.Exists(projectLoggerPath))
+                    {
+                        Console.WriteLine($"[ProxyRunner] Found Logger.py at: {projectLoggerPath}");
+                        return projectLoggerPath;
+                    }
+                }
+            }
+
+            // 3. 상위 디렉토리들을 재귀적으로 탐색
+            DirectoryInfo? searchDir = currentDirInfo;
+            for (int i = 0; i < 5 && searchDir != null; i++)
+            {
+                string searchPath = Path.Combine(searchDir.FullName, MITM_ADDON);
+                if (File.Exists(searchPath))
+                {
+                    Console.WriteLine($"[ProxyRunner] Found Logger.py at: {searchPath}");
+                    return searchPath;
+                }
+
+                // src/MCPTrace 폴더 확인
+                string srcMcpTracePath = Path.Combine(searchDir.FullName, "src", "MCPTrace", MITM_ADDON);
+                if (File.Exists(srcMcpTracePath))
+                {
+                    Console.WriteLine($"[ProxyRunner] Found Logger.py at: {srcMcpTracePath}");
+                    return srcMcpTracePath;
+                }
+
+                searchDir = searchDir.Parent;
             }
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[ProxyRunner:WMI] Error for PID {p.Id}: {ex.Message}");
+            Console.Error.WriteLine($"[ProxyRunner] Error searching for Logger.py: {ex.Message}");
         }
-        return "";
+
+        Console.Error.WriteLine($"[ProxyRunner] Logger.py not found. Searched in and around: {currentDir}");
+        return MITM_ADDON; // 최후의 수단으로 상대 경로 반환
+    }
+
+    private static void SetSystemProxy(int port)
+    {
+        try
+        {
+            // Windows 시스템 프록시 설정
+            string proxyServer = $"127.0.0.1:{port}";
+
+            // 레지스트리를 통한 프록시 설정
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+                true);
+
+            if (key != null)
+            {
+                key.SetValue("ProxyEnable", 1);
+                key.SetValue("ProxyServer", proxyServer);
+                Console.WriteLine($"[ProxyRunner] System proxy set to {proxyServer}");
+                Console.WriteLine($"[ProxyRunner] You may need to restart Claude for proxy to take effect");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ProxyRunner] Failed to set system proxy: {ex.Message}");
+            Console.WriteLine($"[ProxyRunner] Please manually set system proxy to 127.0.0.1:{port}");
+        }
+    }
+
+    private static void ClearSystemProxy()
+    {
+        try
+        {
+            using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(
+                @"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+                true);
+
+            if (key != null)
+            {
+                key.SetValue("ProxyEnable", 0);
+                key.SetValue("ProxyServer", "");
+                Console.WriteLine($"[ProxyRunner] System proxy cleared");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.Error.WriteLine($"[ProxyRunner] Failed to clear system proxy: {ex.Message}");
+        }
     }
 
     private static void StartMitmDump(int targetPid)
     {
+        // Logger.py 경로 찾기
+        string loggerPath = FindLoggerPyPath();
+
+        if (!File.Exists(loggerPath))
+        {
+            Console.Error.WriteLine($"[ProxyRunner] ERROR: Logger.py not found at: {loggerPath}");
+            Console.Error.WriteLine($"[ProxyRunner] Cannot start mitmdump without Logger.py");
+            _consecutiveFailures++;
+            return;
+        }
+
+        // local:PID 모드 대신 일반 프록시 모드 사용
         var psi = new ProcessStartInfo
         {
             FileName = MITM_EXE,
-            Arguments = $"--mode local:{targetPid} -p {MITM_PORT} -s \"{MITM_ADDON}\" --set http2=true --set stream_large_bodies=1 -v",
+            Arguments = $"-p {MITM_PORT} -s \"{loggerPath}\" --set http2=true --set stream_large_bodies=1",
             UseShellExecute = false,
             CreateNoWindow = true,
             RedirectStandardError = true,
@@ -171,48 +279,51 @@ public static class Proxy
 
         _mitmProcess.OutputDataReceived += (s, e) =>
         {
-            if (!string.IsNullOrEmpty(e.Data) && e.Data.Contains("\"eventType\":\"MCP\""))
+            if (!string.IsNullOrEmpty(e.Data))
             {
-                // MCP 이벤트를 Collector로 전송
-                try
+                // MCP 이벤트만 필터링
+                if (e.Data.Contains("\"eventType\":\"MCP\""))
                 {
-                    using var mitmDoc = JsonDocument.Parse(e.Data);
-                    var mitmRoot = mitmDoc.RootElement;
+                    try
+                    {
+                        using var mitmDoc = JsonDocument.Parse(e.Data);
+                        var mitmRoot = mitmDoc.RootElement;
 
-                    var collectorEvent = new Dictionary<string, object>();
-                    
-                    // ts를 그대로 가져옴
-                    if (mitmRoot.TryGetProperty("ts", out var tsElement))
-                    {
-                        collectorEvent["ts"] = tsElement.GetInt64();
-                    }
-                    else
-                    {
-                        collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
-                    }
-                    
-                    // producer를 "mitm"으로 강제 설정
-                    collectorEvent["producer"] = "mitm";
-                    
-                    // 실제 타겟 프로세스 정보로 교체
-                    collectorEvent["pid"] = targetPid;
-                    collectorEvent["pname"] = Program.TargetProcName;
-                    
-                    // eventType 그대로 전달
-                    collectorEvent["eventType"] = "MCP";
-                    
-                    // data 그대로 전달
-                    if (mitmRoot.TryGetProperty("data", out var dataElement))
-                    {
-                        collectorEvent["data"] = JsonSerializer.Deserialize<object>(dataElement.GetRawText());
-                    }
+                        var collectorEvent = new Dictionary<string, object>();
 
-                    string json = JsonSerializer.Serialize(collectorEvent);
-                    SendToCollector(json);
+                        if (mitmRoot.TryGetProperty("ts", out var tsElement))
+                        {
+                            collectorEvent["ts"] = tsElement.GetInt64();
+                        }
+                        else
+                        {
+                            collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
+                        }
+
+                        collectorEvent["producer"] = "mitm";
+                        collectorEvent["pid"] = targetPid;
+                        collectorEvent["pname"] = Program.TargetProcName;
+                        collectorEvent["eventType"] = "MCP";
+
+                        if (mitmRoot.TryGetProperty("data", out var dataElement))
+                        {
+                            collectorEvent["data"] = JsonSerializer.Deserialize<object>(dataElement.GetRawText());
+                        }
+
+                        string json = JsonSerializer.Serialize(collectorEvent);
+                        SendToCollector(json);
+
+                        _consecutiveFailures = 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.Error.WriteLine($"[ProxyRunner] Failed to parse MCP event: {ex.Message}");
+                    }
                 }
-                catch (Exception ex)
+                else
                 {
-                    Console.Error.WriteLine($"[ProxyRunner] Failed to parse MCP event: {ex.Message}");
+                    // 일반 로그 출력
+                    Console.WriteLine($"[mitmdump:OUT] {e.Data}");
                 }
             }
         };
@@ -225,23 +336,32 @@ public static class Proxy
 
         _mitmProcess.Exited += (s, e) =>
         {
-            Console.WriteLine($"[ProxyRunner] mitmdump exited (PID={_currentPid})");
+            Console.WriteLine($"[ProxyRunner] mitmdump exited");
             _mitmProcess = null;
             _currentPid = 0;
+            _consecutiveFailures++;
         };
 
-        Console.WriteLine($"[ProxyRunner] Launching mitmdump for PID {targetPid}...");
+        Console.WriteLine($"[ProxyRunner] Launching mitmdump on port {MITM_PORT}...");
+        Console.WriteLine($"[ProxyRunner] Logger.py path: {loggerPath}");
+
         try
         {
             _mitmProcess.Start();
             _mitmProcess.BeginOutputReadLine();
             _mitmProcess.BeginErrorReadLine();
+
+            // 시스템 프록시 자동 설정
+            SetSystemProxy(MITM_PORT);
+
+            _consecutiveFailures = 0;
         }
         catch (Exception ex)
         {
             Console.Error.WriteLine($"[ProxyRunner] Failed to start mitmdump: {ex.Message}");
             _mitmProcess = null;
             _currentPid = 0;
+            _consecutiveFailures++;
         }
     }
 
@@ -272,6 +392,9 @@ public static class Proxy
 
     public static void StopProxy()
     {
+        // 프록시 설정 제거
+        ClearSystemProxy();
+
         if (_mitmProcess == null || _mitmProcess.HasExited)
         {
             _mitmProcess = null;
@@ -304,6 +427,14 @@ public static class Proxy
         {
             try
             {
+                // 연속 실패가 너무 많으면 더 긴 대기 시간
+                if (_consecutiveFailures >= MAX_CONSECUTIVE_FAILURES)
+                {
+                    Console.Error.WriteLine($"[ProxyRunner] Too many consecutive failures ({_consecutiveFailures}). Waiting 10 seconds...");
+                    Thread.Sleep(10000);
+                    _consecutiveFailures = 0; // 리셋
+                }
+
                 var proc = FindTargetProcess();
                 int pid = proc?.Id ?? 0;
 
