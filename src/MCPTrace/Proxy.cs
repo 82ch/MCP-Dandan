@@ -21,7 +21,7 @@ public static class Proxy
     private const string COLLECTOR_HOST = "127.0.0.1";
     private const int COLLECTOR_PORT = 8888;
 
-    // Program.cs에서 cts.Token 넘겨서 호출하는 진입점 (유지)
+    // Program.cs에서 cts.Token 넘겨서 호출하는 진입점
     public static void StartWatcherAsync(CancellationToken token)
     {
         // Collector에 연결 시도
@@ -176,33 +176,37 @@ public static class Proxy
                 // MCP 이벤트를 Collector로 전송
                 try
                 {
-                    var mitmData = JsonSerializer.Deserialize<JsonElement>(e.Data);
+                    using var mitmDoc = JsonDocument.Parse(e.Data);
+                    var mitmRoot = mitmDoc.RootElement;
 
-                    // pid와 pname을 실제 타겟 프로세스 정보로 교체
-                    var modifiedData = new Dictionary<string, object>();
-                    foreach (var property in mitmData.EnumerateObject())
+                    var collectorEvent = new Dictionary<string, object>();
+                    
+                    // ts를 그대로 가져옴
+                    if (mitmRoot.TryGetProperty("ts", out var tsElement))
                     {
-                        if (property.Name == "pid")
-                        {
-                            modifiedData["pid"] = targetPid;
-                        }
-                        else if (property.Name == "pname")
-                        {
-                            modifiedData["pname"] = Program.TargetProcName;
-                        }
-                        else
-                        {
-                            modifiedData[property.Name] = property.Value;
-                        }
+                        collectorEvent["ts"] = tsElement.GetInt64();
+                    }
+                    else
+                    {
+                        collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
+                    }
+                    
+                    // producer를 "mitm"으로 강제 설정
+                    collectorEvent["producer"] = "mitm";
+                    
+                    // 실제 타겟 프로세스 정보로 교체
+                    collectorEvent["pid"] = targetPid;
+                    collectorEvent["pname"] = Program.TargetProcName;
+                    
+                    // eventType 그대로 전달
+                    collectorEvent["eventType"] = "MCP";
+                    
+                    // data 그대로 전달
+                    if (mitmRoot.TryGetProperty("data", out var dataElement))
+                    {
+                        collectorEvent["data"] = JsonSerializer.Deserialize<object>(dataElement.GetRawText());
                     }
 
-                    var collectorEvent = new
-                    {
-                        source = "mitm",
-                        type = "MCP",
-                        timestamp = DateTime.UtcNow.ToString("o"),
-                        data = modifiedData
-                    };
                     string json = JsonSerializer.Serialize(collectorEvent);
                     SendToCollector(json);
                 }
