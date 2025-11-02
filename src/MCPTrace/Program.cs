@@ -64,7 +64,13 @@ public partial class Program
         var cts = new CancellationTokenSource();
 
         // 종료 시 세션 정리 & 정상 종료 처리
-        AppDomain.CurrentDomain.ProcessExit += (s, e) => CleanupETWSessions();
+        AppDomain.CurrentDomain.ProcessExit += (s, e) =>
+        {
+            Proxy.StopProxy();
+            cts.Cancel();
+            CleanupETWSessions();
+        };
+        
         Console.CancelKeyPress += (s, e) =>
         {
             Console.WriteLine("\n[*] Ctrl+C detected. Stopping ...");
