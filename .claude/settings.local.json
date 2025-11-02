@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m http.server:*)",
+      "Bash(python3:*)",
+      "Bash(npm install:*)",
+      "Bash(dir /b \"c:\\Users\\jeong\\OneDrive\\Desktop\\bob\\82ch\\82ch-web\")",
+      "Bash(dir /s /b \"c:\\Users\\jeong\\OneDrive\\Desktop\\bob\\82ch\\82ch-web\")",
+      "Bash(findstr:*)",
+      "Bash(tree:*)",
+      "Bash(npm create:*)",
+      "Bash(npx tailwindcss:*)",
+      "Bash(npm run dev:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(if exist \"node_modules\\.vite\" rd /s /q \"node_modules\\.vite\")",
+      "Bash(npm init:*)",
+      "Bash(npm start)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
