@@ -366,8 +366,8 @@ namespace Collector
                 ConsoleColor color = producer switch
                 {
                     "etw" => ConsoleColor.Green,
-                    "proxy" => ConsoleColor.Cyan,
-                    "mitm" => ConsoleColor.Blue,
+                    "local" => ConsoleColor.Cyan,
+                    "remote" => ConsoleColor.Blue,
                     _ => ConsoleColor.White
                 };
 

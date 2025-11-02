@@ -231,7 +231,7 @@ public static class Proxy
                         collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
                     }
 
-                    collectorEvent["producer"] = "mitm";
+                    collectorEvent["producer"] = "remote";
                     collectorEvent["pid"] = targetPid;
                     collectorEvent["pname"] = Program.TargetProcName;
                     collectorEvent["eventType"] = "MCP";

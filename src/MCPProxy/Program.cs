@@ -268,7 +268,7 @@ namespace MCPProxy
                 var envelope = new
                 {
                     ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000, // nanoseconds
-                    producer = "proxy",
+                    producer = "local",
                     pid = targetProcess.Id,
                     pname = targetProcess.ProcessName,
                     eventType = "MCP",
@@ -312,7 +312,7 @@ namespace MCPProxy
                 var envelope = new
                 {
                     ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000,
-                    producer = "proxy",
+                    producer = "local",
                     pid = targetProcess?.Id ?? 0,
                     pname = targetProcess?.ProcessName ?? "unknown",
                     eventType = "ProxyLog",
