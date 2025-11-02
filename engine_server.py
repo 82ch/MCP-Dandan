@@ -1,155 +1,127 @@
-#!/usr/bin/env python3
 """
 82ch-Engine Server
-
-ZeroMQ를 통해 MCPCollector로부터 이벤트를 수신하고,
-등록된 엔진들에게 분배하여 분석 결과를 로그로 저장합니다.
+ZeroMQ에서 이벤트를 직접 받아 엔진들에게 전달하고 결과를 로깅합니다.
 """
 
-from engine.sensitive_file_engine import SensitiveFileEngine
-from engine.semantic_gap_engine import SemanticGapEngine
-from config_loader import ConfigLoader
-from event_provider import EventProvider
-from event_distributor import EventDistributor
-from log_writer import LogWriter
-from queue import Queue
-import time
+import asyncio
 import signal
 import sys
+from typing import List
+from config_loader import ConfigLoader
+from event_hub import EventHub
+from zmq_source import ZeroMQSource
+from logger import Logger
+from engines.sensitive_file_engine import SensitiveFileEngine
+from engines.semantic_gap_engine import SemanticGapEngine
 
 
-# 전역 변수로 모든 컴포넌트 관리
-event_provider = None
-event_distributor = None
-engines = []
-log_writer = None
-
-
-def signal_handler(sig, frame):
-    """Ctrl+C 처리"""
-    print('\n\n프로그램을 종료합니다...')
-
-    # 모든 컴포넌트 종료
-    if event_provider:
-        event_provider.stop()
-
-    if event_distributor:
-        event_distributor.stop()
-
-    for engine in engines:
-        engine.stop()
-
-    if log_writer:
-        log_writer.stop()
-
-    sys.exit(0)
-
-
-def main():
+class EngineServer:
     """통합 분석 엔진 서버"""
-    global event_provider, event_distributor, engines, log_writer
-
-    print("=" * 80)
-    print("82ch-Engine Server (ZeroMQ Edition)")
-    print("=" * 80)
-
-    # 설정 파일 로드
-    config = ConfigLoader()
-
-    # 큐 생성
-    main_queue = Queue(maxsize=config.get_main_queue_maxsize())
-    event_log_queue = Queue(maxsize=config.get_event_log_queue_maxsize())
-    result_log_queue = Queue(maxsize=config.get_result_log_queue_maxsize())
-
-    print(f"\n큐 설정:")
-    print(f"  - 메인 큐 크기: {config.get_main_queue_maxsize()}")
-    print(f"  - 엔진 큐 크기: {config.get_engine_queue_maxsize()}")
-    print(f"  - 이벤트 로그 큐 크기: {config.get_event_log_queue_maxsize()}")
-    print(f"  - 결과 로그 큐 크기: {config.get_result_log_queue_maxsize()}")
-
-    # 엔진 생성 및 엔진 큐 매핑
-    engine_queues = {}
-
-    # Sensitive File Engine
-    if config.get_sensitive_file_enabled():
-        sensitive_engine_queue = Queue(maxsize=config.get_engine_queue_maxsize())
-        sensitive_engine = SensitiveFileEngine(sensitive_engine_queue, result_log_queue)
-
-        engines.append(sensitive_engine)
-        engine_queues['SensitiveFileEngine'] = sensitive_engine_queue
-
-    # Semantic Gap Engine
-    if config.get_semantic_gap_enabled():
-        semantic_gap_queue = Queue(maxsize=config.get_engine_queue_maxsize())
-        semantic_gap_engine = SemanticGapEngine(
-            semantic_gap_queue,
-            result_log_queue,
-            detail_mode=False  # True로 설정하면 상세 JSON 결과
-        )
-        engines.append(semantic_gap_engine)
-        engine_queues['SemanticGapEngine'] = semantic_gap_queue
-
-    print(f"\n실행 중인 엔진:")
-    for i, engine in enumerate(engines, 1):
-        print(f"  {i}. {engine.name}")
-        print(f"     • 입력 큐: 전용 큐 (크기: {config.get_engine_queue_maxsize()})")
-        print(f"     • 출력: 로그 큐")
-
-    # EventProvider 생성 (ZeroMQ)
-    zmq_address = config.get_zmq_address()
-    event_provider = EventProvider(main_queue, zmq_address)
-
-    # EventDistributor 생성 (이벤트 로그 큐 추가)
-    event_distributor = EventDistributor(main_queue, engine_queues, event_log_queue)
-
-    # LogWriter 생성 (2개 큐)
-    log_writer = LogWriter(event_log_queue, result_log_queue)
-
-    try:
-        # 모든 컴포넌트 시작
-        print("\n컴포넌트 시작 중...")
-
-        # 1. LogWriter 시작
-        log_writer.start()
-
-        # 2. 모든 엔진 시작
-        for engine in engines:
-            engine.start()
-
-        # 3. EventDistributor 시작 (이벤트 분배)
-        event_distributor.start()
-
-        # 4. EventProvider 시작 (ZeroMQ 연결)
-        event_provider.start()
-
+    
+    def __init__(self):
+        self.config = ConfigLoader()
+        self.logger = Logger(self.config)
+        self.engines = []
+        self.event_hub = None
+        
+    def _setup_engines(self):
+        """엔진 초기화"""
+        # Sensitive File Engine
+        if self.config.get_sensitive_file_enabled():
+            engine = SensitiveFileEngine(self.logger)
+            self.engines.append(engine)
+            
+        # Semantic Gap Engine
+        if self.config.get_semantic_gap_enabled():
+            engine = SemanticGapEngine(
+                self.logger,
+                detail_mode=False
+            )
+            self.engines.append(engine)
+            
+        print(f"\n실행 중인 엔진:")
+        for i, engine in enumerate(self.engines, 1):
+            print(f"  {i}. {engine.name}")
+    
+    def _setup_event_hub(self):
+        """이벤트 허브 초기화"""
+        zmq_address = self.config.get_zmq_address()
+        source = ZeroMQSource(zmq_address)
+        self.event_hub = EventHub(source, self.engines, self.logger)
+    
+    async def start(self):
+        """서버 시작"""
+        print("=" * 80)
+        print("82ch-Engine Server 시작")
+        print("=" * 80)
+        
+        # 설정 출력
+        print(f"\n설정:")
+        print(f"  - ZeroMQ 주소: {self.config.get_zmq_address()}")
+        print(f"  - 로그 디렉토리: {self.config.get_log_dir()}")
+        
+        # 엔진 설정
+        self._setup_engines()
+        
+        # 이벤트 허브 설정
+        self._setup_event_hub()
+        
+        # Logger 시작
+        await self.logger.start()
+        
         print("\n" + "=" * 80)
         print("✓ 모든 컴포넌트가 실행 중입니다.")
         print("  MCPCollector가 실행 중이어야 이벤트를 수신할 수 있습니다.")
         print("  종료하려면 Ctrl+C를 누르세요.")
         print("=" * 80 + "\n")
+        
+        # EventHub 시작 (메인 루프)
+        await self.event_hub.start()
+    
+    async def stop(self):
+        """서버 중지"""
+        print('\n프로그램을 종료합니다...')
+        
+        if self.event_hub:
+            await self.event_hub.stop()
+        
+        if self.logger:
+            await self.logger.stop()
+        
+        print('✓ 모든 컴포넌트가 중지되었습니다.')
 
-        # Ctrl+C 핸들러 등록
-        signal.signal(signal.SIGINT, signal_handler)
 
-        # 계속 실행
-        while True:
-            time.sleep(1)
+async def main():
+    """메인 함수"""
+    server = EngineServer()
+    
+    # Ctrl+C 처리
+    loop = asyncio.get_running_loop()
+    
+    def signal_handler():
+        print("\n\n[Signal] Ctrl+C 감지됨")
+        asyncio.create_task(server.stop())
+        loop.stop()
 
+    if sys.platform != "win32":
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            loop.add_signal_handler(sig, signal_handler)
+    else:
+        print("[!] Windows 환경: signal handler를 건너뜁니다 (KeyboardInterrupt로 종료 가능)")
+
+    try:
+        await server.start()
+    except KeyboardInterrupt:
+        await server.stop()
     except Exception as e:
         print(f"\n오류 발생: {e}")
-
-        # 모든 컴포넌트 종료
-        if event_provider:
-            event_provider.stop()
-        if event_distributor:
-            event_distributor.stop()
-        for engine in engines:
-            engine.stop()
-        if log_writer:
-            log_writer.stop()
-
+        await server.stop()
         sys.exit(1)
 
 
 if __name__ == '__main__':
-    main()
+    # Windows에서 asyncio 이벤트 루프 정책 설정
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    
+    asyncio.run(main())
