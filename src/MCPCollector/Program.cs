@@ -9,6 +9,8 @@ using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using NetMQ;
+using NetMQ.Sockets;
 
 namespace Collector
 {
@@ -16,6 +18,8 @@ namespace Collector
     {
         private static StreamWriter? logWriter;
         private static Process? mcpTraceProcess;
+        private static PublisherSocket? zmqPublisher;
+        private static readonly object zmqLock = new object();
 
         static async Task Main(string[] args)
         {
@@ -28,11 +32,14 @@ namespace Collector
             logWriter = new StreamWriter(logFile, append: true) { AutoFlush = true };
 
             Console.WriteLine("=".PadRight(80, '='));
-            Console.WriteLine("MCP Observer - Event Collector");
+            Console.WriteLine("MCP Observer - Event Collector (with ZeroMQ)");
             Console.WriteLine("=".PadRight(80, '='));
             Console.WriteLine();
             Console.WriteLine($"[*] Logging to: {logFile}");
             Console.WriteLine();
+
+            // ZeroMQ Publisher 초기화
+            InitializeZmqPublisher();
 
             // 사용자 선택 받기
             Console.WriteLine("모니터링할 프로세스를 선택하세요:");
@@ -58,6 +65,7 @@ namespace Collector
             {
                 Console.WriteLine("\n[*] Shutting down...");
                 StopMCPTrace();
+                CleanupZmq();
                 e.Cancel = false;
                 Environment.Exit(0);
             };
@@ -66,6 +74,7 @@ namespace Collector
             StartMCPTrace(targetProcess);
 
             Console.WriteLine("[*] Starting TCP server on localhost:8888...");
+            Console.WriteLine("[*] ZeroMQ Publisher listening on tcp://*:5555");
             Console.WriteLine("[*] Waiting for MCPTrace and MCPProxy connections...");
             Console.WriteLine();
 
@@ -84,6 +93,64 @@ namespace Collector
                 Console.ResetColor();
 
                 _ = Task.Run(() => HandleClient(client, currentId));
+            }
+        }
+
+        static void InitializeZmqPublisher()
+        {
+            try
+            {
+                zmqPublisher = new PublisherSocket();
+                zmqPublisher.Bind("tcp://*:5555");
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[+] ZeroMQ Publisher initialized on tcp://*:5555");
+                Console.ResetColor();
+                Console.WriteLine();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ERROR] Failed to initialize ZeroMQ Publisher: {ex.Message}");
+                Console.ResetColor();
+                zmqPublisher = null;
+            }
+        }
+
+        static void PublishToZmq(string json)
+        {
+            if (zmqPublisher == null) return;
+
+            try
+            {
+                lock (zmqLock)
+                {
+                    // Topic을 빈 문자열로 설정 (모든 구독자가 받을 수 있도록)
+                    zmqPublisher.SendMoreFrame("").SendFrame(json);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Red;
+                Console.WriteLine($"[ZMQ ERROR] Failed to publish: {ex.Message}");
+                Console.ResetColor();
+            }
+        }
+
+        static void CleanupZmq()
+        {
+            try
+            {
+                lock (zmqLock)
+                {
+                    zmqPublisher?.Dispose();
+                    NetMQConfig.Cleanup(false);
+                    Console.WriteLine("[*] ZeroMQ cleaned up");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] ZMQ cleanup error: {ex.Message}");
             }
         }
 
@@ -331,8 +398,13 @@ namespace Collector
         {
             try
             {
+                // 1. 로그 파일에 기록
                 logWriter?.WriteLine(json);
 
+                // 2. ZeroMQ로 브로드캐스트
+                PublishToZmq(json);
+
+                // 3. 콘솔 출력
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
@@ -405,6 +477,7 @@ namespace Collector
             {
                 Console.WriteLine($"[RAW #{connectionId}] {json}");
                 logWriter?.WriteLine(json);
+                PublishToZmq(json);
             }
         }
     }
