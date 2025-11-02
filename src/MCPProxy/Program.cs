@@ -267,7 +267,7 @@ namespace MCPProxy
                 // 명세서에 맞는 형식
                 var envelope = new
                 {
-                    ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000, // nanoseconds
+                    ts = (DateTimeOffset.UtcNow.Ticks - DateTimeOffset.UnixEpoch.Ticks) * 100,
                     producer = "local",
                     pid = targetProcess.Id,
                     pname = targetProcess.ProcessName,

@@ -222,13 +222,17 @@ public static class Proxy
 
                     var collectorEvent = new Dictionary<string, object>();
 
+                    // 안전한 ts 계산: Ticks 기반으로 나노초 생성 (overflow 없음)
                     if (mitmRoot.TryGetProperty("ts", out var tsElement))
                     {
+                        // 원격에서 보내온 ts가 이미 있으면 그대로 사용
                         collectorEvent["ts"] = tsElement.GetInt64();
                     }
                     else
                     {
-                        collectorEvent["ts"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000;
+                        // Unix epoch 이후 ticks(100ns) 단위를 나노초로 변환
+                        long ns = (DateTimeOffset.UtcNow.Ticks - DateTimeOffset.UnixEpoch.Ticks) * 100L;
+                        collectorEvent["ts"] = ns;
                     }
 
                     collectorEvent["producer"] = "remote";
@@ -252,6 +256,7 @@ public static class Proxy
                 }
             }
         };
+
 
         _mitmProcess.ErrorDataReceived += (s, e) =>
         {

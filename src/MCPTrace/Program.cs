@@ -211,7 +211,7 @@ public partial class Program
         {
             var envelope = new
             {
-                ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000000,
+                ts = (DateTimeOffset.UtcNow.Ticks - DateTimeOffset.UnixEpoch.Ticks) * 100,
                 producer = "etw",
                 pid = Process.GetCurrentProcess().Id,
                 pname = Process.GetCurrentProcess().ProcessName,
