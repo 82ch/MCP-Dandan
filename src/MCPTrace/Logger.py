@@ -2,6 +2,7 @@
 from mitmproxy import ctx
 import json
 import time
+import hashlib
 
 def load(loader):
     ctx.log.info("[ws_logger] Loaded (inline mode: terminal only)")
@@ -91,6 +92,9 @@ def websocket_message(flow):
     except Exception:
         pass
 
+    websocketUrl = flow.request.pretty_url 
+    websocketHash = hashlib.sha256(websocketUrl.encode()).hexdigest()
+
     entry = {
         "ts": ts,
         "producer": "proxy",
@@ -98,6 +102,7 @@ def websocket_message(flow):
         "pname": "NonePName",
         "eventType": "MCP",
         "data": {
+            "mcpTag": websocketHash,
             "task": task,
             "transPort": "http",
             "src": client_addr_display if task == "SEND" else server_addr_display,
