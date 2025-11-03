@@ -45,6 +45,8 @@ class BaseEngine(ABC):
         try:
             result = self.process(data)
             if result:
-                await self.logger.write(result)
+                await self.logger.log_result(result)
+            return result
         except Exception as e:
             print(f"[{self.name}] ERROR: {e}")
+            return None

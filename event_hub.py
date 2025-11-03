@@ -81,12 +81,7 @@ class EventHub:
                 
                 # 모든 엔진 처리 완료 대기 (에러는 무시)
                 if tasks:
-                    results = await asyncio.gather(*tasks, return_exceptions=True)
-                    
-                    # 결과 로깅 (백그라운드)
-                    for result in results:
-                        if result and not isinstance(result, Exception):
-                            asyncio.create_task(self.logger.log_result(result))
+                    await asyncio.gather(*tasks, return_exceptions=True)
                 
             except asyncio.CancelledError:
                 break
@@ -97,16 +92,16 @@ class EventHub:
     async def _process_with_engine(self, engine, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
         엔진으로 이벤트 처리
-        
+
         Args:
             engine: 분석 엔진
             event: 이벤트 데이터
-            
+
         Returns:
             처리 결과 (없으면 None)
         """
         try:
-            result = await engine.process(event)
+            result = await engine.handle_event(event)
             return result
         except Exception as e:
             print(f'✗ [{engine.name}] 처리 오류: {e}')
