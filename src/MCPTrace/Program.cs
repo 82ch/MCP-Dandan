@@ -162,20 +162,20 @@ public partial class Program
             // 이벤트 핸들러 등록
             currentSession.Source.Kernel.ProcessStart += HandleProcessStart;
             currentSession.Source.Kernel.ProcessStop += HandleProcessStop;
-            currentSession.Source.Kernel.FileIORead += HandleFileIORead;
-            currentSession.Source.Kernel.FileIOWrite += HandleFileIOWrite;
-            currentSession.Source.Kernel.FileIOCreate += HandleFileIOCreate;
-
-            // File Rename (Dynamic)
-            var dynamicParser = new DynamicTraceEventParser(currentSession.Source);
-            dynamicParser.All += traceEvent =>
-            {
-                if (traceEvent.ProviderName.Equals("Microsoft-Windows-Kernel-File", StringComparison.OrdinalIgnoreCase) &&
-                    traceEvent.EventName.Equals("FileIORename", StringComparison.OrdinalIgnoreCase))
-                {
-                    HandleFileIORenameDynamic(traceEvent);
-                }
-            };
+            //currentSession.Source.Kernel.FileIORead += HandleFileIORead;
+            //currentSession.Source.Kernel.FileIOWrite += HandleFileIOWrite;
+            //currentSession.Source.Kernel.FileIOCreate += HandleFileIOCreate;
+                                                                                                        // 잠시 파일관련 이벤트 비활성화
+            //// File Rename (Dynamic)
+            //var dynamicParser = new DynamicTraceEventParser(currentSession.Source);
+            //dynamicParser.All += traceEvent =>
+            //{
+            //    if (traceEvent.ProviderName.Equals("Microsoft-Windows-Kernel-File", StringComparison.OrdinalIgnoreCase) &&
+            //        traceEvent.EventName.Equals("FileIORename", StringComparison.OrdinalIgnoreCase))
+            //    {
+            //        HandleFileIORenameDynamic(traceEvent);
+            //    }
+            //};
 
             Task.Run(() =>
             {
