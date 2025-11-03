@@ -1,9 +1,11 @@
 ## 82ch-Engine
 
-# Windows
+**Option 1**
+```
 .\setup.ps1
+```
 
-**Option 2: Manual Setup**
+**Option 2**
 ```bash
 pip install -r requirements.txt
 python engine_server.py
