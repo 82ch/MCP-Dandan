@@ -10,31 +10,31 @@ from typing import List
 from config_loader import ConfigLoader
 from event_hub import EventHub
 from zmq_source import ZeroMQSource
-from logger import Logger
+from database import Database
 from engines.sensitive_file_engine import SensitiveFileEngine
 from engines.semantic_gap_engine import SemanticGapEngine
 
 
 class EngineServer:
     """통합 분석 엔진 서버"""
-    
+
     def __init__(self):
         self.config = ConfigLoader()
-        self.logger = Logger(self.config)
+        self.db = Database()
         self.engines = []
         self.event_hub = None
-        
+
     def _setup_engines(self):
         """엔진 초기화"""
         # Sensitive File Engine
         if self.config.get_sensitive_file_enabled():
-            engine = SensitiveFileEngine(self.logger)
+            engine = SensitiveFileEngine(self.db)
             self.engines.append(engine)
-            
+
         # Semantic Gap Engine
         if self.config.get_semantic_gap_enabled():
             engine = SemanticGapEngine(
-                self.logger,
+                self.db,
                 detail_mode=False
             )
             self.engines.append(engine)
@@ -47,47 +47,46 @@ class EngineServer:
         """이벤트 허브 초기화"""
         zmq_address = self.config.get_zmq_address()
         source = ZeroMQSource(zmq_address)
-        self.event_hub = EventHub(source, self.engines, self.logger)
-    
+        self.event_hub = EventHub(source, self.engines, self.db)
+
     async def start(self):
         """서버 시작"""
         print("=" * 80)
         print("82ch-Engine Server 시작")
         print("=" * 80)
-        
+
         # 설정 출력
         print(f"\n설정:")
         print(f"  - ZeroMQ 주소: {self.config.get_zmq_address()}")
-        print(f"  - 로그 디렉토리: {self.config.get_log_dir()}")
-        
+
         # 엔진 설정
         self._setup_engines()
-        
+
         # 이벤트 허브 설정
         self._setup_event_hub()
-        
-        # Logger 시작
-        await self.logger.start()
-        
+
+        # Database 시작
+        await self.db.connect()
+
         print("\n" + "=" * 80)
         print("✓ 모든 컴포넌트가 실행 중입니다.")
         print("  MCPCollector가 실행 중이어야 이벤트를 수신할 수 있습니다.")
         print("  종료하려면 Ctrl+C를 누르세요.")
         print("=" * 80 + "\n")
-        
+
         # EventHub 시작 (메인 루프)
         await self.event_hub.start()
-    
+
     async def stop(self):
         """서버 중지"""
         print('\n프로그램을 종료합니다...')
-        
+
         if self.event_hub:
             await self.event_hub.stop()
-        
-        if self.logger:
-            await self.logger.stop()
-        
+
+        if self.db:
+            await self.db.close()
+
         print('✓ 모든 컴포넌트가 중지되었습니다.')
 
 
