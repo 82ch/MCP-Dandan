@@ -3,3 +3,9 @@ pyzmq>=25.0.0
 
 # 비동기 파일 I/O
 aiofiles>=23.0.0
+
+# Mistral AI API
+mistralai
+
+# 환경변수 로드
+python-dotenv

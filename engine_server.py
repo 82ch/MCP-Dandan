@@ -13,6 +13,7 @@ from zmq_source import ZeroMQSource
 from logger import Logger
 from engines.sensitive_file_engine import SensitiveFileEngine
 from engines.semantic_gap_engine import SemanticGapEngine
+from engines.command_injection_engine import CommandInjectionEngine
 
 
 class EngineServer:
@@ -30,7 +31,7 @@ class EngineServer:
         if self.config.get_sensitive_file_enabled():
             engine = SensitiveFileEngine(self.logger)
             self.engines.append(engine)
-            
+
         # Semantic Gap Engine
         if self.config.get_semantic_gap_enabled():
             engine = SemanticGapEngine(
@@ -38,7 +39,12 @@ class EngineServer:
                 detail_mode=False
             )
             self.engines.append(engine)
-            
+
+        # Command Injection Engine
+        if self.config.get_command_injection_enabled():
+            engine = CommandInjectionEngine(self.logger)
+            self.engines.append(engine)
+
         print(f"\n실행 중인 엔진:")
         for i, engine in enumerate(self.engines, 1):
             print(f"  {i}. {engine.name}")
