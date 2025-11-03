@@ -20,6 +20,7 @@ namespace Collector
         private static Process? mcpTraceProcess;
         private static PublisherSocket? zmqPublisher;
         private static readonly object zmqLock = new object();
+        private static DatabaseManager? dbManager;
 
         static async Task Main(string[] args)
         {
@@ -37,6 +38,9 @@ namespace Collector
             Console.WriteLine();
             Console.WriteLine($"[*] Logging to: {logFile}");
             Console.WriteLine();
+
+            // 데이터베이스 초기화
+            await InitializeDatabaseAsync();
 
             // ZeroMQ Publisher 초기화
             InitializeZmqPublisher();
@@ -66,6 +70,7 @@ namespace Collector
                 Console.WriteLine("\n[*] Shutting down...");
                 StopMCPTrace();
                 CleanupZmq();
+                CleanupDatabase();
                 e.Cancel = false;
                 Environment.Exit(0);
             };
@@ -93,6 +98,43 @@ namespace Collector
                 Console.ResetColor();
 
                 _ = Task.Run(() => HandleClient(client, currentId));
+            }
+        }
+
+        static async Task InitializeDatabaseAsync()
+        {
+            try
+            {
+                dbManager = new DatabaseManager();
+                await dbManager.ConnectAsync();
+
+                Console.ForegroundColor = ConsoleColor.Green;
+                Console.WriteLine("[+] Database initialized");
+                Console.ResetColor();
+                Console.WriteLine();
+            }
+            catch (Exception ex)
+            {
+                Console.ForegroundColor = ConsoleColor.Yellow;
+                Console.WriteLine($"[WARNING] Failed to initialize database: {ex.Message}");
+                Console.WriteLine("[WARNING] Will continue without database logging");
+                Console.ResetColor();
+                Console.WriteLine();
+                dbManager = null;
+            }
+        }
+
+        static void CleanupDatabase()
+        {
+            try
+            {
+                dbManager?.Dispose();
+                dbManager = null;
+                Console.WriteLine("[*] Database closed");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[ERROR] Database cleanup error: {ex.Message}");
             }
         }
 
@@ -401,10 +443,26 @@ namespace Collector
                 // 1. 로그 파일에 기록
                 logWriter?.WriteLine(json);
 
-                // 2. ZeroMQ로 브로드캐스트
+                // 2. 데이터베이스에 저장 (비동기, Fire-and-forget)
+                if (dbManager != null)
+                {
+                    _ = Task.Run(async () =>
+                    {
+                        try
+                        {
+                            await dbManager.SaveEventAsync(json);
+                        }
+                        catch (Exception dbEx)
+                        {
+                            Console.WriteLine($"[DB ERROR] Failed to save event: {dbEx.Message}");
+                        }
+                    });
+                }
+
+                // 3. ZeroMQ로 브로드캐스트
                 PublishToZmq(json);
 
-                // 3. 콘솔 출력
+                // 4. 콘솔 출력
                 using var doc = JsonDocument.Parse(json);
                 var root = doc.RootElement;
 
