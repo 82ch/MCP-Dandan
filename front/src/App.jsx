@@ -3,6 +3,7 @@ import LeftSidebar from './components/LeftSidebar'
 import MiddleTopPanel from './components/MiddleTopPanel'
 import MiddleBottomPanel from './components/MiddleBottomPanel'
 import RightChatPanel from './components/RightChatPanel'
+import Dashboard from './components/Dashboard'
 
 const API_BASE_URL = 'http://localhost:3001/api'
 
@@ -133,50 +134,60 @@ function App() {
         setSelectedServer={setSelectedServer}
       />
 
-      {/* Middle Section */}
-      <div
-        className="flex-1 flex flex-col"
-        style={{ width: `${100 - rightPanelWidth}%` }}
-        onMouseMove={handleVerticalMouseMove}
-        onMouseUp={handleVerticalMouseUp}
-      >
-        {/* Middle Top Panel */}
-        <div
-          className="border-b border-gray-300 relative"
-          style={{ height: `${middleTopHeight}%` }}
-        >
-          <MiddleTopPanel serverInfo={serverInfo} />
-
-          {/* Vertical Resize Handle */}
+      {/* Main Content Area */}
+      {selectedServer === null ? (
+        /* Dashboard View */
+        <div className="flex-1">
+          <Dashboard setSelectedServer={setSelectedServer} servers={mcpServers} />
+        </div>
+      ) : (
+        <>
+          {/* Middle Section */}
           <div
-            className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 hover:bg-blue-400 cursor-ns-resize transition-colors"
-            onMouseDown={handleVerticalMouseDown}
+            className="flex-1 flex flex-col"
+            style={{ width: `${100 - rightPanelWidth}%` }}
+            onMouseMove={handleVerticalMouseMove}
+            onMouseUp={handleVerticalMouseUp}
+          >
+            {/* Middle Top Panel */}
+            <div
+              className="border-b border-gray-300 relative"
+              style={{ height: `${middleTopHeight}%` }}
+            >
+              <MiddleTopPanel serverInfo={serverInfo} />
+
+              {/* Vertical Resize Handle */}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-1 bg-gray-300 hover:bg-blue-400 cursor-ns-resize transition-colors"
+                onMouseDown={handleVerticalMouseDown}
+              />
+            </div>
+
+            {/* Middle Bottom Panel */}
+            <div style={{ height: `${100 - middleTopHeight}%` }}>
+              <MiddleBottomPanel selectedMessage={selectedMessage} />
+            </div>
+          </div>
+
+          {/* Horizontal Resize Handle */}
+          <div
+            className="w-1 bg-gray-300 hover:bg-blue-400 cursor-ew-resize transition-colors"
+            onMouseDown={handleHorizontalMouseDown}
           />
-        </div>
 
-        {/* Middle Bottom Panel */}
-        <div style={{ height: `${100 - middleTopHeight}%` }}>
-          <MiddleBottomPanel selectedMessage={selectedMessage} />
-        </div>
-      </div>
-
-      {/* Horizontal Resize Handle */}
-      <div
-        className="w-1 bg-gray-300 hover:bg-blue-400 cursor-ew-resize transition-colors"
-        onMouseDown={handleHorizontalMouseDown}
-      />
-
-      {/* Right Chat Panel */}
-      <div
-        className="border-l border-gray-300"
-        style={{ width: `${rightPanelWidth}%` }}
-      >
-        <RightChatPanel
-          messages={chatMessages}
-          selectedMessage={selectedMessage}
-          setSelectedMessage={setSelectedMessage}
-        />
-      </div>
+          {/* Right Chat Panel */}
+          <div
+            className="border-l border-gray-300"
+            style={{ width: `${rightPanelWidth}%` }}
+          >
+            <RightChatPanel
+              messages={chatMessages}
+              selectedMessage={selectedMessage}
+              setSelectedMessage={setSelectedMessage}
+            />
+          </div>
+        </>
+      )}
     </div>
   )
 }
