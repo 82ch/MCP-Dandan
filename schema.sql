@@ -1,6 +1,6 @@
 -- 82ch MCP Observer Database - 간단한 초기화 스크립트
 
--- 1. 원시 이벤트
+-- 1. 원시 이벤트 (mcpTag 추가)
 CREATE TABLE IF NOT EXISTS raw_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     ts BIGINT NOT NULL,
@@ -8,11 +8,14 @@ CREATE TABLE IF NOT EXISTS raw_events (
     pid INTEGER,
     pname TEXT,
     event_type TEXT NOT NULL,
+    mcpTag TEXT,                     
     data TEXT NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 CREATE INDEX IF NOT EXISTS idx_raw_ts ON raw_events(ts);
 CREATE INDEX IF NOT EXISTS idx_raw_event_type ON raw_events(event_type);
+CREATE INDEX IF NOT EXISTS idx_raw_mcpTag ON raw_events(mcpTag);
+
 
 -- 2. RPC 이벤트
 CREATE TABLE IF NOT EXISTS rpc_events (
