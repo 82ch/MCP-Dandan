@@ -187,19 +187,33 @@ namespace Collector
                 string eventType = root.TryGetProperty("eventType", out var typeProp) ? typeProp.GetString() ?? "Unknown" : "Unknown";
                 string data = root.TryGetProperty("data", out var dataProp) ? dataProp.GetRawText() : "{}";
 
+                // mcpTag 추출
+                string? mcpTag = null;
+                if (root.TryGetProperty("mcpTag", out var mcpTagProp))
+                {
+                    mcpTag = mcpTagProp.GetString();
+                }
+                else if (root.TryGetProperty("data", out var dataObj) &&
+                         dataObj.ValueKind == JsonValueKind.Object &&
+                         dataObj.TryGetProperty("mcpTag", out var innerTagProp))
+                {
+                    mcpTag = innerTagProp.GetString();
+                }
+
                 using (var cmd = connection.CreateCommand())
                 {
                     cmd.CommandText = @"
-                        INSERT INTO raw_events (ts, producer, pid, pname, event_type, data)
-                        VALUES (@ts, @producer, @pid, @pname, @event_type, @data);
-                        SELECT last_insert_rowid();
-                    ";
+                INSERT INTO raw_events (ts, producer, pid, pname, event_type, mcpTag, data)
+                VALUES (@ts, @producer, @pid, @pname, @event_type, @mcpTag, @data);
+                SELECT last_insert_rowid();
+            ";
 
                     cmd.Parameters.AddWithValue("@ts", ts);
                     cmd.Parameters.AddWithValue("@producer", producer);
                     cmd.Parameters.AddWithValue("@pid", pid ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@pname", pname ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@event_type", eventType);
+                    cmd.Parameters.AddWithValue("@mcpTag", mcpTag ?? (object)DBNull.Value);
                     cmd.Parameters.AddWithValue("@data", data);
 
                     var result = await cmd.ExecuteScalarAsync();
@@ -212,6 +226,7 @@ namespace Collector
                 return null;
             }
         }
+
 
         /// <summary>
         /// RPC 이벤트 삽입
