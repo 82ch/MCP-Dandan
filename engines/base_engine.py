@@ -4,7 +4,7 @@ from typing import Any
 
 class BaseEngine(ABC):
     """
-    모든 분석 엔진의 공통 기반 클래스 (Refactored - No Queue)
+    모든 분석 엔진의 공통 기반 클래스
     """
 
     def __init__(self, db, name: str, event_types: list[str] | None = None):
@@ -31,13 +31,12 @@ class BaseEngine(ABC):
         """
         실제 이벤트 분석 로직 — 하위 클래스에서 반드시 구현해야 함.
         """
-        pass
+        raise NotImplementedError
 
     async def handle_event(self, data: Any):
         """
         공통 이벤트 처리 진입점.
         event_types 필터링 후 process() 호출.
-        (현재는 사용하지 않음 - EventHub가 직접 process 호출)
         """
         # 이벤트 타입 필터링
         if self.event_types and data.get('eventType') not in self.event_types:
@@ -47,5 +46,8 @@ class BaseEngine(ABC):
             result = self.process(data)
             return result
         except Exception as e:
-            print(f"[{self.name}] ERROR: {e}")
+            try:
+                print(f"[{self.name}] ERROR during processing: {e}")
+            except Exception:
+                pass
             return None

@@ -14,15 +14,15 @@ class CommandInjectionEngine(BaseEngine):
     - 환경변수 주입
     """
 
-    def __init__(self, logger):
+    def __init__(self, db):
         """
         Command Injection 탐지 엔진 초기화
 
         Args:
-            logger: Logger 인스턴스
+            db: Database 인스턴스
         """
         super().__init__(
-            logger=logger,
+            db=db,
             name='CommandInjectionEngine',
             event_types=['MCP', 'ProxyLog']  # MCP 및 ProxyLog 이벤트 처리
         )
@@ -68,7 +68,6 @@ class CommandInjectionEngine(BaseEngine):
             # 명령어 치환
             r'%COMSPEC%',
             r'%SYSTEMROOT%',
-
             # 파일 시스템 조작 
             # r'\.\.[/\\]',  # 디렉토리 트래버설
             # r'/etc/passwd',
@@ -206,7 +205,7 @@ class CommandInjectionEngine(BaseEngine):
                     'severity': severity,
                     'findings': findings,
                     'event_type': data.get('eventType', 'Unknown'),
-                    'analysis_text': analysis_text[:500],  # 처음 500자만 저장
+                    'analysis_text': analysis_text[:500],
                     'original_event': data
                 }
             }
@@ -230,41 +229,32 @@ class CommandInjectionEngine(BaseEngine):
             if 'data' in data and isinstance(data['data'], dict):
                 mcp_data = data['data']
 
-                # task (SEND/RECV)
                 if 'task' in mcp_data:
                     texts.append(str(mcp_data['task']))
 
-                # message 내용 추출
                 if 'message' in mcp_data and isinstance(mcp_data['message'], dict):
                     message = mcp_data['message']
 
-                    # method (예: tools/call)
                     if 'method' in message:
                         texts.append(str(message['method']))
 
-                    # params
                     if 'params' in message and isinstance(message['params'], dict):
                         params = message['params']
 
-                        # tool name
                         if 'name' in params:
                             texts.append(str(params['name']))
 
-                        # arguments
                         if 'arguments' in params:
                             texts.append(str(params['arguments']))
 
-                    # result (응답 데이터)
                     if 'result' in message and isinstance(message['result'], dict):
                         result = message['result']
 
-                        # content 배열
                         if 'content' in result and isinstance(result['content'], list):
                             for item in result['content']:
                                 if isinstance(item, dict) and 'text' in item:
                                     texts.append(str(item['text']))
 
-                        # structuredContent
                         if 'structuredContent' in result:
                             texts.append(str(result['structuredContent']))
 
@@ -286,7 +276,6 @@ class CommandInjectionEngine(BaseEngine):
 
             return ' '.join(texts)
 
-        # 기타: 전체 데이터를 문자열로 변환
         return str(data)
 
     def _check_dangerous_commands(self, text: str) -> list[str]:
@@ -297,7 +286,6 @@ class CommandInjectionEngine(BaseEngine):
         text_lower = text.lower()
 
         for cmd in self.dangerous_commands:
-            # 단어 경계를 고려한 검색
             pattern = r'\b' + re.escape(cmd) + r'\b'
             if re.search(pattern, text_lower):
                 found.append(cmd)
@@ -309,7 +297,6 @@ class CommandInjectionEngine(BaseEngine):
         패턴에 대한 설명을 반환합니다.
         """
         reasons = {
-            # Critical
             r';\s*(rm|del|format|mkfs)': 'Command chaining with destructive operation',
             r'\|\s*(rm|del|format|mkfs)': 'Pipe to destructive command',
             r'&&\s*(rm|del|format|mkfs)': 'Command chaining with destructive operation',
@@ -330,7 +317,6 @@ class CommandInjectionEngine(BaseEngine):
             r'>\s*/dev/tcp/': 'Network communication via file descriptor',
             r'curl.*-d\s*@': 'Data upload via curl',
             r'wget.*-O.*-': 'Data download to stdout',
-
             # High-risk
             r'[;&|`$]': 'Shell metacharacter detected',
             r'\$\{.*\}': 'Variable expansion',
@@ -345,7 +331,6 @@ class CommandInjectionEngine(BaseEngine):
             r'javascript:': 'JavaScript protocol handler',
             r'onerror\s*=': 'Event handler injection',
             r'onload\s*=': 'Event handler injection',
-
             # Medium-risk
             r'\bcmd\b': 'Windows command interpreter',
             r'\bsh\b': 'Shell execution',

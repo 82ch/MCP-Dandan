@@ -16,15 +16,15 @@ class FileSystemExposureEngine(BaseEngine):
     - User home directory exposure
     """
 
-    def __init__(self, logger):
+    def __init__(self, db):
         """
         Initialize File System Exposure Detection Engine
 
         Args:
-            logger: Logger instance
+            db: Database instance
         """
         super().__init__(
-            logger=logger,
+            db=db,
             name='FileSystemExposureEngine',
             event_types=['MCP', 'ProxyLog']
         )
@@ -225,31 +225,23 @@ class FileSystemExposureEngine(BaseEngine):
             if 'data' in data and isinstance(data['data'], dict):
                 mcp_data = data['data']
 
-                # Extract from message content
                 if 'message' in mcp_data and isinstance(mcp_data['message'], dict):
                     message = mcp_data['message']
 
-                    # Extract paths from params.arguments
+                    # Extract from params.arguments
                     if 'params' in message and isinstance(message['params'], dict):
                         params = message['params']
-
-                        # Recursive search in arguments
                         if 'arguments' in params and isinstance(params['arguments'], dict):
                             self._extract_paths_recursive(params['arguments'], paths)
 
-                    # Extract paths from result
+                    # Extract from result
                     if 'result' in message and isinstance(message['result'], dict):
                         result = message['result']
-
-                        # Extract from content array
                         if 'content' in result and isinstance(result['content'], list):
                             for item in result['content']:
                                 if isinstance(item, dict) and 'text' in item:
-                                    # Extract path patterns from text
                                     text_paths = self._find_paths_in_text(str(item['text']))
                                     paths.extend(text_paths)
-
-                        # Extract from structuredContent
                         if 'structuredContent' in result:
                             self._extract_paths_recursive(result['structuredContent'], paths)
 
@@ -257,18 +249,10 @@ class FileSystemExposureEngine(BaseEngine):
         elif event_type == 'ProxyLog':
             if 'data' in data and isinstance(data['data'], dict):
                 log_data = data['data']
-
-                # Extract from message
                 if 'message' in log_data:
-                    text_paths = self._find_paths_in_text(str(log_data['message']))
-                    paths.extend(text_paths)
-
-                # Extract from command
+                    paths.extend(self._find_paths_in_text(str(log_data['message'])))
                 if 'command' in log_data:
-                    text_paths = self._find_paths_in_text(str(log_data['command']))
-                    paths.extend(text_paths)
-
-                # Extract from args
+                    paths.extend(self._find_paths_in_text(str(log_data['command'])))
                 if 'args' in log_data:
                     self._extract_paths_recursive(log_data['args'], paths)
 
@@ -280,8 +264,7 @@ class FileSystemExposureEngine(BaseEngine):
         """
         if isinstance(obj, dict):
             for key, value in obj.items():
-                # Check if key name is path-related
-                if any(keyword in key.lower() for keyword in ['path', 'file', 'dir', 'directory', 'location', 'uri']):
+                if any(k in key.lower() for k in ['path', 'file', 'dir', 'directory', 'location', 'uri']):
                     if isinstance(value, str):
                         paths.append(value)
                     elif isinstance(value, (list, dict)):
@@ -292,9 +275,7 @@ class FileSystemExposureEngine(BaseEngine):
             for item in obj:
                 self._extract_paths_recursive(item, paths)
         elif isinstance(obj, str):
-            # Extract path patterns from string
-            text_paths = self._find_paths_in_text(obj)
-            paths.extend(text_paths)
+            paths.extend(self._find_paths_in_text(obj))
 
     def _find_paths_in_text(self, text: str) -> list[str]:
         """
@@ -302,22 +283,16 @@ class FileSystemExposureEngine(BaseEngine):
         """
         paths = []
 
-        # Windows path pattern (C:\Users\... or \\server\share\...)
         windows_pattern = r'(?:[A-Z]:\\|\\\\)[^\s<>"|?*\n]+'
-        windows_matches = re.finditer(windows_pattern, text)
-        for match in windows_matches:
+        for match in re.finditer(windows_pattern, text):
             paths.append(match.group(0))
 
-        # Unix/Linux path pattern (/home/user/... or ~/...)
         unix_pattern = r'(?:^|[\s"\'`])([/~][^\s<>"|?*\n]+)'
-        unix_matches = re.finditer(unix_pattern, text, re.MULTILINE)
-        for match in unix_matches:
+        for match in re.finditer(unix_pattern, text, re.MULTILINE):
             paths.append(match.group(1))
 
-        # Relative path pattern (./... or ../...)
         relative_pattern = r'\.{1,2}/[^\s<>"|?*\n]+'
-        relative_matches = re.finditer(relative_pattern, text)
-        for match in relative_matches:
+        for match in re.finditer(relative_pattern, text):
             paths.append(match.group(0))
 
         return paths
@@ -328,11 +303,9 @@ class FileSystemExposureEngine(BaseEngine):
         """
         found = []
         text_lower = text.lower()
-
         for keyword in self.sensitive_keywords:
             if keyword in text_lower:
                 found.append(keyword)
-
         return found
 
     def _get_reason(self, pattern: str, category: str) -> str:

@@ -43,12 +43,12 @@ class EngineServer:
 
         # Command Injection Engine
         if self.config.get_command_injection_enabled():
-            engine = CommandInjectionEngine(self.logger)
+            engine = CommandInjectionEngine(self.db)
             self.engines.append(engine)
 
         # File System Exposure Engine
         if self.config.get_file_system_exposure_enabled():
-            engine = FileSystemExposureEngine(self.logger)
+            engine = FileSystemExposureEngine(self.db)
             self.engines.append(engine)
 
         print(f"\n실행 중인 엔진:")
