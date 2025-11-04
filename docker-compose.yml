@@ -1,0 +1,19 @@
+services:
+  # 82ch-engine (Python 분석 엔진)
+  engine:
+    build: .
+    container_name: 82ch-engine
+    volumes:
+      - ./data:/app/data          # 데이터베이스 공유
+      - ./schema.sql:/app/schema.sql
+    ports:
+      - "5555:5555"                # ZeroMQ Publisher
+    environment:
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+    networks:
+      - 82ch-network
+
+networks:
+  82ch-network:
+    driver: bridge

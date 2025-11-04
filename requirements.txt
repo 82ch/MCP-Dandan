@@ -3,3 +3,12 @@ pyzmq>=25.0.0
 
 # 비동기 파일 I/O
 aiofiles>=23.0.0
+
+# 비동기 SQLite 데이터베이스
+aiosqlite>=0.19.0
+
+# Mistral AI (Semantic Gap Engine)
+mistralai>=1.0.0
+
+# 환경 변수 관리
+python-dotenv>=1.0.0

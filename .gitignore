@@ -141,3 +141,16 @@ readme.txt
 
 # config
 *.conf
+
+# Logs
+logs/
+*.jsonl
+
+# Database
+data/
+*.db
+*.db-shm
+*.db-wal
+
+.vs/
+.claude/

@@ -83,14 +83,14 @@ Output format (JSON only, no extra text):
 }
 """
 
-    def __init__(self, logger, detail_mode: bool = False):
+    def __init__(self, db, detail_mode: bool = False):
         """
         Args:
-            logger: Logger 인스턴스
+            db: Database 인스턴스
             detail_mode: True면 JSON 기반 세부 점수, False면 단일 점수 모드
         """
         super().__init__(
-            logger=logger,
+            db=db,
             name='SemanticGapEngine',
             event_types=None  # 모든 이벤트 처리
         )

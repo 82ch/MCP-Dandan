@@ -1,4 +1,15 @@
-## 82ch-Engine (Semantic gap Engine branch)
+## 82ch-Engine
+
+**Option 1**
+```
+.\setup.ps1
+```
+
+**Option 2**
+```bash
+pip install -r requirements.txt
+python engine_server.py
+```
 
 ### Data Flow
 ```

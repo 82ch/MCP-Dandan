@@ -4,17 +4,17 @@ from typing import Any
 
 class BaseEngine(ABC):
     """
-    모든 분석 엔진의 공통 기반 클래스 (Refactored - No Queue)
+    모든 분석 엔진의 공통 기반 클래스
     """
 
-    def __init__(self, logger, name: str, event_types: list[str] | None = None):
+    def __init__(self, db, name: str, event_types: list[str] | None = None):
         """
         Args:
-            logger: Logger 인스턴스
+            db: Database 인스턴스
             name: 엔진 이름
             event_types: 처리할 이벤트 타입 리스트 (None이면 모든 이벤트 처리)
         """
-        self.logger = logger
+        self.db = db
         self.name = name
         self.event_types = event_types or []
 
@@ -31,7 +31,7 @@ class BaseEngine(ABC):
         """
         실제 이벤트 분석 로직 — 하위 클래스에서 반드시 구현해야 함.
         """
-        pass
+        raise NotImplementedError
 
     async def handle_event(self, data: Any):
         """
@@ -44,7 +44,10 @@ class BaseEngine(ABC):
 
         try:
             result = self.process(data)
-            if result:
-                await self.logger.write(result)
+            return result
         except Exception as e:
-            print(f"[{self.name}] ERROR: {e}")
+            try:
+                print(f"[{self.name}] ERROR during processing: {e}")
+            except Exception:
+                pass
+            return None

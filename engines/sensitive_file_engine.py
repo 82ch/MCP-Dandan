@@ -11,14 +11,14 @@ class SensitiveFileEngine(BaseEngine):
     민감한 파일 접근을 탐지합니다.
     """
 
-    def __init__(self, logger):
+    def __init__(self, db):
         """
         민감 파일 탐지 엔진 초기화 (Queue 제거 버전)
         Args:
-            logger: Logger 인스턴스
+            db: Database 인스턴스
         """
         super().__init__(
-            logger=logger,
+            db=db,
             name='SensitiveFileEngine',
             event_types=['File']  # File 이벤트만 처리
         )
