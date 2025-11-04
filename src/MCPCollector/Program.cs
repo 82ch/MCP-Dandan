@@ -511,12 +511,25 @@ namespace Collector
 
                 if (root.TryGetProperty("data", out var dataElement2))
                 {
+                    // mcpTag를 data 안에 포함시키기 위해 data를 수정
+                    var dataDict = JsonSerializer.Deserialize<Dictionary<string, object>>(dataElement2.GetRawText());
+
+                    // 최상위 mcpTag가 있으면 data에 추가
+                    if (root.TryGetProperty("mcpTag", out var mcpTagElement) && !dataElement2.TryGetProperty("mcpTag", out _))
+                    {
+                        string mcpTag = mcpTagElement.GetString() ?? "";
+                        if (!string.IsNullOrEmpty(mcpTag))
+                        {
+                            dataDict["mcpTag"] = mcpTag;
+                        }
+                    }
+
                     var options = new JsonSerializerOptions
                     {
                         WriteIndented = true,
                         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
                     };
-                    string formattedData = JsonSerializer.Serialize(dataElement2, options);
+                    string formattedData = JsonSerializer.Serialize(dataDict, options);
 
                     var lines = formattedData.Split('\n');
                     foreach (var line in lines)

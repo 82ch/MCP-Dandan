@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -17,16 +18,79 @@ namespace MCPProxy
         private static Process? targetProcess;
         private static readonly object _collectorLock = new object();
         private static bool collectorAvailable = false;
+        private static string mcpTag = "";
 
         public static void Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
+
+            // MCP 태그 결정 (args 기반으로 서버 이름 추출)
+            mcpTag = DetermineMCPTag(args);
+            Console.Error.WriteLine($"[MCPProxy] Determined MCP Tag: '{mcpTag}'");
 
             // Collector 연결 시도 (비동기, 실패해도 계속 진행)
             TryInitCollector();
 
             // MCP 서버는 무조건 시작
             StartProxy(args);
+        }
+
+        /// <summary>
+        /// args로부터 MCP 서버 이름을 추론
+        /// </summary>
+        private static string DetermineMCPTag(string[] args)
+        {
+            if (args.Length == 0)
+                return "unknown";
+
+            // 전체 커맨드라인 문자열 생성
+            string fullCommand = string.Join(" ", args);
+
+            // 1. @modelcontextprotocol/server-XXX 패턴 매칭
+            var match = Regex.Match(
+                fullCommand,
+                @"@modelcontextprotocol[/\\]server-([a-zA-Z0-9_-]+)",
+                RegexOptions.IgnoreCase
+            );
+
+            if (match.Success)
+            {
+                return match.Groups[1].Value;
+            }
+
+            // 2. 실행 파일 이름에서 추출 시도
+            string command = args[0];
+            string fileName = Path.GetFileNameWithoutExtension(command);
+
+            // mcp-server-XXX 패턴
+            if (fileName.StartsWith("mcp-server-", StringComparison.OrdinalIgnoreCase))
+            {
+                return fileName.Substring("mcp-server-".Length);
+            }
+
+            // server-XXX 패턴
+            if (fileName.StartsWith("server-", StringComparison.OrdinalIgnoreCase))
+            {
+                return fileName.Substring("server-".Length);
+            }
+
+            // 3. args에 server 이름이 포함되어 있는지 확인
+            foreach (var arg in args)
+            {
+                if (arg.Contains("filesystem", StringComparison.OrdinalIgnoreCase))
+                    return "filesystem";
+                if (arg.Contains("weather", StringComparison.OrdinalIgnoreCase))
+                    return "weather";
+                if (arg.Contains("github", StringComparison.OrdinalIgnoreCase))
+                    return "github";
+                if (arg.Contains("brave", StringComparison.OrdinalIgnoreCase))
+                    return "brave-search";
+                if (arg.Contains("puppeteer", StringComparison.OrdinalIgnoreCase))
+                    return "puppeteer";
+            }
+
+            // 4. 실행 파일명 그대로 사용
+            return fileName;
         }
 
         /// <summary>
@@ -264,7 +328,7 @@ namespace MCPProxy
                 // 연결 확인 (실패해도 계속 진행)
                 if (!EnsureCollectorConnection()) return;
 
-                // 명세서에 맞는 형식
+                // 명세서에 맞는 형식 + mcpTag 추가
                 var envelope = new
                 {
                     ts = (DateTimeOffset.UtcNow.Ticks - DateTimeOffset.UnixEpoch.Ticks) * 100,
@@ -272,6 +336,7 @@ namespace MCPProxy
                     pid = targetProcess.Id,
                     pname = targetProcess.ProcessName,
                     eventType = "MCP",
+                    mcpTag = mcpTag,  // mcpTag 추가
                     data = new
                     {
                         task,
