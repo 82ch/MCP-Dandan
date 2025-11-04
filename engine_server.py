@@ -14,6 +14,7 @@ from logger import Logger
 from engines.sensitive_file_engine import SensitiveFileEngine
 from engines.semantic_gap_engine import SemanticGapEngine
 from engines.command_injection_engine import CommandInjectionEngine
+from engines.file_system_exposure_engine import FileSystemExposureEngine
 
 
 class EngineServer:
@@ -43,6 +44,11 @@ class EngineServer:
         # Command Injection Engine
         if self.config.get_command_injection_enabled():
             engine = CommandInjectionEngine(self.logger)
+            self.engines.append(engine)
+
+        # File System Exposure Engine
+        if self.config.get_file_system_exposure_enabled():
+            engine = FileSystemExposureEngine(self.logger)
             self.engines.append(engine)
 
         print(f"\n실행 중인 엔진:")

@@ -161,6 +161,15 @@ class ConfigLoader:
         """
         return self.config.getboolean('Engine', 'command_injection_enabled', fallback=True)
 
+    def get_file_system_exposure_enabled(self) -> bool:
+        """
+        File System Exposure Engine 활성화 여부
+
+        Returns:
+            bool: 활성화 여부 (기본값: True)
+        """
+        return self.config.getboolean('Engine', 'file_system_exposure_enabled', fallback=True)
+
     # ========== Log 설정 ==========
 
     def get_log_dir(self) -> str:

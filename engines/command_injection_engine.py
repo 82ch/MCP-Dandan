@@ -69,11 +69,11 @@ class CommandInjectionEngine(BaseEngine):
             r'%COMSPEC%',
             r'%SYSTEMROOT%',
 
-            # 파일 시스템 조작
-            r'\.\.[/\\]',  # 디렉토리 트래버설
-            r'/etc/passwd',
-            r'/etc/shadow',
-            r'C:\\Windows\\System32',
+            # 파일 시스템 조작 
+            # r'\.\.[/\\]',  # 디렉토리 트래버설
+            # r'/etc/passwd',
+            # r'/etc/shadow',
+            # r'C:\\Windows\\System32',
 
             # 스크립트 인젝션
             r'<script',
