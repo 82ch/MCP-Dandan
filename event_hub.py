@@ -114,6 +114,18 @@ class EventHub:
                 # 이벤트 타입별 추가 저장
                 if event_type.lower() in ['rpc', 'jsonrpc', 'mcp']:
                     await self.db.insert_rpc_event(event, raw_event_id)
+
+                    # if(mcp event) -> mcpl tool information extraction
+                    data = event.get('data', {})
+                    message = data.get('message', {})
+                    task = data.get('task', '')
+
+                    if task == 'RECV' and 'tools' in message.get('result', {}):
+                        count = await self.db.insert_mcpl()
+                        if count and count > 0:
+                            # print(f'mcpl {count}')
+                            pass
+
                 elif event_type.lower() in ['file', 'fileio']:
                     await self.db.insert_file_event(event, raw_event_id)
                 elif event_type.lower() == 'process':
@@ -141,11 +153,11 @@ class EventHub:
             # 엔진 결과 저장
             engine_result_id = await self.db.insert_engine_result(result, raw_event_id)
 
-            # Semantic Gap 결과인 경우 추가 저장
-            if engine_result_id and result_data.get('detector') == 'SemanticGap':
+            # Tools Poisoning 결과인 경우 추가 저장
+            if engine_result_id and result_data.get('detector') == 'ToolsPoisoning':
                 evaluation = result_data.get('evaluation')
                 if evaluation is not None:
-                    await self.db.insert_semantic_gap_result(
+                    await self.db.insert_tools_poisoning_result(
                         engine_result_id,
                         evaluation,
                         original_event

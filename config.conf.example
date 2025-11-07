@@ -8,7 +8,7 @@ zmq_address = tcp://localhost:5555
 [Engine]
 # 활성화할 엔진 설정
 sensitive_file_enabled = True
-semantic_gap_enabled = True
+tools_poisoning_enabled = True
 command_injection_enabled = True
 file_system_exposure_enabled = True
 

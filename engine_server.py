@@ -12,7 +12,7 @@ from event_hub import EventHub
 from zmq_source import ZeroMQSource
 from database import Database
 from engines.sensitive_file_engine import SensitiveFileEngine
-from engines.semantic_gap_engine import SemanticGapEngine
+from engines.tools_poisoning_engine import ToolsPoisoningEngine
 from engines.command_injection_engine import CommandInjectionEngine
 from engines.file_system_exposure_engine import FileSystemExposureEngine
 
@@ -33,9 +33,9 @@ class EngineServer:
             engine = SensitiveFileEngine(self.db)
             self.engines.append(engine)
 
-        # Semantic Gap Engine
-        if self.config.get_semantic_gap_enabled():
-            engine = SemanticGapEngine(
+        # Tools Poisoning Engine
+        if self.config.get_tools_poisoning_enabled():
+            engine = ToolsPoisoningEngine(
                 self.db,
                 detail_mode=False
             )

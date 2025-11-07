@@ -7,6 +7,7 @@ MCPCollector의 ZeroMQ Publisher로부터 이벤트를 수신합니다.
 import zmq
 import zmq.asyncio
 import json
+import logging
 from typing import Optional, Dict, Any
 
 
@@ -17,15 +18,33 @@ class ZeroMQSource:
     비동기 방식으로 ZeroMQ Subscriber를 구현합니다.
     """
     
-    def __init__(self, zmq_address: str = "tcp://localhost:5555"):
+    def __init__(self, zmq_address: str = "tcp://localhost:5555", log_file: str = "mcp_event.log"):
         """
         Args:
             zmq_address: ZeroMQ Publisher 주소
+            log_file: MCP 이벤트 로그 파일 경로
         """
         self.zmq_address = zmq_address
         self.context = None
         self.socket = None
         self.running = False
+
+        # MCP 이벤트 로거 설정
+        self.mcp_logger = logging.getLogger('mcp_events')
+        self.mcp_logger.setLevel(logging.INFO)
+
+        # 기존 핸들러 제거 (중복 방지)
+        self.mcp_logger.handlers.clear()
+
+        # 파일 핸들러 추가
+        file_handler = logging.FileHandler(log_file, encoding='utf-8')
+        file_handler.setLevel(logging.INFO)
+
+        # 포맷 설정
+        formatter = logging.Formatter('%(asctime)s - %(message)s')
+        file_handler.setFormatter(formatter)
+
+        self.mcp_logger.addHandler(file_handler)
     
     async def start(self):
         """ZeroMQ 연결 시작"""
@@ -88,13 +107,13 @@ class ZeroMQSource:
             if await self.socket.poll(timeout=int(timeout * 1000)):  # ms로 변환
                 # multipart 메시지 수신
                 message = await self.socket.recv_multipart()
-                
+
                 if len(message) < 2:
                     return None
-                
+
                 # topic은 무시, data만 사용
                 json_data = message[1].decode('utf-8')
-                
+
                 # JSON 파싱 및 검증
                 data = json.loads(json_data)
                 

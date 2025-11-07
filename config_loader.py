@@ -143,14 +143,14 @@ class ConfigLoader:
         """
         return self.config.getboolean('Engine', 'sensitive_file_enabled', fallback=True)
 
-    def get_semantic_gap_enabled(self) -> bool:
+    def get_tools_poisoning_enabled(self) -> bool:
         """
-        Semantic Gap Engine 활성화 여부
+        Tools Poisoning Engine 활성화 여부
 
         Returns:
             bool: 활성화 여부 (기본값: True)
         """
-        return self.config.getboolean('Engine', 'semantic_gap_enabled', fallback=True)
+        return self.config.getboolean('Engine', 'tools_poisoning_enabled', fallback=True)
 
     def get_command_injection_enabled(self) -> bool:
         """

@@ -146,6 +146,11 @@ class Database:
         try:
             data = event.get('data', {})
             ts = event.get('ts', 0)
+            # mcpTag 위치가 producer에 따라 다름
+            # - remote: data.mcpTag
+            # - local: event.mcpTag
+            mcptype = event.get('producer', 'unknown')
+            mcptag  = data.get('mcpTag', 'unknown')
 
             # MCP 이벤트는 data.message 안에 JSON-RPC 데이터가 있음
             message = data.get('message', {})
@@ -169,10 +174,10 @@ class Database:
             cursor = await self.conn.execute(
                 """
                 INSERT INTO rpc_events
-                (raw_event_id, ts, direction, method, message_id, params, result, error)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (raw_event_id, ts, mcptype, mcptag, direction, method, message_id, params, result, error)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (raw_event_id, ts, direction, method, message_id, params, result, error)
+                (raw_event_id, ts, mcptype, mcptag, direction, method, message_id, params, result, error)
             )
 
             await self.conn.commit()
@@ -305,66 +310,6 @@ class Database:
             return None
 
     # ========================================================================
-    # Semantic Gap 결과 저장
-    # ========================================================================
-
-    async def insert_semantic_gap_result(
-        self,
-        engine_result_id: int,
-        evaluation: Any,
-        original_event: Dict[str, Any]
-    ) -> Optional[int]:
-        """
-        Semantic Gap 분석 결과 삽입
-
-        Args:
-            engine_result_id: 연결된 engine_result ID
-            evaluation: 평가 결과 (int 또는 dict)
-            original_event: 원본 이벤트
-
-        Returns:
-            삽입된 결과의 ID
-        """
-        try:
-            # detail_mode인 경우 (dict)
-            if isinstance(evaluation, dict):
-                domain_match = evaluation.get('DomainMatch', 0)
-                operation_match = evaluation.get('OperationMatch', 0)
-                argument_specificity = evaluation.get('ArgumentSpecificity', 0)
-                consistency = evaluation.get('Consistency', 0)
-                penalties = json.dumps(evaluation.get('Penalties', []), ensure_ascii=False)
-                final_score = evaluation.get('Score', 0)
-            else:
-                # 단순 점수 모드
-                domain_match = None
-                operation_match = None
-                argument_specificity = None
-                consistency = None
-                penalties = None
-                final_score = int(evaluation) if evaluation else 0
-
-            tool_spec = json.dumps(original_event.get('data', {}).get('toolSpec'), ensure_ascii=False) if original_event.get('data', {}).get('toolSpec') else None
-            event_description = str(original_event)
-
-            cursor = await self.conn.execute(
-                """
-                INSERT INTO semantic_gap_results
-                (engine_result_id, domain_match, operation_match, argument_specificity,
-                 consistency, penalties, final_score, tool_spec, event_description)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (engine_result_id, domain_match, operation_match, argument_specificity,
-                 consistency, penalties, final_score, tool_spec, event_description)
-            )
-
-            await self.conn.commit()
-            return cursor.lastrowid
-
-        except Exception as e:
-            print(f'✗ semantic_gap_result 저장 실패: {e}')
-            return None
-
-    # ========================================================================
     # 조회 메서드
     # ========================================================================
 
@@ -393,34 +338,6 @@ class Database:
 
         except Exception as e:
             print(f'✗ 이벤트 조회 실패: {e}')
-            return []
-
-    async def get_high_semantic_gap_results(self, threshold: int = 80, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        고득점 Semantic Gap 결과 조회
-
-        Args:
-            threshold: 점수 임계값
-            limit: 조회할 결과 개수
-
-        Returns:
-            결과 목록
-        """
-        try:
-            async with self.conn.execute(
-                """
-                SELECT * FROM v_high_semantic_gap
-                WHERE final_score >= ?
-                LIMIT ?
-                """,
-                (threshold, limit)
-            ) as cursor:
-                rows = await cursor.fetchall()
-                columns = [description[0] for description in cursor.description]
-                return [dict(zip(columns, row)) for row in rows]
-
-        except Exception as e:
-            print(f'✗ Semantic Gap 결과 조회 실패: {e}')
             return []
 
     async def get_event_statistics(self) -> Dict[str, Any]:
@@ -461,3 +378,81 @@ class Database:
         except Exception as e:
             print(f'✗ 통계 조회 실패: {e}')
             return {}
+    
+    async def is_null_check(self, table_name: str) -> bool:
+        """
+        Table null check
+
+        Args:
+            table_name: Check table name
+
+        Returns:
+            True: table is null , False: table is not null
+        """
+        try:
+            # SQL Injection 방지 (none accept 발생시 allowed table에 추가)
+            allowed_tables = ['raw_events', 'rpc_events', 'file_events', 'process_events',
+                            'engine_results','mcpl']
+            if table_name not in allowed_tables:
+                print(f'none accept table name or type : {table_name}')
+                return True
+
+            query = f"SELECT NOT EXISTS (SELECT 1 FROM {table_name} LIMIT 1) as is_null"
+            async with self.conn.execute(query) as cursor:
+                row = await cursor.fetchone()
+                return bool(row[0]) if row else True
+
+        except Exception as e:
+            print(f'table check failed: {e}')
+            return True
+
+    async def insert_mcpl(self) -> Optional[int]:
+        """
+         Tool information Extraction in 'rpc_events' Table
+         (local + remote, ++tools duplication check)
+
+        Returns:
+            insert tools count
+        """
+        try:
+            cursor = await self.conn.execute(
+                """
+                WITH tool_data AS (
+                    SELECT
+                        e.mcpTag,
+                        e.mcptype,
+                        json_each.value AS tool
+                    FROM rpc_events e,
+                         json_each(json_extract(e.result, '$.tools'))
+                    WHERE 1=1
+                      AND e.mcptype IN ('remote', 'local')
+                      AND e.direction = 'Response'
+                      AND e.mcpTag IN (SELECT mcpTag FROM rpc_events WHERE method = 'tools/list')
+                      AND e.message_id = '1'
+                )
+                INSERT INTO mcpl (mcpTag, producer, tool, tool_title, tool_description, tool_parameter, annotations)
+                SELECT
+                    td.mcpTag,
+                    td.mcptype,
+                    json_extract(td.tool, '$.name'),
+                    json_extract(td.tool, '$.title'),
+                    json_extract(td.tool, '$.description'),
+                    json_extract(td.tool, '$.inputSchema'),
+                    json_extract(td.tool, '$.annotations')
+                FROM tool_data td
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM mcpl m
+                    WHERE m.mcpTag = td.mcpTag
+                      AND m.tool = json_extract(td.tool, '$.name')
+                )
+                """
+            )
+
+            await self.conn.commit()
+            inserted_count = cursor.rowcount
+            # print(f'{inserted_count} tools inserted into mcpl table.')
+            return inserted_count
+
+        except Exception as e:
+            print(f'mcpl insert failed : {e}')
+            return None
