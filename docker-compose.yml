@@ -1,0 +1,34 @@
+services:
+  # 웹 백엔드 (Node.js)
+  backend:
+    build: ./back
+    container_name: 82ch-backend
+    volumes:
+      - D:\82ch-engine\data:/app/data:ro  # Engine DB 공유 (read-only)
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/mcp_observer.db
+    restart: unless-stopped
+    networks:
+      - 82ch-network
+
+  # 프론트엔드 (React/Vue 등)
+  frontend:
+    build: ./front
+    container_name: 82ch-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - VITE_API_URL=http://backend:3001
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - 82ch-network
+
+networks:
+  82ch-network:
+    external: true  # 82ch-engine과 같은 네트워크 사용
