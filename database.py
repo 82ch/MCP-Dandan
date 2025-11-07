@@ -205,7 +205,11 @@ class Database:
             engine_name = result_data.get('detector', 'Unknown')
             severity = result_data.get('severity')
             score = result_data.get('evaluation') if isinstance(result_data.get('evaluation'), int) else None
-            detail = json.dumps(result_data, ensure_ascii=False)
+
+            # findings에서 reason만 추출
+            findings = result_data.get('findings', [])
+            reasons = [finding.get('reason', '') for finding in findings if isinstance(finding, dict)]
+            detail = json.dumps(reasons, ensure_ascii=False) if reasons else None
 
             print(f'[DB] insert_engine_result: engine={engine_name}, serverName={server_name}, severity={severity}')
 
