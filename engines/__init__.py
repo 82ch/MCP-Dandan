@@ -1,7 +1,3 @@
-"""
-Engines Module
-"""
-
 from .base_engine import BaseEngine
 from .sensitive_file_engine import SensitiveFileEngine
 from .tools_poisoning_engine import ToolsPoisoningEngine

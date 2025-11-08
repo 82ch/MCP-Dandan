@@ -4,19 +4,8 @@ import re
 
 
 class SensitiveFileEngine(BaseEngine):
-    """
-    민감 파일 탐지 엔진
-
-    File 이벤트를 분석하여 SSH 키, 암호화폐 지갑, 브라우저 쿠키 등
-    민감한 파일 접근을 탐지합니다.
-    """
 
     def __init__(self, db):
-        """
-        민감 파일 탐지 엔진 초기화 (Queue 제거 버전)
-        Args:
-            db: Database 인스턴스
-        """
         super().__init__(
             db=db,
             name='SensitiveFileEngine',
@@ -77,10 +66,6 @@ class SensitiveFileEngine(BaseEngine):
         self.medium_risk_regex = [re.compile(p, re.IGNORECASE) for p in self.medium_risk_patterns]
 
     def process(self, data: Any) -> Any:
-        """
-        File 이벤트를 분석하여 민감한 파일 접근 탐지
-        BaseEngine에서 이미 File 이벤트만 필터링되어 전달됩니다.
-        """
         print(f"[SensitiveFileEngine] 입력 데이터: {data}")
 
         # filePath 추출
@@ -153,7 +138,7 @@ class SensitiveFileEngine(BaseEngine):
                     'original_event': data
                 }
             }
-            print(f"[SensitiveFileEngine] ⚠️ 민감 파일 탐지! severity={severity}, file={file_path}")
+            print(f"[SensitiveFileEngine] 민감 파일 탐지! severity={severity}, file={file_path}")
             print(f"[SensitiveFileEngine] 탐지 결과: {result}")
             return result
 
@@ -161,7 +146,6 @@ class SensitiveFileEngine(BaseEngine):
         return None
 
     def _get_reason(self, pattern: str) -> str:
-        """패턴에 대한 사람이 읽을 수 있는 이유 반환"""
         reasons = {
             'ssh': 'SSH private key access',
             'wallet': 'Cryptocurrency wallet access',

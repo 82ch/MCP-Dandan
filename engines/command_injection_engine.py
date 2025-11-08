@@ -4,27 +4,13 @@ import re
 
 
 class CommandInjectionEngine(BaseEngine):
-    """
-    Command Injection 탐지 엔진
-
-    Process 및 ProxyLog 이벤트를 분석하여 잠재적인 Command Injection 공격을 탐지합니다.
-    - 쉘 메타문자 (;, |, &, $, `, etc.)
-    - 위험한 명령어 조합
-    - 파일 경로 조작 시도
-    - 환경변수 주입
-    """
 
     def __init__(self, db):
-        """
-        Command Injection 탐지 엔진 초기화
-
-        Args:
-            db: Database 인스턴스
-        """
         super().__init__(
             db=db,
             name='CommandInjectionEngine',
-            event_types=['MCP', 'ProxyLog']  # MCP 및 ProxyLog 이벤트 처리
+            event_types=['MCP'],  # MCP 이벤트 처리
+            producers=['local', 'remote']  # local과 remote producer만 검사
         )
 
         # Critical 패턴 (매우 위험)
@@ -118,9 +104,6 @@ class CommandInjectionEngine(BaseEngine):
         ]
 
     def process(self, data: Any) -> Any:
-        """
-        MCP 이벤트를 분석하여 Command Injection 시도 탐지
-        """
         print(f"[CommandInjectionEngine] 입력 데이터: {data}")
 
         # 분석할 텍스트 추출
@@ -135,7 +118,7 @@ class CommandInjectionEngine(BaseEngine):
         findings = []
         severity = 'none'
 
-        # Critical 패턴 검사
+        # Critical 패턴 검사 (maps to 'high' severity)
         for pattern in self.critical_regex:
             matches = pattern.finditer(analysis_text)
             for match in matches:
@@ -146,10 +129,11 @@ class CommandInjectionEngine(BaseEngine):
                     'position': match.span(),
                     'reason': self._get_reason(pattern.pattern, 'critical')
                 })
-                severity = 'critical'
+                if severity not in ['high']:
+                    severity = 'high'
 
-        # High-risk 패턴 검사
-        if severity != 'critical':
+        # High-risk 패턴 검사 (maps to 'high' severity)
+        if severity not in ['high']:
             for pattern in self.high_risk_regex:
                 matches = pattern.finditer(analysis_text)
                 for match in matches:
@@ -160,10 +144,10 @@ class CommandInjectionEngine(BaseEngine):
                         'position': match.span(),
                         'reason': self._get_reason(pattern.pattern, 'high')
                     })
-                    if severity != 'high':
+                    if severity not in ['high']:
                         severity = 'high'
 
-        # Medium-risk 패턴 검사
+        # Medium-risk 패턴 검사 (maps to 'medium' severity)
         if severity == 'none':
             for pattern in self.medium_risk_regex:
                 matches = pattern.finditer(analysis_text)
@@ -178,7 +162,7 @@ class CommandInjectionEngine(BaseEngine):
                     if severity != 'medium':
                         severity = 'medium'
 
-        # 위험한 명령어 체크
+        # 위험한 명령어 체크 (maps to 'high' severity)
         dangerous_found = self._check_dangerous_commands(analysis_text)
         if dangerous_found:
             for cmd in dangerous_found:
@@ -191,39 +175,64 @@ class CommandInjectionEngine(BaseEngine):
             if severity == 'none':
                 severity = 'high'
 
-        # 결과 반환
-        if len(findings) > 0:
-            references = []
-            if 'ts' in data:
-                references.append(f"id-{data['ts']}")
+        # severity가 'none'인 경우 (탐지되지 않음) None 반환
+        if severity == 'none':
+            print(f"[CommandInjectionEngine] 이상 없음, 탐지되지 않음\n")
+            return None
 
-            result = {
-                'detected': True,
-                'reference': references,
-                'result': {
-                    'detector': 'CommandInjection',
-                    'severity': severity,
-                    'findings': findings,
-                    'event_type': data.get('eventType', 'Unknown'),
-                    'analysis_text': analysis_text[:500],
-                    'original_event': data
-                }
+        # Calculate score based on severity and findings count
+        score = self._calculate_score(severity, len(findings))
+
+        # 결과 반환 (탐지된 경우만 반환)
+        references = []
+        if 'ts' in data:
+            references.append(f"id-{data['ts']}")
+
+        result = {
+            'reference': references,
+            'result': {
+                'detector': 'CommandInjection',
+                'severity': severity,
+                'evaluation': score,
+                'findings': findings,
+                'event_type': data.get('eventType', 'Unknown'),
+                'analysis_text': analysis_text[:500] if analysis_text else '',
+                'original_event': data
             }
-            print(f"[CommandInjectionEngine] ⚠️ Command Injection 의심! severity={severity}")
-            print(f"[CommandInjectionEngine] 탐지 결과: {len(findings)}개 발견\n")
-            return result
+        }
 
-        print(f"[CommandInjectionEngine] 이상 없음\n")
-        return None
+        print(f"[CommandInjectionEngine] Command Injection 의심! severity={severity}, score={score}")
+        print(f"[CommandInjectionEngine] 탐지 결과: {len(findings)}개 발견\n")
+
+        return result
+
+    def _calculate_score(self, severity: str, findings_count: int) -> int:
+        """
+        Calculate risk score based on severity and number of findings
+        Score range: 0-100
+        """
+        # Base score by severity
+        base_scores = {
+            'high': 85,
+            'medium': 50,
+            'low': 20,
+            'none': 0
+        }
+
+        base_score = base_scores.get(severity, 0)
+
+        # Add points for multiple findings (max +15 points)
+        findings_bonus = min(findings_count * 3, 15)
+
+        total_score = min(base_score + findings_bonus, 100)
+
+        return total_score
 
     def _extract_analysis_text(self, data: dict) -> str:
-        """
-        이벤트 데이터에서 분석할 텍스트를 추출합니다.
-        """
-        event_type = data.get('eventType', '')
+        producer = data.get('producer', '')
 
-        # MCP 이벤트
-        if event_type == 'MCP':
+        # local 또는 remote producer만 처리
+        if producer in ['local', 'remote']:
             texts = []
 
             if 'data' in data and isinstance(data['data'], dict):
@@ -260,28 +269,9 @@ class CommandInjectionEngine(BaseEngine):
 
             return ' '.join(texts)
 
-        # ProxyLog 이벤트
-        elif event_type == 'ProxyLog':
-            texts = []
-
-            if 'data' in data and isinstance(data['data'], dict):
-                log_data = data['data']
-
-                if 'message' in log_data:
-                    texts.append(str(log_data['message']))
-                if 'command' in log_data:
-                    texts.append(str(log_data['command']))
-                if 'args' in log_data:
-                    texts.append(str(log_data['args']))
-
-            return ' '.join(texts)
-
-        return str(data)
+        return ''
 
     def _check_dangerous_commands(self, text: str) -> list[str]:
-        """
-        텍스트에서 위험한 명령어를 찾습니다.
-        """
         found = []
         text_lower = text.lower()
 
@@ -293,9 +283,6 @@ class CommandInjectionEngine(BaseEngine):
         return found
 
     def _get_reason(self, pattern: str, category: str) -> str:
-        """
-        패턴에 대한 설명을 반환합니다.
-        """
         reasons = {
             r';\s*(rm|del|format|mkfs)': 'Command chaining with destructive operation',
             r'\|\s*(rm|del|format|mkfs)': 'Pipe to destructive command',

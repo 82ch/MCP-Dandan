@@ -3,43 +3,31 @@ from typing import Any
 
 
 class BaseEngine(ABC):
-    """
-    모든 분석 엔진의 공통 기반 클래스
-    """
 
-    def __init__(self, db, name: str, event_types: list[str] | None = None):
-        """
-        Args:
-            db: Database 인스턴스
-            name: 엔진 이름
-            event_types: 처리할 이벤트 타입 리스트 (None이면 모든 이벤트 처리)
-        """
+    def __init__(self, db, name: str, event_types: list[str] | None = None, producers: list[str] | None = None):
         self.db = db
         self.name = name
         self.event_types = event_types or []
+        self.producers = producers or []
 
     def should_process(self, data: dict) -> bool:
-        """
-        엔진이 해당 이벤트를 처리해야 하는지 여부를 결정.
-        EventHub에서 호출됨.
-        """
-        if not self.event_types:
-            return True  # 모든 이벤트 처리
-        return data.get("eventType") in self.event_types
+        # event_types 필터링
+        if self.event_types and data.get("eventType") not in self.event_types:
+            return False
+
+        # producers 필터링
+        if self.producers and data.get("producer") not in self.producers:
+            return False
+
+        return True
+
     @abstractmethod
     def process(self, data: Any) -> Any:
-        """
-        실제 이벤트 분석 로직 — 하위 클래스에서 반드시 구현해야 함.
-        """
         raise NotImplementedError
 
     async def handle_event(self, data: Any):
-        """
-        공통 이벤트 처리 진입점.
-        event_types 필터링 후 process() 호출.
-        """
-        # 이벤트 타입 필터링
-        if self.event_types and data.get('eventType') not in self.event_types:
+        # 필터링 체크
+        if not self.should_process(data):
             return None
 
         try:

@@ -1,31 +1,9 @@
-"""
-Event Hub - 이벤트 수신 및 분배
-
-- ZeroMQ에서 이벤트 수신
-- 모든 엔진에 병렬 처리 요청
-- 결과를 로거에 전달
-"""
-
 import asyncio
 from typing import List, Optional, Dict, Any
 
 
 class EventHub:
-    """
-    이벤트 허브
-
-    1. EventSource에서 이벤트 수신
-    2. 모든 엔진에 병렬로 전달 (asyncio.gather)
-    3. 데이터베이스에 이벤트 및 결과 저장
-    """
-
     def __init__(self, source, engines: List, db):
-        """
-        Args:
-            source: 이벤트 소스 (ZeroMQSource 등)
-            engines: 분석 엔진 리스트
-            db: 데이터베이스
-        """
         self.source = source
         self.engines = engines
         self.db = db
@@ -33,22 +11,20 @@ class EventHub:
         self.event_id_map = {}  # {event_ts: raw_event_id} - 이벤트와 결과 연결용
         
     async def start(self):
-        """이벤트 허브 시작"""
         self.running = True
         
         # 이벤트 소스 시작
         await self.source.start()
         
-        print('✓ EventHub 시작됨')
+        print('EventHub 시작됨')
         
         # 메인 이벤트 루프
         await self._event_loop()
     
     async def stop(self):
-        """이벤트 허브 중지"""
         self.running = False
         await self.source.stop()
-        print('✓ EventHub 중지됨')
+        print('EventHub 중지됨')
     
     async def _event_loop(self):
         """
@@ -96,12 +72,6 @@ class EventHub:
                 await asyncio.sleep(0.1)
     
     async def _save_event(self, event: Dict[str, Any]):
-        """
-        데이터베이스에 이벤트 저장
-
-        Args:
-            event: 이벤트 데이터
-        """
         try:
             event_type = event.get('eventType', 'Unknown')
 
@@ -132,15 +102,9 @@ class EventHub:
                     await self.db.insert_process_event(event, raw_event_id)
 
         except Exception as e:
-            print(f'✗ 이벤트 저장 오류: {e}')
+            print(f'이벤트 저장 오류: {e}')
 
     async def _save_result(self, result: Dict[str, Any]):
-        """
-        데이터베이스에 엔진 결과 저장
-
-        Args:
-            result: 엔진 처리 결과
-        """
         try:
             # 원본 이벤트의 ts를 찾아서 raw_event_id 매핑
             raw_event_id = None
@@ -149,6 +113,9 @@ class EventHub:
 
             if 'ts' in original_event:
                 raw_event_id = self.event_id_map.get(original_event['ts'])
+
+            # mcpTag (serverName) 추출
+            server_name = original_event.get('mcpTag')
 
             # 엔진 결과 저장
             engine_result_id = await self.db.insert_engine_result(result, raw_event_id)
@@ -163,23 +130,20 @@ class EventHub:
                         original_event
                     )
 
+            if not engine_result_id:
+                print(f'✗ engine_result 저장 실패 - engine_result_id가 None')
+                return
+
+            detector = result_data.get('detector')
+            print(f'✓ engine_result 저장 성공 (id={engine_result_id}, detector={detector}, serverName={server_name})')
+
         except Exception as e:
-            print(f'✗ 결과 저장 오류: {e}')
+            print(f'결과 저장 오류: {e}')
 
     async def _process_with_engine(self, engine, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """
-        엔진으로 이벤트 처리
-
-        Args:
-            engine: 분석 엔진
-            event: 이벤트 데이터
-
-        Returns:
-            처리 결과 (없으면 None)
-        """
         try:
             result = await engine.handle_event(event)
             return result
         except Exception as e:
-            print(f'✗ [{engine.name}] 처리 오류: {e}')
+            print(f' [{engine.name}] 처리 오류: {e}')
             return None

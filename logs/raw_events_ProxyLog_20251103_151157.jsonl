@@ -1,5 +1,0 @@
-{"ts": 1762150317747000000, "producer": "local", "pid": 27676, "pname": "uv", "eventType": "ProxyLog", "data": {"type": "server_stderr", "message": "[11/03/25 15:11:57] INFO     Processing request of type           server.py:624"}}
-{"ts": 1762150317748000000, "producer": "local", "pid": 27676, "pname": "uv", "eventType": "ProxyLog", "data": {"type": "server_stderr", "message": "                             CallToolRequest                                   "}}
-{"ts": 1762150318633000000, "producer": "local", "pid": 27676, "pname": "uv", "eventType": "ProxyLog", "data": {"type": "server_stderr", "message": "[11/03/25 15:11:58] INFO     HTTP Request: GET                  _client.py:1740"}}
-{"ts": 1762150318633000000, "producer": "local", "pid": 27676, "pname": "uv", "eventType": "ProxyLog", "data": {"type": "server_stderr", "message": "                             https://api.weather.gov/alerts/act                "}}
-{"ts": 1762150318634000000, "producer": "local", "pid": 27676, "pname": "uv", "eventType": "ProxyLog", "data": {"type": "server_stderr", "message": "                             ive/area/MI \"HTTP/1.1 200 OK\"                     "}}

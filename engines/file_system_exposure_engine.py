@@ -1,32 +1,16 @@
-# -*- coding: utf-8 -*-
 from engines.base_engine import BaseEngine
 from typing import Any
 import re
 
 
 class FileSystemExposureEngine(BaseEngine):
-    """
-    File System Exposure Detection Engine
-
-    Analyzes MCP and ProxyLog events to detect file system exposure risks.
-    - Sensitive directory path exposure
-    - Absolute path usage
-    - Parent directory traversal
-    - System directory access
-    - User home directory exposure
-    """
 
     def __init__(self, db):
-        """
-        Initialize File System Exposure Detection Engine
-
-        Args:
-            db: Database instance
-        """
         super().__init__(
             db=db,
             name='FileSystemExposureEngine',
-            event_types=['MCP', 'ProxyLog']
+            event_types=['MCP'],
+            producers=['local', 'remote']  # local과 remote producer만 검사
         )
 
         # Critical patterns (very dangerous system paths)
@@ -112,9 +96,6 @@ class FileSystemExposureEngine(BaseEngine):
         ]
 
     def process(self, data: Any) -> Any:
-        """
-        Analyze MCP or ProxyLog events to detect File System Exposure
-        """
         print(f"[FileSystemExposureEngine] Input data: {data}")
 
         # Extract paths to analyze
@@ -131,7 +112,7 @@ class FileSystemExposureEngine(BaseEngine):
 
         # Check each path
         for path in paths:
-            # Critical pattern check
+            # Critical pattern check (maps to 'high' severity)
             for pattern in self.critical_regex:
                 matches = pattern.finditer(path)
                 for match in matches:
@@ -142,10 +123,11 @@ class FileSystemExposureEngine(BaseEngine):
                         'full_path': path,
                         'reason': self._get_reason(pattern.pattern, 'critical')
                     })
-                    severity = 'critical'
+                    if severity not in ['high']:
+                        severity = 'high'
 
-            # High-risk pattern check
-            if severity != 'critical':
+            # High-risk pattern check (maps to 'high' severity)
+            if severity not in ['high']:
                 for pattern in self.high_risk_regex:
                     matches = pattern.finditer(path)
                     for match in matches:
@@ -156,10 +138,10 @@ class FileSystemExposureEngine(BaseEngine):
                             'full_path': path,
                             'reason': self._get_reason(pattern.pattern, 'high')
                         })
-                        if severity != 'high':
+                        if severity not in ['high']:
                             severity = 'high'
 
-            # Medium-risk pattern check
+            # Medium-risk pattern check (maps to 'medium' severity)
             if severity == 'none':
                 for pattern in self.medium_risk_regex:
                     matches = pattern.finditer(path)
@@ -174,7 +156,7 @@ class FileSystemExposureEngine(BaseEngine):
                         if severity != 'medium':
                             severity = 'medium'
 
-            # Sensitive keyword check
+            # Sensitive keyword check (maps to 'high' severity)
             keyword_found = self._check_sensitive_keywords(path)
             if keyword_found:
                 for keyword in keyword_found:
@@ -188,40 +170,68 @@ class FileSystemExposureEngine(BaseEngine):
                 if severity == 'none':
                     severity = 'high'
 
-        # Return result
-        if len(findings) > 0:
-            references = []
-            if 'ts' in data:
-                references.append(f"id-{data['ts']}")
+        # severity가 'none'인 경우 (탐지되지 않음) None 반환
+        if severity == 'none':
+            print(f"[FileSystemExposureEngine] No issues found, 탐지되지 않음\n")
+            return None
 
-            result = {
-                'detected': True,
-                'reference': references,
-                'result': {
-                    'detector': 'FileSystemExposure',
-                    'severity': severity,
-                    'findings': findings,
-                    'event_type': data.get('eventType', 'Unknown'),
-                    'exposed_paths': paths,
-                    'original_event': data
-                }
+        # Calculate score based on severity and findings count
+        score = self._calculate_score(severity, len(findings))
+
+        # Return result (탐지된 경우만 반환)
+        references = []
+        if 'ts' in data:
+            references.append(f"id-{data['ts']}")
+
+        result = {
+            'reference': references,
+            'result': {
+                'detector': 'FileSystemExposure',
+                'severity': severity,
+                'evaluation': score,
+                'findings': findings,
+                'event_type': data.get('eventType', 'Unknown'),
+                'exposed_paths': paths,
+                'original_event': data
             }
-            print(f"[FileSystemExposureEngine] WARNING - File System Exposure detected! severity={severity}")
-            print(f"[FileSystemExposureEngine] Detection result: {len(findings)} findings\n")
-            return result
+        }
 
-        print(f"[FileSystemExposureEngine] No issues found\n")
-        return None
+        print(f"[FileSystemExposureEngine] WARNING - File System Exposure detected! severity={severity}, score={score}")
+        print(f"[FileSystemExposureEngine] Detection result: {len(findings)} findings\n")
+
+        return result
+
+    def _calculate_score(self, severity: str, findings_count: int) -> int:
+        """
+        Calculate risk score based on severity and number of findings
+        Score range: 0-100
+        """
+        # Base score by severity
+        base_scores = {
+            'high': 80,
+            'medium': 50,
+            'low': 20,
+            'none': 0
+        }
+
+        base_score = base_scores.get(severity, 0)
+
+        # Add points for multiple findings (max +20 points)
+        findings_bonus = min(findings_count * 4, 20)
+
+        total_score = min(base_score + findings_bonus, 100)
+
+        return total_score
 
     def _extract_paths(self, data: dict) -> list[str]:
         """
         Extract file paths from event data
         """
         paths = []
-        event_type = data.get('eventType', '')
+        producer = data.get('producer', '')
 
-        # MCP event
-        if event_type == 'MCP':
+        # local 또는 remote producer만 처리
+        if producer in ['local', 'remote']:
             if 'data' in data and isinstance(data['data'], dict):
                 mcp_data = data['data']
 
@@ -245,23 +255,9 @@ class FileSystemExposureEngine(BaseEngine):
                         if 'structuredContent' in result:
                             self._extract_paths_recursive(result['structuredContent'], paths)
 
-        # ProxyLog event
-        elif event_type == 'ProxyLog':
-            if 'data' in data and isinstance(data['data'], dict):
-                log_data = data['data']
-                if 'message' in log_data:
-                    paths.extend(self._find_paths_in_text(str(log_data['message'])))
-                if 'command' in log_data:
-                    paths.extend(self._find_paths_in_text(str(log_data['command'])))
-                if 'args' in log_data:
-                    self._extract_paths_recursive(log_data['args'], paths)
-
         return list(set(paths))  # Remove duplicates
 
     def _extract_paths_recursive(self, obj: Any, paths: list):
-        """
-        Recursively extract paths from object
-        """
         if isinstance(obj, dict):
             for key, value in obj.items():
                 if any(k in key.lower() for k in ['path', 'file', 'dir', 'directory', 'location', 'uri']):
@@ -278,9 +274,6 @@ class FileSystemExposureEngine(BaseEngine):
             paths.extend(self._find_paths_in_text(obj))
 
     def _find_paths_in_text(self, text: str) -> list[str]:
-        """
-        Find path patterns in text
-        """
         paths = []
 
         windows_pattern = r'(?:[A-Z]:\\|\\\\)[^\s<>"|?*\n]+'
@@ -298,9 +291,6 @@ class FileSystemExposureEngine(BaseEngine):
         return paths
 
     def _check_sensitive_keywords(self, text: str) -> list[str]:
-        """
-        Find sensitive keywords in text
-        """
         found = []
         text_lower = text.lower()
         for keyword in self.sensitive_keywords:
@@ -309,9 +299,6 @@ class FileSystemExposureEngine(BaseEngine):
         return found
 
     def _get_reason(self, pattern: str, category: str) -> str:
-        """
-        Return description for pattern
-        """
         reasons = {
             # Critical
             r'C:\\Windows\\System32': 'Windows System32 directory exposure',

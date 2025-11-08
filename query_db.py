@@ -1,8 +1,3 @@
-"""
-데이터베이스 조회 스크립트
-사용법: python query_db.py
-"""
-
 import asyncio
 import json
 from database import Database
@@ -20,8 +15,8 @@ async def main():
     print("=" * 80)
     print()
 
-    # 1. 통계 조회
-    print("📊 전체 통계:")
+    # 통계 조회
+    print("전체 통계:")
     print("-" * 80)
     stats = await db.get_event_statistics()
     print(f"총 이벤트 수: {stats.get('total_events', 0):,}")
@@ -29,33 +24,67 @@ async def main():
     print()
 
     print("이벤트 타입별 통계:")
-    by_type = stats.get('by_type', {})
+    by_type = stats.get("by_type", {})
     for event_type, count in sorted(by_type.items(), key=lambda x: x[1], reverse=True):
         print(f"  {event_type:20s}: {count:,}")
     print()
 
-    # 2. 최근 이벤트 조회
-    print("📝 최근 이벤트 (10개):")
+    # Remote MCP 해시 → 서버 이름 매핑
+    remote_server_map = {}
+    async with db.conn.execute(
+        """
+        SELECT mcpTag, data
+        FROM raw_events
+        WHERE producer = 'remote' AND event_type = 'MCP'
+        """
+    ) as cursor:
+        rows = await cursor.fetchall()
+        for mcp_tag, data_str in rows:
+            if not mcp_tag or not data_str:
+                continue
+            try:
+                data = json.loads(data_str)
+                msg = data.get("message", {})
+                result = msg.get("result", {})
+                server_info = result.get("serverInfo", {})
+                name = server_info.get("name")
+                if name:
+                    remote_server_map[mcp_tag] = name
+            except Exception:
+                continue
+
+    # 최근 이벤트 조회
+    print("최근 이벤트 (10개):")
     print("-" * 80)
     recent = await db.get_recent_events(limit=10)
     for event in recent:
-        ts = event['ts']
+        ts = event["ts"]
         try:
             unix_timestamp = (ts / 10000000) - 62135596800
             dt = datetime.fromtimestamp(unix_timestamp)
-            time_str = dt.strftime('%Y-%m-%d %H:%M:%S')
+            time_str = dt.strftime("%Y-%m-%d %H:%M:%S")
         except (OSError, ValueError):
             time_str = f"ts={ts}"
 
-        print(f"[{event['id']:4d}] {time_str} | "
-              f"{event['event_type']:15s} | {event['producer']:8s} | {event.get('mcpTag', '-')}")
+        mcp_tag = event.get("mcpTag", "-")
+        producer = event["producer"]
+        event_type = event["event_type"]
+
+        # Remote MCP만 이름 치환
+        if producer == "remote" and event_type == "MCP" and mcp_tag in remote_server_map:
+            mcp_tag = remote_server_map[mcp_tag]
+
+        print(
+            f"[{event['id']:4d}] {time_str} | "
+            f"{event_type:15s} | {producer:8s} | {mcp_tag}"
+        )
     print()
 
     # 4. RPC Request-Response 통계
     print("🔌 RPC Request-Response 통계:")
     print("-" * 80)
-
-    # Step 1. initialize 응답에서 서버 정보 추출 (PID 기반 매핑)
+    
+    # initialize 응답에서 서버 정보 추출
     pid_to_server = {}
     async with db.conn.execute(
         """
@@ -82,7 +111,7 @@ async def main():
                 except json.JSONDecodeError:
                     pass
 
-    # Step 2. message_id → 서버 이름 매핑 (initialize 기반)
+    # message_id → 서버 이름 매핑
     message_id_to_server = {}
     async with db.conn.execute(
         """
@@ -116,7 +145,7 @@ async def main():
             if server_name:
                 message_id_to_server[message_id] = server_name
 
-    # Step 2.5. tools/list 응답 기반 동적 시그니처 학습
+    # tools/list 응답 기반 동적 시그니처 학습
     tool_to_server_counts = defaultdict(Counter)
     async with db.conn.execute(
         """
@@ -148,7 +177,7 @@ async def main():
             except json.JSONDecodeError:
                 continue
 
-    # Step 3. 동적 도구 기반 서버 식별 함수
+    # 동적 도구 기반 서버 식별 함수
     def identify_server_by_tools(tools: list) -> str:
         if not tools:
             return "Unknown"
@@ -163,7 +192,7 @@ async def main():
         best_server, _ = max(total.items(), key=lambda kv: (kv[1], kv[0] or ""))
         return best_server or "Unknown"
 
-    # Step 4. Request 통계 출력
+    # Request 통계 출력
     async with db.conn.execute(
         """
         SELECT method, COUNT(*) AS count
@@ -181,124 +210,109 @@ async def main():
             print(f"\n📤 {method} ({count:,} requests)")
             async with db.conn.execute(
                 """
-                SELECT 
-                    r_resp.result, 
-                    r_req.params, 
-                    raw_resp.pid,
-                    raw_resp.mcpTag,
-                    r_req.message_id
+                SELECT r_resp.result,
+                       r_req.params,
+                       raw_resp.producer,
+                       raw_resp.event_type,
+                       raw_resp.mcpTag
                 FROM rpc_events r_req
-                LEFT JOIN raw_events raw_req
-                    ON r_req.raw_event_id = raw_req.id
                 LEFT JOIN rpc_events r_resp
                     ON r_req.message_id = r_resp.message_id
                    AND r_resp.direction = 'Response'
                 LEFT JOIN raw_events raw_resp
                     ON r_resp.raw_event_id = raw_resp.id
-                WHERE r_req.method = ? 
+                WHERE r_req.method = ?
                   AND r_req.direction = 'Request'
                   AND r_resp.result IS NOT NULL
                 GROUP BY LENGTH(r_resp.result)
                 ORDER BY LENGTH(r_resp.result) DESC
                 LIMIT 10
                 """,
-                (method,)
+                (method,),
             ) as detail_cursor:
                 details = await detail_cursor.fetchall()
 
-                if details:
-                    for idx, detail in enumerate(details):
-                        result_json = json.loads(detail[0]) if detail[0] else None
-                        params_json = json.loads(detail[1]) if detail[1] else {}
-                        pid = detail[2]
-                        mcp_tag = detail[3] or "Unknown"
-                        message_id = detail[4]
+                if not details:
+                    print("  └─ No matching response found")
+                    continue
 
-                        if idx == 0 and params_json:
-                            params_str = json.dumps(params_json, ensure_ascii=False, indent=2)
-                            print(f"  └─ Params:\n{params_str}")
+                for idx, detail in enumerate(details):
+                    result_json = json.loads(detail[0]) if detail[0] else None
+                    params_json = json.loads(detail[1]) if detail[1] else {}
+                    producer = detail[2]
+                    event_type = detail[3]
+                    mcp_tag = detail[4] or "Unknown"
 
-                        if result_json:
-                            prefix = "  └─" if idx == 0 else "  ├─"
-                            server_name = "Unknown"
+                    if idx == 0 and params_json:
+                        print("  └─ Params:")
+                        print(json.dumps(params_json, ensure_ascii=False, indent=2))
 
-                            if mcp_tag and mcp_tag != "Unknown":
-                                server_name = mcp_tag
-                            elif message_id in message_id_to_server:
-                                server_name = message_id_to_server[message_id]
-                            elif pid in pid_to_server:
-                                server_name = pid_to_server[pid]
-                            elif 'serverInfo' in result_json:
-                                server_name = result_json['serverInfo'].get('name', 'Unknown')
-                            elif 'tools' in result_json:
-                                server_name = identify_server_by_tools(result_json['tools'])
+                    if result_json:
+                        prefix = "  └─" if idx == 0 else "  ├─"
 
-                            if 'tools' in result_json:
-                                tools = result_json['tools']
-                                if tools:
-                                    print(f"{prefix} Response [{server_name}]: {len(tools)} tools")
-                                    for tool in tools[:5]:
-                                        print(f"      • {tool.get('name', 'unknown')}")
-                                    if len(tools) > 5:
-                                        print(f"      • ... and {len(tools) - 5} more")
-                                else:
-                                    print(f"{prefix} Response [{server_name}]: No tools available")
-                            elif 'resources' in result_json:
-                                resources = result_json['resources']
-                                if resources:
-                                    print(f"{prefix} Response [{server_name}]: {len(resources)} resources")
-                                    for resource in resources[:3]:
-                                        print(f"      • {resource.get('name', 'unknown')}")
-                                else:
-                                    print(f"{prefix} Response [{server_name}]: No resources available")
-                            elif 'prompts' in result_json:
-                                prompts = result_json['prompts']
-                                if prompts:
-                                    print(f"{prefix} Response [{server_name}]: {len(prompts)} prompts")
-                                    for prompt in prompts[:3]:
-                                        print(f"      • {prompt.get('name', 'unknown')}")
-                                else:
-                                    print(f"{prefix} Response [{server_name}]: No prompts available")
-                            elif method == "tools/call":
-                                # tools/call 요청은 호출된 MCP 서버와 툴 이름만 요약 출력
-                                params = params_json or {}
-                                tool_name = params.get("name", "unknown_tool")
-                                args = params.get("arguments", {})
-                                arg_summary = ", ".join(f"{k}={v}" for k, v in args.items())
-                                print(f"{prefix} Called [{server_name}]: {tool_name}({arg_summary})")
-                            elif 'protocolVersion' in result_json:
-                                server_info = result_json.get('serverInfo', {})
-                                print(f"{prefix} Response [{server_name}]: v{server_info.get('version', '')}")
+                        # Remote MCP만 이름 치환
+                        server_name = mcp_tag
+                        if producer == "remote" and event_type == "MCP":
+                            if mcp_tag in remote_server_map:
+                                server_name = remote_server_map[mcp_tag]
+
+                        if "tools" in result_json:
+                            tools = result_json["tools"]
+                            if tools:
+                                print(f"{prefix} Response [{server_name}]: {len(tools)} tools")
+                                for tool in tools[:5]:
+                                    print(f"      • {tool.get('name', 'unknown')}")
+                                if len(tools) > 5:
+                                    print(f"      • ... and {len(tools) - 5} more")
                             else:
-                                print(f"{prefix} Response [{server_name}]: {list(result_json.keys())}")
-                else:
-                    print(f"  └─ No matching response found")
+                                print(f"{prefix} Response [{server_name}]: No tools available")
+                        elif "resources" in result_json:
+                            resources = result_json["resources"]
+                            if resources:
+                                print(f"{prefix} Response [{server_name}]: {len(resources)} resources")
+                                for resource in resources[:3]:
+                                    print(f"      • {resource.get('name', 'unknown')}")
+                            else:
+                                print(f"{prefix} Response [{server_name}]: No resources available")
+                        elif "prompts" in result_json:
+                            prompts = result_json["prompts"]
+                            if prompts:
+                                print(f"{prefix} Response [{server_name}]: {len(prompts)} prompts")
+                                for prompt in prompts[:3]:
+                                    print(f"      • {prompt.get('name', 'unknown')}")
+                            else:
+                                print(f"{prefix} Response [{server_name}]: No prompts available")
+                        elif "protocolVersion" in result_json:
+                            server_info = result_json.get("serverInfo", {})
+                            version = server_info.get("version", "")
+                            print(f"{prefix} Response [{server_name}]: v{version}")
+                        else:
+                            print(f"{prefix} Response [{server_name}]: {list(result_json.keys())}")
     else:
         print("  (결과 없음)")
     print()
 
-    # 5. 파일 이벤트 조회
-    print("📁 파일 작업 통계:")
+    # 파일 작업 통계
+    print("파일 작업 통계:")
     print("-" * 80)
     async with db.conn.execute(
         """
-        SELECT operation, COUNT(*) AS count
+        SELECT operation, COUNT(*) AS cnt
         FROM file_events
         GROUP BY operation
-        ORDER BY count DESC
+        ORDER BY cnt DESC
         """
     ) as cursor:
         rows = await cursor.fetchall()
         if rows:
-            for row in rows:
-                operation, count = row
-                print(f"  {operation:20s}: {count:,}")
+            for op, count in rows:
+                print(f"  {op:20s}: {count:,}")
         else:
             print("  (결과 없음)")
     print()
 
-    # 6. 엔진별 탐지 통계
-    print("🔍 엔진별 탐지 통계:")
+    # 엔진별 탐지 통계
+    print("엔진별 탐지 통계:")
     print("-" * 80)
     async with db.conn.execute(
         """

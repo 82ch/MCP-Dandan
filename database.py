@@ -1,12 +1,3 @@
-"""
-SQLite Database Manager for 82ch-engine
-
-비동기 SQLite 데이터베이스 관리 모듈
-- 이벤트 저장
-- 엔진 결과 저장
-- 조회 및 통계
-"""
-
 import aiosqlite
 import json
 import os
@@ -16,16 +7,8 @@ from datetime import datetime
 
 
 class Database:
-    """
-    비동기 SQLite 데이터베이스 관리자
-    """
 
     def __init__(self, db_path: str = None, schema_path: str = None):
-        """
-        Args:
-            db_path: 데이터베이스 파일 경로 (기본: ./data/mcp_observer.db)
-            schema_path: 스키마 SQL 파일 경로 (기본: ./schema.sql)
-        """
         if db_path is None:
             db_path = Path(__file__).parent / "data" / "mcp_observer.db"
         else:
@@ -44,7 +27,6 @@ class Database:
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
 
     async def connect(self):
-        """데이터베이스 연결"""
         if self.conn is not None:
             return
 
@@ -61,19 +43,17 @@ class Database:
         if is_new_db:
             await self._initialize_schema()
 
-        print(f'✓ Database 연결됨: {self.db_path}')
+        print(f'Database 연결됨: {self.db_path}')
 
     async def close(self):
-        """데이터베이스 연결 종료"""
         if self.conn:
             await self.conn.close()
             self.conn = None
-            print('✓ Database 연결 종료됨')
+            print('Database 연결 종료됨')
 
     async def _initialize_schema(self):
-        """스키마 초기화"""
         if not self.schema_path.exists():
-            print(f'⚠ 스키마 파일이 없습니다: {self.schema_path}')
+            print(f'스키마 파일이 없습니다: {self.schema_path}')
             return
 
         try:
@@ -85,26 +65,13 @@ class Database:
             await self.conn.executescript(schema_sql)
             await self.conn.commit()
 
-            print(f'✓ 데이터베이스 스키마 초기화 완료')
+            print(f'데이터베이스 스키마 초기화 완료')
 
         except Exception as e:
-            print(f'✗ 스키마 초기화 실패: {e}')
+            print(f'스키마 초기화 실패: {e}')
             raise
 
-    # ========================================================================
-    # 원시 이벤트 저장
-    # ========================================================================
-
     async def insert_raw_event(self, event: Dict[str, Any]) -> Optional[int]:
-        """
-        원시 이벤트 삽입
-
-        Args:
-            event: 이벤트 데이터
-
-        Returns:
-            삽입된 이벤트의 ID
-        """
         try:
             ts = event.get('ts', 0)
             producer = event.get('producer', 'unknown')
@@ -125,24 +92,12 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            print(f'✗ raw_event 저장 실패: {e}')
+            print(f'raw_event 저장 실패: {e}')
             return None
-
-    # ========================================================================
+        
     # RPC 이벤트 저장
-    # ========================================================================
-
     async def insert_rpc_event(self, event: Dict[str, Any], raw_event_id: int = None) -> Optional[int]:
-        """
-        RPC 이벤트 삽입
 
-        Args:
-            event: RPC 이벤트 데이터
-            raw_event_id: 연결된 raw_event ID
-
-        Returns:
-            삽입된 RPC 이벤트의 ID
-        """
         try:
             data = event.get('data', {})
             ts = event.get('ts', 0)
@@ -184,24 +139,12 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            print(f'✗ rpc_event 저장 실패: {e}')
+            print(f'rpc_event 저장 실패: {e}')
             return None
 
-    # ========================================================================
     # 파일 이벤트 저장
-    # ========================================================================
-
     async def insert_file_event(self, event: Dict[str, Any], raw_event_id: int = None) -> Optional[int]:
-        """
-        파일 이벤트 삽입
 
-        Args:
-            event: 파일 이벤트 데이터
-            raw_event_id: 연결된 raw_event ID
-
-        Returns:
-            삽입된 파일 이벤트의 ID
-        """
         try:
             data = event.get('data', {})
             ts = event.get('ts', 0)
@@ -226,24 +169,13 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            print(f'✗ file_event 저장 실패: {e}')
+            print(f'file_event 저장 실패: {e}')
             return None
 
-    # ========================================================================
+
     # 프로세스 이벤트 저장
-    # ========================================================================
-
     async def insert_process_event(self, event: Dict[str, Any], raw_event_id: int = None) -> Optional[int]:
-        """
-        프로세스 이벤트 삽입
 
-        Args:
-            event: 프로세스 이벤트 데이터
-            raw_event_id: 연결된 raw_event ID
-
-        Returns:
-            삽입된 프로세스 이벤트의 ID
-        """
         try:
             data = event.get('data', {})
             ts = event.get('ts', 0)
@@ -267,62 +199,48 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            print(f'✗ process_event 저장 실패: {e}')
+            print(f'process_event 저장 실패: {e}')
             return None
 
-    # ========================================================================
     # 엔진 결과 저장
-    # ========================================================================
+    async def insert_engine_result(self, result: Dict[str, Any], raw_event_id: int = None, server_name: str = None) -> Optional[int]:
 
-    async def insert_engine_result(self, result: Dict[str, Any], raw_event_id: int = None) -> Optional[int]:
-        """
-        엔진 분석 결과 삽입
-
-        Args:
-            result: 엔진 결과 데이터
-            raw_event_id: 연결된 raw_event ID
-
-        Returns:
-            삽입된 엔진 결과의 ID
-        """
         try:
             result_data = result.get('result', {})
             engine_name = result_data.get('detector', 'Unknown')
-            detected = result.get('detected', False)
             severity = result_data.get('severity')
             score = result_data.get('evaluation') if isinstance(result_data.get('evaluation'), int) else None
-            detail = json.dumps(result_data, ensure_ascii=False)
+
+            # findings에서 reason만 추출
+            findings = result_data.get('findings', [])
+            reasons = [finding.get('reason', '') for finding in findings if isinstance(finding, dict)]
+            detail = json.dumps(reasons, ensure_ascii=False) if reasons else None
+
+            print(f'[DB] insert_engine_result: engine={engine_name}, serverName={server_name}, severity={severity}')
 
             cursor = await self.conn.execute(
                 """
                 INSERT INTO engine_results
-                (raw_event_id, engine_name, detected, severity, score, detail)
+                (raw_event_id, engine_name, serverName, severity, score, detail)
                 VALUES (?, ?, ?, ?, ?, ?)
                 """,
-                (raw_event_id, engine_name, detected, severity, score, detail)
+                (raw_event_id, engine_name, server_name, severity, score, detail)
             )
 
             await self.conn.commit()
+            print(f'✓ engine_result 저장 완료: id={cursor.lastrowid}')
             return cursor.lastrowid
 
         except Exception as e:
             print(f'✗ engine_result 저장 실패: {e}')
+            import traceback
+            traceback.print_exc()
             return None
 
     # ========================================================================
     # 조회 메서드
-    # ========================================================================
-
     async def get_recent_events(self, limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        최근 이벤트 조회
 
-        Args:
-            limit: 조회할 이벤트 개수
-
-        Returns:
-            이벤트 목록
-        """
         try:
             async with self.conn.execute(
                 """
@@ -341,12 +259,7 @@ class Database:
             return []
 
     async def get_event_statistics(self) -> Dict[str, Any]:
-        """
-        이벤트 통계 조회
 
-        Returns:
-            통계 정보
-        """
         try:
             stats = {}
 
@@ -376,7 +289,7 @@ class Database:
             return stats
 
         except Exception as e:
-            print(f'✗ 통계 조회 실패: {e}')
+            print(f'통계 조회 실패: {e}')
             return {}
     
     async def is_null_check(self, table_name: str) -> bool:

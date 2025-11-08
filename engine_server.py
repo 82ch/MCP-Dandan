@@ -1,8 +1,3 @@
-"""
-82ch-Engine Server
-ZeroMQ에서 이벤트를 직접 받아 엔진들에게 전달하고 결과를 로깅합니다.
-"""
-
 import asyncio
 import signal
 import sys
@@ -18,8 +13,6 @@ from engines.file_system_exposure_engine import FileSystemExposureEngine
 
 
 class EngineServer:
-    """통합 분석 엔진 서버"""
-
     def __init__(self):
         self.config = ConfigLoader()
         self.db = Database()
@@ -27,7 +20,6 @@ class EngineServer:
         self.event_hub = None
 
     def _setup_engines(self):
-        """엔진 초기화"""
         # Sensitive File Engine
         if self.config.get_sensitive_file_enabled():
             engine = SensitiveFileEngine(self.db)
@@ -56,20 +48,18 @@ class EngineServer:
             print(f"  {i}. {engine.name}")
     
     def _setup_event_hub(self):
-        """이벤트 허브 초기화"""
         zmq_address = self.config.get_zmq_address()
         source = ZeroMQSource(zmq_address)
         self.event_hub = EventHub(source, self.engines, self.db)
 
     async def start(self):
-        """서버 시작"""
         print("=" * 80)
-        print("82ch-Engine Server 시작")
+        print("82ch-Engine Server")
         print("=" * 80)
 
         # 설정 출력
         print(f"\n설정:")
-        print(f"  - ZeroMQ 주소: {self.config.get_zmq_address()}")
+        print(f"  - ZeroMQ address: {self.config.get_zmq_address()}")
 
         # 엔진 설정
         self._setup_engines()
@@ -81,16 +71,15 @@ class EngineServer:
         await self.db.connect()
 
         print("\n" + "=" * 80)
-        print("✓ 모든 컴포넌트가 실행 중입니다.")
-        print("  MCPCollector가 실행 중이어야 이벤트를 수신할 수 있습니다.")
-        print("  종료하려면 Ctrl+C를 누르세요.")
+        print("모든 컴포넌트가 실행 중입니다.")
+        print("MCPCollector가 실행 중이어야 이벤트를 수신할 수 있습니다.")
+        print("종료하려면 Ctrl+C를 누르세요.")
         print("=" * 80 + "\n")
 
         # EventHub 시작 (메인 루프)
         await self.event_hub.start()
 
     async def stop(self):
-        """서버 중지"""
         print('\n프로그램을 종료합니다...')
 
         if self.event_hub:
@@ -99,11 +88,10 @@ class EngineServer:
         if self.db:
             await self.db.close()
 
-        print('✓ 모든 컴포넌트가 중지되었습니다.')
+        print('모든 컴포넌트가 중지되었습니다.')
 
 
 async def main():
-    """메인 함수"""
     server = EngineServer()
     
     # Ctrl+C 처리

@@ -1,9 +1,3 @@
-"""
-ZeroMQ Event Source
-
-MCPCollector의 ZeroMQ Publisher로부터 이벤트를 수신합니다.
-"""
-
 import zmq
 import zmq.asyncio
 import json
@@ -11,24 +5,13 @@ from typing import Optional, Dict, Any
 
 
 class ZeroMQSource:
-    """
-    ZeroMQ 이벤트 소스
-    
-    비동기 방식으로 ZeroMQ Subscriber를 구현합니다.
-    """
-    
     def __init__(self, zmq_address: str = "tcp://localhost:5555"):
-        """
-        Args:
-            zmq_address: ZeroMQ Publisher 주소
-        """
         self.zmq_address = zmq_address
         self.context = None
         self.socket = None
         self.running = False
     
     async def start(self):
-        """ZeroMQ 연결 시작"""
         if self.running:
             return
         
@@ -46,15 +29,14 @@ class ZeroMQSource:
             # 타임아웃 설정 없음 (비동기 방식)
             
             self.running = True
-            print(f'✓ ZeroMQ Subscriber 연결됨: {self.zmq_address}')
+            print(f'ZeroMQ Subscriber 연결됨: {self.zmq_address}')
             
         except Exception as e:
-            print(f'✗ ZeroMQ 연결 실패: {e}')
+            print(f'ZeroMQ 연결 실패: {e}')
             self.running = False
             raise
     
     async def stop(self):
-        """ZeroMQ 연결 종료"""
         if not self.running:
             return
         
@@ -68,23 +50,14 @@ class ZeroMQSource:
             self.context.term()
             self.context = None
         
-        print('✓ ZeroMQ 연결 종료됨')
+        print('ZeroMQ 연결 종료됨')
     
     async def get_event(self, timeout: float = 0.1) -> Optional[Dict[str, Any]]:
-        """
-        이벤트 수신
-        
-        Args:
-            timeout: 타임아웃 (초)
-            
-        Returns:
-            이벤트 데이터 (JSON) 또는 None
-        """
         if not self.running or not self.socket:
             return None
         
         try:
-            # 비동기 수신 (타임아웃 있음)
+            # 비동기 수신 
             if await self.socket.poll(timeout=int(timeout * 1000)):  # ms로 변환
                 # multipart 메시지 수신
                 message = await self.socket.recv_multipart()
@@ -108,9 +81,9 @@ class ZeroMQSource:
             return None
         except zmq.ZMQError as e:
             if self.running:
-                print(f'✗ ZeroMQ 오류: {e}')
+                print(f'ZeroMQ 오류: {e}')
             return None
         except Exception as e:
             if self.running:
-                print(f'✗ 이벤트 수신 오류: {e}')
+                print(f'이벤트 수신 오류: {e}')
             return None
