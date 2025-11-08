@@ -219,7 +219,7 @@ class Database:
             return None
 
     # 엔진 결과 저장
-    async def insert_engine_result(self, result: Dict[str, Any], raw_event_id: int = None, server_name: str = None) -> Optional[int]:
+    async def insert_engine_result(self, result: Dict[str, Any], raw_event_id: int = None, server_name: str = None, producer: str = None) -> Optional[int]:
 
         try:
             result_data = result.get('result', {})
@@ -237,10 +237,10 @@ class Database:
             cursor = await self.conn.execute(
                 """
                 INSERT INTO engine_results
-                (raw_event_id, engine_name, serverName, severity, score, detail)
-                VALUES (?, ?, ?, ?, ?, ?)
+                (raw_event_id, engine_name, producer, serverName, severity, score, detail)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (raw_event_id, engine_name, server_name, severity, score, detail)
+                (raw_event_id, engine_name, producer, server_name, severity, score, detail)
             )
 
             await self.conn.commit()

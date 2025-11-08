@@ -116,9 +116,9 @@ class EventHub:
 
             # mcpTag (serverName) 추출
             server_name = original_event.get('mcpTag')
-
+            producer    = original_event.get('producer', 'unknown')
             # 엔진 결과 저장
-            engine_result_id = await self.db.insert_engine_result(result, raw_event_id)
+            engine_result_id = await self.db.insert_engine_result(result, raw_event_id, server_name, producer)
 
             # Tools Poisoning 결과인 경우 추가 저장
             if engine_result_id and result_data.get('detector') == 'ToolsPoisoning':

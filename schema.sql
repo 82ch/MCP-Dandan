@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS engine_results (
     raw_event_id INTEGER,
     engine_name TEXT NOT NULL,
     serverName TEXT,
+    producer TEXT,
     severity TEXT,
     score INTEGER,
     detail TEXT,
