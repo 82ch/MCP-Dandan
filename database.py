@@ -79,13 +79,22 @@ class Database:
             pname = event.get('pname')
             event_type = event.get('eventType', 'Unknown')
             data = json.dumps(event.get('data', {}), ensure_ascii=False)
+        
+            match producer:
+                case 'local':
+                    mcpTag = event.get('mcpTag', None)
+                case 'remote':
+                    mcpTag = event.get('data', {}).get('mcpTag', None)
+                case _:
+                    mcpTag = None
 
+            
             cursor = await self.conn.execute(
                 """
-                INSERT INTO raw_events (ts, producer, pid, pname, event_type, data)
-                VALUES (?, ?, ?, ?, ?, ?)
+                INSERT INTO raw_events (ts, producer, pid, pname, event_type, mcpTag, data)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
-                (ts, producer, pid, pname, event_type, data)
+                (ts, producer, pid, pname, event_type, mcpTag, data)
             )
 
             await self.conn.commit()
@@ -105,7 +114,14 @@ class Database:
             # - remote: data.mcpTag
             # - local: event.mcpTag
             mcptype = event.get('producer', 'unknown')
-            mcptag  = data.get('mcpTag', 'unknown')
+            
+            match mcptype:
+                case 'local':
+                    mcpTag = event.get('mcpTag', None)
+                case 'remote':
+                    mcpTag = event.get('data', {}).get('mcpTag', None)
+                case _:
+                    mcpTag = None
 
             # MCP 이벤트는 data.message 안에 JSON-RPC 데이터가 있음
             message = data.get('message', {})
@@ -132,7 +148,7 @@ class Database:
                 (raw_event_id, ts, mcptype, mcptag, direction, method, message_id, params, result, error)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (raw_event_id, ts, mcptype, mcptag, direction, method, message_id, params, result, error)
+                (raw_event_id, ts, mcptype, mcpTag, direction, method, message_id, params, result, error)
             )
 
             await self.conn.commit()
