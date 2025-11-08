@@ -11,14 +11,22 @@ const PORT = 3001
 // Use DB_PATH from environment variable (for Docker) or default path (for local dev)
 const dbPath = process.env.DB_PATH || path.join(__dirname, '..', '82ch.db')
 console.log(`Using database at: ${dbPath}`)
-const db = new Database(dbPath, { readonly: true })  // Read-only mode
 
-// Check if database is in WAL mode and handle accordingly
+// Better-sqlite3 options for read-only access with WAL mode support
+const db = new Database(dbPath, {
+  readonly: true,
+  fileMustExist: true,
+  timeout: 5000  // 5 second timeout for lock acquisition
+})
+
+// Set pragmas for better concurrency handling
 try {
-  const pragmaResult = db.prepare('PRAGMA journal_mode').get()
-  console.log(`Database journal mode: ${pragmaResult.journal_mode}`)
+  // These pragmas help with concurrent read access
+  db.pragma('query_only = ON')  // Extra safety for read-only mode
+  const journalMode = db.pragma('journal_mode', { simple: true })
+  console.log(`Database journal mode: ${journalMode}`)
 } catch (error) {
-  console.error('Error checking journal mode:', error.message)
+  console.error('Error setting up database:', error.message)
 }
 
 // Middleware

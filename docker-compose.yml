@@ -5,11 +5,13 @@ services:
     container_name: 82ch-backend
     volumes:
       - D:\82ch-engine\data:/app/data:ro  # Engine DB 공유 (read-only)
+      - /tmp  # SQLite temporary files를 위한 tmpfs
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=production
       - DB_PATH=/app/data/mcp_observer.db
+      - TMPDIR=/tmp
     restart: unless-stopped
     networks:
       - 82ch-network
