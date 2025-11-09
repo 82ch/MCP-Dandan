@@ -130,7 +130,6 @@ function Dashboard({ setSelectedServer, servers }) {
 
         events.push({
           serverName,
-          serverId: result.serverName, // Use serverName as identifier
           threatType,
           severity,
           severityColor,
@@ -186,8 +185,8 @@ function Dashboard({ setSelectedServer, servers }) {
     }
   }
 
-  const handleGoToServer = (serverId) => {
-    const server = servers.find(s => s.id === serverId)
+  const handleGoToServer = (serverName) => {
+    const server = servers.find(s => s.name === serverName)
     if (server) {
       setSelectedServer(server)
     }
@@ -392,7 +391,7 @@ function Dashboard({ setSelectedServer, servers }) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
-                      onClick={() => handleGoToServer(event.serverId)}
+                      onClick={() => handleGoToServer(event.serverName)}
                       className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                     >
                       {event.serverName}
