@@ -132,10 +132,23 @@ async def handle_sse_bidirectional(
                                                         parsed = json_lib.loads(data_line)
 
                                                         # Determine response type
-                                                        if parsed.get('result', {}).get('tools'):
+                                                        result = parsed.get('result', {})
+                                                        method = parsed.get('method', '')
+
+                                                        if result.get('tools'):
                                                             response_type = "tools/list"
-                                                        elif parsed.get('result', {}).get('content'):
+                                                        elif result.get('content'):
                                                             response_type = "tools/call"
+                                                        elif result.get('prompts'):
+                                                            response_type = "prompts/list"
+                                                        elif result.get('messages'):
+                                                            response_type = "prompts/get"
+                                                        elif result.get('resources'):
+                                                            response_type = "resources/list"
+                                                        elif 'initialize' in method or result.get('protocolVersion'):
+                                                            response_type = "initialize"
+                                                        elif parsed.get('error'):
+                                                            response_type = "error"
                                                         else:
                                                             response_type = "Response"
 

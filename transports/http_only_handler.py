@@ -7,9 +7,6 @@ Handles POST requests directly without SSE connection (like Context7).
 import aiohttp
 import json
 
-from state import state, SSEConnection
-from datetime import datetime
-
 
 async def handle_http_only_message(request):
     """
@@ -84,23 +81,6 @@ async def handle_http_only_message(request):
             target_headers[actual_header] = header_value
             print(f"[HTTP-Only] Forwarding custom header: {actual_header}")
 
-    # Create or get existing dummy SSE connection
-    connection = await state.find_sse_connection(server_name, app_name)
-
-    if not connection:
-        # Create a dummy SSE connection for HTTP-only mode
-        connection_id = f"{server_name}-http-only-{int(datetime.now().timestamp() * 1000)}"
-        connection = SSEConnection(
-            server_name=server_name,
-            app_name=app_name,
-            target_url=target_url,
-            client_response=None,  # No actual SSE response
-            connection_id=connection_id,
-            target_headers=target_headers
-        )
-        await state.add_sse_connection(connection)
-        print(f"[HTTP-Only] Created dummy SSE connection: {connection_id}")
-
     # Forward request to target server
     print(f"[HTTP-Only] Forwarding to target: {target_url}")
 
@@ -154,8 +134,31 @@ async def handle_http_only_message(request):
 
                 # Get response data
                 response_data = await response.json()
-                print(f"[HTTP-Only] Received response from target")
-                print(f"[HTTP-Only] Response payload: {json.dumps(response_data, indent=2)}")
+
+                # Determine response type
+                result = response_data.get('result', {})
+                method = message.get('method', '')
+
+                if result.get('tools'):
+                    response_type = "tools/list"
+                elif result.get('content'):
+                    response_type = "tools/call"
+                elif result.get('prompts'):
+                    response_type = "prompts/list"
+                elif result.get('messages'):
+                    response_type = "prompts/get"
+                elif result.get('resources'):
+                    response_type = "resources/list"
+                elif 'initialize' in method or result.get('protocolVersion'):
+                    response_type = "initialize"
+                elif response_data.get('error'):
+                    response_type = "error"
+                else:
+                    response_type = "Response"
+
+                print(f"\n[HTTP-Only] {response_type} ({len(json.dumps(response_data))} chars)")
+                print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                print()
 
                 # Return response to client
                 return aiohttp.web.Response(
