@@ -39,6 +39,7 @@ function getMcpServersFromDB() {
       SELECT
         mcpTag,
         producer,
+        tool,
         tool_title,
         tool_description,
         tool_parameter,
@@ -66,7 +67,7 @@ function getMcpServersFromDB() {
 
       const server = serverMap.get(serverName)
       server.tools.push({
-        name: row.tool_title,
+        name: row.tool,
         description: row.tool_description || ''
       })
     })
@@ -126,7 +127,7 @@ app.get('/api/servers/:id/messages', (req, res) => {
         created_at
       FROM raw_events
       WHERE mcpTag = ? AND event_type = 'MCP'
-      ORDER BY id ASC
+      ORDER BY ts ASC
     `
 
     const rows = db.prepare(query).all(server.name)
@@ -147,17 +148,27 @@ app.get('/api/servers/:id/messages', (req, res) => {
         messageType = parsedData.message.method
       }
 
-      // Determine sender from data (src field: client or server)
-      const sender = parsedData.src || 'unknown'
+      // Determine sender from data (task field: send = client, recv = server)
+      let sender = 'unknown'
+      if (parsedData.task === 'SEND') {
+        sender = 'client'
+      } else if (parsedData.task === 'RECV') {
+        sender = 'server'
+      }
 
       // Calculate maliciousScore (placeholder - should come from analysis)
       const maliciousScore = 0
+
+      // Convert ts (nanoseconds) to readable timestamp
+      // ts is in nanoseconds, convert to milliseconds by dividing by 1,000,000
+      const tsInMs = Math.floor(row.ts / 1000000)
+      const timestamp = new Date(tsInMs).toISOString()
 
       return {
         id: row.id,
         type: messageType,
         sender: sender,
-        timestamp: row.created_at || new Date(row.ts).toISOString(),
+        timestamp: timestamp,
         maliciousScore: maliciousScore,
         data: {
           message: parsedData.message || parsedData
@@ -188,7 +199,7 @@ app.get('/api/messages', (req, res) => {
         created_at
       FROM raw_events
       WHERE event_type = 'MCP'
-      ORDER BY id ASC
+      ORDER BY ts ASC
     `
 
     const rows = db.prepare(query).all()
@@ -209,17 +220,27 @@ app.get('/api/messages', (req, res) => {
         messageType = parsedData.message.method
       }
 
-      // Determine sender from data (src field: client or server)
-      const sender = parsedData.src || 'unknown'
+      // Determine sender from data (task field: send = client, recv = server)
+      let sender = 'unknown'
+      if (parsedData.task === 'send') {
+        sender = 'client'
+      } else if (parsedData.task === 'recv') {
+        sender = 'server'
+      }
 
       // Calculate maliciousScore (placeholder - should come from analysis)
       const maliciousScore = 0
+
+      // Convert ts (nanoseconds) to readable timestamp
+      // ts is in nanoseconds, convert to milliseconds by dividing by 1,000,000
+      const tsInMs = Math.floor(row.ts / 1000000)
+      const timestamp = new Date(tsInMs).toISOString()
 
       return {
         id: row.id,
         type: messageType,
         sender: sender,
-        timestamp: row.created_at || new Date(row.ts).toISOString(),
+        timestamp: timestamp,
         maliciousScore: maliciousScore,
         mcpTag: row.mcpTag,
         data: {

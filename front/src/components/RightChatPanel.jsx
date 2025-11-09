@@ -30,9 +30,8 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }) {
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-6 space-y-4">
         {messages.map((message) => {
-          // Client messages (call, initialize, notifications) go LEFT
-          // Server messages (response, result) go RIGHT
-          const isClientMessage = message.type?.includes('call') || message.type === 'initialize' || message.type?.includes('notifications')
+          // Client messages go LEFT, Server messages go RIGHT
+          const isClientMessage = message.sender === 'client'
           const isSelected = selectedMessage?.id === message.id
 
           // Extract display text from message
@@ -41,6 +40,23 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }) {
           // For tools/call messages, show the tool name
           if (message.type === 'tools/call' && message.data?.message?.params?.name) {
             displayText = `${message.type}\n${message.data.message.params.name}`
+          }
+
+          // For server messages with id, find the corresponding client message
+          if (!isClientMessage && message.data?.message?.id !== undefined) {
+            const requestId = message.data.message.id
+            // Find the most recent client message with matching id
+            const clientMessage = messages
+              .filter(m => m.sender === 'client' && m.data?.message?.id === requestId)
+              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]
+
+            if (clientMessage) {
+              let clientText = clientMessage.type || 'Unknown'
+              if (clientMessage.type === 'tools/call' && clientMessage.data?.message?.params?.name) {
+                clientText = clientMessage.data.message.params.name
+              }
+              displayText = `${clientText} response`
+            }
           }
 
           return (
