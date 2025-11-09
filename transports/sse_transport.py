@@ -96,16 +96,16 @@ async def handle_sse_connection(request):
     Returns:
         StreamResponse with SSE events
     """
-    # Extract app and server names from URL
-    path_parts = request.path.strip('/').split('/')
-    if len(path_parts) < 2:
+    # Extract app and server names from URL path variables
+    # aiohttp already validated the path format via route pattern
+    app_name = request.match_info.get('app')
+    server_name = request.match_info.get('server')
+
+    if not app_name or not server_name:
         return aiohttp.web.Response(
             status=400,
             text=json.dumps({"error": "Invalid path format"})
         )
-
-    app_name = path_parts[0]
-    server_name = path_parts[1]
 
     print(f"[SSE] New connection for {app_name}/{server_name}")
 

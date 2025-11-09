@@ -30,17 +30,17 @@ async def handle_message_endpoint(request):
     Returns:
         JSON response
     """
-    # Extract app and server names from URL
-    path_parts = request.path.strip('/').split('/')
-    if len(path_parts) < 3 or path_parts[-1] != 'message':
+    # Extract app and server names from URL path variables
+    # aiohttp already validated the path format via route pattern
+    app_name = request.match_info.get('app')
+    server_name = request.match_info.get('server')
+
+    if not app_name or not server_name:
         return aiohttp.web.Response(
             status=400,
             text=json.dumps({"error": "Invalid path format"}),
             content_type='application/json'
         )
-
-    app_name = path_parts[0]
-    server_name = path_parts[1]
 
     print(f"[Message] Handling message for {app_name}/{server_name}")
 
