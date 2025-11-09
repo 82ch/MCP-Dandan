@@ -11,6 +11,25 @@ import json
 from typing import Optional
 
 
+async def write_chunked(response, data: str, chunk_size: int = 4000):
+    """
+    Write data to response in chunks to avoid "Chunk too big" error.
+
+    aiohttp has a default chunk size limit of 8192 bytes when using chunked encoding.
+    We use 4000 bytes chunks to ensure compatibility.
+    """
+    data_bytes = data.encode('utf-8') if isinstance(data, str) else data
+
+    for i in range(0, len(data_bytes), chunk_size):
+        chunk = data_bytes[i:i+chunk_size]
+        try:
+            await response.write(chunk)
+            await response.drain()
+        except Exception as e:
+            print(f"[write_chunked] Error at offset {i}/{len(data_bytes)}: {e}")
+            raise
+
+
 async def handle_sse_bidirectional(
     target_url: str,
     target_headers: dict,
@@ -52,13 +71,14 @@ async def handle_sse_bidirectional(
             # Connect to target SSE endpoint
             async with session.get(
                 target_url,
-                headers=headers_to_send
+                headers=headers_to_send,
+                timeout=aiohttp.ClientTimeout(total=None, connect=30)  # No total timeout for SSE
             ) as target_response:
                 print(f"[SSE-Bidir] Connected to target: HTTP {target_response.status}")
 
                 if target_response.status != 200:
                     error_event = f"event: error\ndata: {json.dumps({'error': f'Target returned {target_response.status}'})}\n\n"
-                    await client_response.write(error_event.encode('utf-8'))
+                    await write_chunked(client_response, error_event)
                     return
 
                 # Task 1: Forward events from target to client
@@ -68,80 +88,91 @@ async def handle_sse_bidirectional(
                         current_event = None
                         current_data_lines = []
 
-                        async for line in target_response.content:
-                            line_str = line.decode('utf-8')
+                        # Read content in chunks and process line by line
+                        # Use iter_any() to read without chunk size limits
+                        buffer = b""
+                        async for chunk in target_response.content.iter_any():
+                            buffer += chunk
+                            # Process all complete lines in buffer
+                            while b'\n' in buffer:
+                                line_bytes, buffer = buffer.split(b'\n', 1)
+                                line_str = line_bytes.decode('utf-8')
 
-                            # SSE events are separated by blank lines
-                            if line_str.strip() == '':
-                                # End of event - process it
-                                if current_event == 'endpoint' and current_data_lines:
-                                    # Capture target's message endpoint
-                                    target_message_endpoint = ''.join(current_data_lines)
-                                    print(f"[SSE-Bidir] Captured target message endpoint: {target_message_endpoint}")
+                                # SSE events are separated by blank lines
+                                if line_str.strip() == '':
+                                    # End of event - process it
+                                    if current_event == 'endpoint' and current_data_lines:
+                                        # Capture target's message endpoint
+                                        target_message_endpoint = ''.join(current_data_lines)
+                                        print(f"[SSE-Bidir] Captured target message endpoint: {target_message_endpoint}")
 
-                                    # Rewrite to proxy endpoint
-                                    print(f"[SSE-Bidir] Rewriting endpoint event")
-                                    try:
-                                        rewritten = f"event: endpoint\ndata: {message_endpoint}\n\n"
-                                        await client_response.write(rewritten.encode('utf-8'))
-                                    except Exception as e:
-                                        print(f"[SSE-Bidir] Cannot write endpoint (connection may be closing): {e}")
-                                        return  # Exit if client disconnected
-                                elif current_event or current_data_lines:
-                                    # Forward other events as-is
-                                    try:
-                                        if current_event:
-                                            await client_response.write(f"event: {current_event}\n".encode('utf-8'))
+                                        # Rewrite to proxy endpoint
+                                        print(f"[SSE-Bidir] Rewriting endpoint event")
+                                        try:
+                                            rewritten = f"event: endpoint\ndata: {message_endpoint}\n\n"
+                                            await write_chunked(client_response, rewritten)
+                                        except Exception as e:
+                                            print(f"[SSE-Bidir] Cannot write endpoint (connection may be closing): {e}")
+                                            return  # Exit if client disconnected
+                                    elif current_event or current_data_lines:
+                                        # Forward other events as-is
+                                        try:
+                                            # Build complete SSE event
+                                            event_parts = []
+                                            if current_event:
+                                                event_parts.append(f"event: {current_event}\n")
 
-                                        # Write data lines
-                                        for data_line in current_data_lines:
-                                            # Write byte by byte if necessary to avoid "Chunk too big"
-                                            full_line = f"data: {data_line}\n"
-                                            full_line_bytes = full_line.encode('utf-8')
+                                            # Write data lines
+                                            for idx, data_line in enumerate(current_data_lines):
+                                                event_parts.append(f"data: {data_line}\n")
+                                                # Parse and display JSON responses (first line only)
+                                                if idx == 0:
+                                                    try:
+                                                        import json as json_lib
+                                                        parsed = json_lib.loads(data_line)
 
-                                            # Use 512 bytes chunks
-                                            chunk_size = 512
-                                            total_bytes = len(full_line_bytes)
+                                                        # Determine response type
+                                                        if parsed.get('result', {}).get('tools'):
+                                                            response_type = "tools/list"
+                                                        elif parsed.get('result', {}).get('content'):
+                                                            response_type = "tools/call"
+                                                        else:
+                                                            response_type = "Response"
 
-                                            num_chunks = (total_bytes + chunk_size - 1) // chunk_size
-                                            print(f"[SSE-Bidir] Writing {total_bytes} bytes in {num_chunks} chunks of {chunk_size} bytes")
+                                                        # Display response
+                                                        print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                        print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                        print()
+                                                    except:
+                                                        pass
 
-                                            # Write in small chunks
-                                            bytes_written = 0
-                                            for i in range(0, total_bytes, chunk_size):
-                                                chunk = full_line_bytes[i:i+chunk_size]
-                                                try:
-                                                    await client_response.write(chunk)
-                                                    bytes_written += len(chunk)
-                                                except Exception as e:
-                                                    print(f"[SSE-Bidir] Error at offset {i}/{total_bytes}: {e}")
-                                                    print(f"[SSE-Bidir] Bytes written so far: {bytes_written}")
-                                                    raise
-
-                                            print(f"[SSE-Bidir] Successfully wrote {bytes_written} bytes: {data_line[:80]}...")
-
-                                        await client_response.write(b"\n")
-                                    except ConnectionResetError:
-                                        print(f"[SSE-Bidir] Client disconnected")
-                                        return  # Exit gracefully
-                                    except Exception as e:
-                                        print(f"[SSE-Bidir] Error writing event to client: {e}")
-                                        # Check if it's a connection error
-                                        if "closing" in str(e).lower() or "closed" in str(e).lower():
+                                            event_parts.append("\n")
+                                            full_event = ''.join(event_parts)
+                                            await write_chunked(client_response, full_event)
+                                        except ConnectionResetError:
+                                            print(f"[SSE-Bidir] Client disconnected")
                                             return  # Exit gracefully
+                                        except Exception as e:
+                                            print(f"[SSE-Bidir] Error writing event to client: {e}")
+                                            # Check if it's a connection error
+                                            if "closing" in str(e).lower() or "closed" in str(e).lower():
+                                                return  # Exit gracefully
 
-                                # Reset for next event
-                                current_event = None
-                                current_data_lines = []
-                            elif line_str.startswith('event:'):
-                                current_event = line_str[6:].strip()
-                                print(f"[SSE-Bidir] Event type: {current_event}")
-                            elif line_str.startswith('data:'):
-                                data_content = line_str[5:].strip()
-                                current_data_lines.append(data_content)
-                            else:
-                                # Other SSE fields (id, retry, etc.) - forward as-is
-                                await client_response.write(line)
+                                    # Reset for next event
+                                    current_event = None
+                                    current_data_lines = []
+                                elif line_str.startswith('event:'):
+                                    current_event = line_str[6:].strip()
+                                    print(f"[SSE-Bidir] Event type: {current_event}")
+                                elif line_str.startswith('id:'):
+                                    event_id = line_str[3:].strip()
+                                    print(f"[SSE-Bidir] Event ID: {event_id}")
+                                elif line_str.startswith('data:'):
+                                    data_content = line_str[5:].strip()
+                                    current_data_lines.append(data_content)
+                                else:
+                                    # Other SSE fields (id, retry, etc.) - forward as-is
+                                    await write_chunked(client_response, line_bytes + b"\n")
                     except Exception as e:
                         print(f"[SSE-Bidir] Error forwarding target->client: {e}")
 
@@ -175,7 +206,7 @@ async def handle_sse_bidirectional(
                                     }
                                 }
                                 event = f"event: message\ndata: {json.dumps(error_response)}\n\n"
-                                await client_response.write(event.encode('utf-8'))
+                                await write_chunked(client_response, event)
                                 continue
 
                             # Construct full URL for target message endpoint
@@ -207,7 +238,7 @@ async def handle_sse_bidirectional(
 
                                         # Send response back to client via SSE
                                         event = f"event: message\ndata: {json.dumps(response_data)}\n\n"
-                                        await client_response.write(event.encode('utf-8'))
+                                        await write_chunked(client_response, event)
                                     elif msg_response.status == 202:
                                         # 202 Accepted - response will come via SSE stream
                                         print(f"[SSE-Bidir] Message accepted (202), waiting for response via SSE")
@@ -227,7 +258,7 @@ async def handle_sse_bidirectional(
                                             }
                                         }
                                         event = f"event: message\ndata: {json.dumps(error_response)}\n\n"
-                                        await client_response.write(event.encode('utf-8'))
+                                        await write_chunked(client_response, event)
                             except Exception as e:
                                 print(f"[SSE-Bidir] Error sending to target: {e}")
                                 # Return error to client
@@ -240,7 +271,7 @@ async def handle_sse_bidirectional(
                                     }
                                 }
                                 event = f"event: message\ndata: {json.dumps(error_response)}\n\n"
-                                await client_response.write(event.encode('utf-8'))
+                                await write_chunked(client_response, event)
                     except Exception as e:
                         print(f"[SSE-Bidir] Error forwarding client->target: {e}")
 
@@ -255,6 +286,6 @@ async def handle_sse_bidirectional(
         print(f"[SSE-Bidir] Error in bidirectional SSE: {e}")
         error_event = f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         try:
-            await client_response.write(error_event.encode('utf-8'))
+            await write_chunked(client_response, error_event)
         except:
             pass

@@ -12,7 +12,7 @@ from datetime import datetime
 
 from state import state, SSEConnection
 from verification import verify_tool_response
-from transports.sse_bidirectional import handle_sse_bidirectional
+from transports.sse_bidirectional import handle_sse_bidirectional, write_chunked
 
 
 async def query_server_tools(target_url: str, server_name: str, app_name: str):
@@ -176,19 +176,30 @@ async def handle_sse_connection(request):
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
             'X-Accel-Buffering': 'no',  # Disable nginx buffering
+            'Transfer-Encoding': 'chunked',  # Explicit chunked encoding
         }
     )
     # Enable chunked encoding
     response.enable_chunked_encoding()
-    # Increase the chunk size limit
-    response._length_check = False  # Disable length check
+    # Disable compression to avoid issues with large chunks
+    response.enable_compression(aiohttp.web.ContentCoding.identity)
 
     await response.prepare(request)
+
+    # Try to configure payload writer for large chunks
+    if hasattr(response, '_payload_writer') and response._payload_writer:
+        writer = response._payload_writer
+        # In aiohttp 3.x, check for different attributes
+        if hasattr(writer, 'buffer_size'):
+            writer.buffer_size = 1024 * 1024  # 1MB
+        if hasattr(writer, '_chunk_size'):
+            writer._chunk_size = 1024 * 1024  # 1MB
+        print(f"[SSE] Payload writer configured: {type(writer).__name__}")
 
     # Send endpoint event with proxy's message URL
     message_endpoint = f"/{app_name}/{server_name}/message"
     endpoint_event = f"event: endpoint\ndata: {message_endpoint}\n\n"
-    await response.write(endpoint_event.encode('utf-8'))
+    await write_chunked(response, endpoint_event)
     print(f"[SSE] Sent endpoint event: {message_endpoint}")
 
     # Create connection tracking
@@ -234,7 +245,7 @@ async def handle_sse_connection(request):
         print(f"[SSE] Error in SSE connection: {e}")
         error_event = f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         try:
-            await response.write(error_event.encode('utf-8'))
+            await write_chunked(response, error_event)
         except:
             pass
 
