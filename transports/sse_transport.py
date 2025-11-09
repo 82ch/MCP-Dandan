@@ -12,6 +12,7 @@ from datetime import datetime
 
 from state import state, SSEConnection
 from verification import verify_tool_response
+from transports.sse_bidirectional import handle_sse_bidirectional
 
 
 async def query_server_tools(target_url: str, server_name: str, app_name: str):
@@ -46,8 +47,15 @@ async def query_server_tools(target_url: str, server_name: str, app_name: str):
                 timeout=aiohttp.ClientTimeout(total=5)
             ) as response:
                 if response.status != 200:
-                    print(f"[Tools] Failed to query tools: HTTP {response.status}")
-                    return
+                    error_text = await response.text()
+                    print(f"[Message] Target returned HTTP {response.status}")
+                    print(f"[Message] Error response: {error_text}")
+                    print(f"[Message] Response headers: {dict(response.headers)}")
+                    return aiohttp.web.Response(
+                        status=response.status,
+                        text=error_text,
+                        content_type='application/json',
+                    )
 
                 data = await response.json()
 
@@ -117,6 +125,7 @@ async def handle_sse_connection(request):
     import os
 
     target_url = None
+    target_headers = {}
 
     # Debug: print full request URL
     print(f"[SSE] Full request URL: {request.url}")
@@ -150,7 +159,15 @@ async def handle_sse_connection(request):
 
     print(f"[SSE] Final target URL: {target_url}")
 
-    # Create SSE response to client
+    # Collect custom headers from client (X-MCP-Header-* pattern)
+    for header_name, header_value in request.headers.items():
+        if header_name.startswith('X-MCP-Header-'):
+            # Extract actual header name (e.g., X-MCP-Header-CONTEXT7_API_KEY -> CONTEXT7_API_KEY)
+            actual_header = header_name[len('X-MCP-Header-'):]
+            target_headers[actual_header] = header_value
+            print(f"[SSE] Forwarding custom header: {actual_header}")
+
+    # Create SSE response to client with compression disabled
     response = aiohttp.web.StreamResponse(
         status=200,
         reason='OK',
@@ -158,8 +175,13 @@ async def handle_sse_connection(request):
             'Content-Type': 'text/event-stream',
             'Cache-Control': 'no-cache, no-transform',
             'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',  # Disable nginx buffering
         }
     )
+    # Enable chunked encoding
+    response.enable_chunked_encoding()
+    # Increase the chunk size limit
+    response._length_check = False  # Disable length check
 
     await response.prepare(request)
 
@@ -176,49 +198,37 @@ async def handle_sse_connection(request):
         app_name=app_name,
         target_url=target_url,
         client_response=response,
-        connection_id=connection_id
+        connection_id=connection_id,
+        target_headers=target_headers
     )
 
     await state.add_sse_connection(connection)
 
     try:
-        # Connect to target server
-        async with aiohttp.ClientSession() as session:
-            async with session.get(
-                target_url,
-                headers={'Accept': 'text/event-stream'}
-            ) as target_response:
-                print(f"[SSE] Connected to target server: HTTP {target_response.status}")
+        # Check if target URL looks like it needs SSE or just HTTP POST
+        # If target doesn't end with /sse, it's likely HTTP-only (like Context7)
+        is_http_only = not target_url.endswith('/sse')
 
-                if target_response.status != 200:
-                    error_event = f"event: error\ndata: {json.dumps({'error': f'Target returned {target_response.status}'})}\n\n"
-                    await response.write(error_event.encode('utf-8'))
-                    return response
-
-                # Forward SSE events from target to client
-                async for line in target_response.content:
-                    line_str = line.decode('utf-8')
-
-                    # Check if this is an endpoint event that needs rewriting
-                    if 'event: endpoint' in line_str and 'data: /message' in line_str:
-                        # Rewrite endpoint to use our proxy
-                        print(f"[SSE] Rewriting endpoint event")
-                        rewritten = f"event: endpoint\ndata: {message_endpoint}\n\n"
-                        await response.write(rewritten.encode('utf-8'))
-
-                    # Check if this is a message event (tool response via SSE)
-                    elif 'event: message' in line_str:
-                        # Could contain tool response - verify if needed
-                        await response.write(line)
-
-                    else:
-                        # Forward other events as-is
-                        await response.write(line)
-
-        # Query tools after connection established
-        asyncio.create_task(
-            query_server_tools(target_url, server_name, app_name)
-        )
+        if is_http_only:
+            print(f"[SSE] Target appears to be HTTP-only, keeping SSE connection open without target SSE")
+            # Keep the connection alive but don't connect to target SSE
+            # The client (Cursor) will send POST requests to /message endpoint
+            # Just wait indefinitely (client will close when done)
+            try:
+                while True:
+                    await asyncio.sleep(60)
+            except asyncio.CancelledError:
+                print(f"[SSE] Client closed SSE connection")
+        else:
+            # Traditional SSE mode - connect to target SSE
+            # Use bidirectional SSE mode (supports both SSE streaming and message queue)
+            await handle_sse_bidirectional(
+                target_url=target_url,
+                target_headers=target_headers,
+                client_response=response,
+                message_endpoint=message_endpoint,
+                connection=connection
+            )
 
     except Exception as e:
         print(f"[SSE] Error in SSE connection: {e}")
