@@ -217,32 +217,28 @@ def create_app():
     return app
 
 
-def main():
+async def start_server():
     """Main entry point."""
     app = create_app()
+    runner = web.AppRunner(app)
+    await runner.setup()
+
+    site = web.TCPSite(runner, config.server_host, config.server_port)
+    await site.start()
+
+    print(f"[Observer] Listening on http://{config.server_host}:{config.server_port}")
 
     # Run the server
     try:
-        web.run_app(
-            app,
-            host=config.server_host,
-            port=config.server_port,
-            print=None  # Disable aiohttp's startup message
-        )
-    except KeyboardInterrupt:
+        while True:
+            await asyncio.sleep(1)
+    except (KeyboardInterrupt, asyncio.CancelledError):
         print("\n[Server] Interrupted")
-        os._exit(0)
-
+    finally:
+        await runner.cleanup()
+        await app.shutdown()
+        await app.cleanup()
+        print("[Server] Server stopped")
 
 if __name__ == '__main__':
-    # Windows asyncio event loop policy
-    if sys.platform == 'win32':
-        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n[Server] Shutting down...")
-        os._exit(0)
-    except SystemExit:
-        pass
+    asyncio.run(start_server())
