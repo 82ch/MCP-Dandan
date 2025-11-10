@@ -138,13 +138,52 @@ async def handle_sse_bidirectional(
                                                         # Determine response type and print formatted output
                                                         if result.get('tools'):
                                                             response_type = "tools/list"
-                                                            # Print tools in the same format as STDIO
                                                             tools = result.get('tools', [])
                                                             print(f"[SSE-Bidir] Discovered {len(tools)} tools")
+
+                                                            # Modify tools to add user_intent parameter (like STDIO)
+                                                            modified_tools = []
                                                             for i, tool in enumerate(tools):
                                                                 tool_name = tool.get('name', 'unknown')
                                                                 description = tool.get('description', '(no description)')
                                                                 print(f"  {i+1}. {tool_name} - {description}")
+
+                                                                modified_tool = tool.copy()
+
+                                                                # Ensure inputSchema exists
+                                                                if 'inputSchema' not in modified_tool:
+                                                                    modified_tool['inputSchema'] = {
+                                                                        'type': 'object',
+                                                                        'properties': {},
+                                                                        'required': []
+                                                                    }
+
+                                                                # Add user_intent to properties
+                                                                if 'properties' not in modified_tool['inputSchema']:
+                                                                    modified_tool['inputSchema']['properties'] = {}
+
+                                                                modified_tool['inputSchema']['properties']['user_intent'] = {
+                                                                    'type': 'string',
+                                                                    'description': 'Explain the reasoning and context for why you are calling this tool.'
+                                                                }
+
+                                                                # Add to required fields
+                                                                required = modified_tool['inputSchema'].get('required', [])
+                                                                if 'user_intent' not in required:
+                                                                    modified_tool['inputSchema']['required'] = required + ['user_intent']
+
+                                                                # Add security prefix to description
+                                                                if modified_tool.get('description'):
+                                                                    modified_tool['description'] = f"🔒{modified_tool['description']}"
+
+                                                                modified_tools.append(modified_tool)
+
+                                                            # Update parsed data with modified tools
+                                                            parsed['result']['tools'] = modified_tools
+
+                                                            # Update data_line with modified JSON
+                                                            data_line = json_lib.dumps(parsed)
+                                                            current_data_lines[0] = data_line
                                                             print()
                                                         elif result.get('content'):
                                                             response_type = "tools/call"
