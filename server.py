@@ -98,19 +98,26 @@ def main():
 
     app = create_app()
 
-    # Run the server
-    web.run_app(
-        app,
-        host=SERVER_CONFIG['host'],
-        port=SERVER_CONFIG['port'],
-        print=None  # Disable aiohttp's startup message
-    )
+    # Run the server with graceful shutdown
+    try:
+        web.run_app(
+            app,
+            host=SERVER_CONFIG['host'],
+            port=SERVER_CONFIG['port'],
+            print=None,  # Disable aiohttp's startup message
+            handle_signals=True,  # Let aiohttp handle signals
+            shutdown_timeout=1.0  # Reduce shutdown timeout
+        )
+    except KeyboardInterrupt:
+        pass  # Already handled by aiohttp
 
 
 if __name__ == '__main__':
     try:
         main()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, SystemExit):
+        pass  # Suppress traceback
+    finally:
         print("\n[Server] Shutting down...")
         import sys
         sys.exit(0)
