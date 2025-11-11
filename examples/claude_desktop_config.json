@@ -3,7 +3,7 @@
     "filesystem": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\82ch-observer\\cli_proxy.py",
+        "C:\\Users\\tjf82\\82ch\\cli_proxy.py",
         "C:\\Program Files\\nodejs\\npx.cmd",
         "-y",
         "@modelcontextprotocol/server-filesystem",
@@ -12,22 +12,6 @@
       "env": {
         "MCP_OBSERVER_APP_NAME": "Claude",
         "MCP_OBSERVER_SERVER_NAME": "filesystem",
-        "MCP_DEBUG": "true"
-      }
-    },
-    "weather": {
-      "command": "python",
-      "args": [
-        "C:\\paths\\to\\82ch-observer\\cli_proxy.py",
-        "C:\\paths\\to\\python-env\\uv.exe",
-        "--directory",
-        "C:\\paths\\to\\quickstart-resources\\weather-server-python",
-        "run",
-        "weather.py"
-      ],
-      "env": {
-        "MCP_OBSERVER_APP_NAME": "Claude",
-        "MCP_OBSERVER_SERVER_NAME": "weather",
         "MCP_DEBUG": "true"
       }
     }

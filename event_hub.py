@@ -49,8 +49,14 @@ class EventHub:
             return
 
         try:
-            # Save event to database
-            await self._save_event(event)
+            # Save event to database and get raw_event_id
+            raw_event_id = await self._save_event(event)
+
+            # Add raw_event_id to event for engines to use
+            if raw_event_id:
+                event['raw_event_id'] = raw_event_id
+            else:
+                print(f"[EventHub] WARNING: Failed to save event to DB, raw_event_id is None for ts={event.get('ts')}")
 
             # Route to engines
             tasks = []
@@ -72,8 +78,8 @@ class EventHub:
         except Exception as e:
             print(f'[EventHub] Error processing event: {e}')
 
-    async def _save_event(self, event: Dict[str, Any]):
-        """Save event to database."""
+    async def _save_event(self, event: Dict[str, Any]) -> Optional[int]:
+        """Save event to database and return raw_event_id."""
         try:
             event_type = event.get('eventType', 'Unknown')
 
@@ -93,28 +99,41 @@ class EventHub:
                     task = data.get('task', '')
 
                     if task == 'RECV' and 'tools' in message.get('result', {}):
-                        count = await self.db.insert_mcpl()
-                        if count and count > 0:
-                            print(f'[EventHub] Extracted {count} tool(s) to mcpl table')
+                        inserted_tools = await self.db.insert_mcpl()
+                        if inserted_tools:  # list of tools or empty list
+                            print(f'[EventHub] Extracted {len(inserted_tools)} tool(s) to mcpl table')
+                            # MCPL에 tools가 저장되었으므로 ToolsPoisoningEngine에 전달
+                            if len(inserted_tools) > 0:
+                                await self._process_mcpl_tools(inserted_tools, event)
 
                 elif event_type.lower() in ['file', 'fileio']:
                     await self.db.insert_file_event(event, raw_event_id)
                 elif event_type.lower() == 'process':
                     await self.db.insert_process_event(event, raw_event_id)
 
+            return raw_event_id
+
         except Exception as e:
             print(f'[EventHub] Error saving event: {e}')
+            return None
 
     async def _save_result(self, result: Dict[str, Any]):
         """Save engine detection result to database."""
         try:
-            # Map original event timestamp to raw_event_id
+            # Get raw_event_id from result or original_event
             raw_event_id = None
             result_data = result.get('result', {})
             original_event = result_data.get('original_event', {})
 
-            if 'ts' in original_event:
+            # 1. First try to get from original_event (engines may include it directly)
+            if 'raw_event_id' in original_event:
+                raw_event_id = original_event['raw_event_id']
+            # 2. Fallback to event_id_map lookup by timestamp
+            elif 'ts' in original_event:
                 raw_event_id = self.event_id_map.get(original_event['ts'])
+                if raw_event_id is None:
+                    print(f"[EventHub] WARNING: raw_event_id not found for ts={original_event['ts']}")
+                    print(f"[EventHub] Available timestamps in map: {list(self.event_id_map.keys())[:5]}")
 
             # Extract server name and producer
             server_name = original_event.get('mcpTag')
@@ -144,3 +163,43 @@ class EventHub:
         except Exception as e:
             print(f'[EventHub] [{engine.name}] Error: {e}')
             return None
+
+    async def _process_mcpl_tools(self, inserted_tools: list, event: Dict[str, Any]) -> None:
+        """
+        MCPL 테이블에 tools가 INSERT된 직후 ToolsPoisoningEngine을 실행합니다.
+
+        Args:
+            inserted_tools: insert_mcpl()에서 반환된 tools 리스트
+            event: 원본 이벤트 (메타데이터용)
+        """
+        try:
+            # ToolsPoisoningEngine 찾기
+            tools_poisoning_engine = None
+            for engine in self.engines:
+                if engine.name == 'ToolsPoisoningEngine':
+                    tools_poisoning_engine = engine
+                    break
+
+            if not tools_poisoning_engine:
+                print('[EventHub] ToolsPoisoningEngine not found, skipping MCPL processing')
+                return
+
+            print(f'[EventHub] Triggering ToolsPoisoningEngine for {len(inserted_tools)} newly inserted tools')
+
+            # ToolsPoisoningEngine의 process_tools 메서드 직접 호출
+            result = await tools_poisoning_engine.process_tools(inserted_tools, event)
+
+            # 결과 저장
+            if result:
+                if isinstance(result, list):
+                    # 여러 결과인 경우
+                    for r in result:
+                        await self._save_result(r)
+                else:
+                    # 단일 결과인 경우
+                    await self._save_result(result)
+
+        except Exception as e:
+            print(f'[EventHub] Error processing MCPL tools: {e}')
+            import traceback
+            traceback.print_exc()

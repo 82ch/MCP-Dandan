@@ -46,7 +46,7 @@ def setup_engines(db: Database) -> list:
     # Tools Poisoning Engine (LLM-based)
     if config.get_tools_poisoning_enabled():
         try:
-            engine = ToolsPoisoningEngine(db, detail_mode=True)
+            engine = ToolsPoisoningEngine(db)
             engines.append(engine)
         except Exception as e:
             print(f"[Engine] Failed to initialize ToolsPoisoningEngine: {e}")

@@ -33,7 +33,8 @@ class Database:
         # 데이터베이스 파일이 없으면 초기화 필요
         is_new_db = not self.db_path.exists()
 
-        self.conn = await aiosqlite.connect(str(self.db_path))
+        # isolation_level=None: autocommit 모드 (트랜잭션 자동 관리)
+        self.conn = await aiosqlite.connect(str(self.db_path), isolation_level=None)
 
         # WAL 모드 활성화 (성능 향상)
         await self.conn.execute("PRAGMA journal_mode=WAL")
@@ -78,8 +79,13 @@ class Database:
             pid = event.get('pid')
             pname = event.get('pname')
             event_type = event.get('eventType', 'Unknown')
-            data = json.dumps(event.get('data', {}), ensure_ascii=False)
-        
+            # JSON 직렬화 시 surrogate 문자 처리
+            try:
+                data = json.dumps(event.get('data', {}), ensure_ascii=False)
+            except UnicodeEncodeError:
+                # Surrogate 문자를 제거하고 다시 시도
+                data = json.dumps(event.get('data', {}), ensure_ascii=True)
+                print(f'[DB] Warning: Event contains invalid UTF-8 characters, using ASCII encoding')
             match producer:
                 case 'local':
                     mcpTag = event.get('mcpTag', None)
@@ -349,15 +355,17 @@ class Database:
             print(f'table check failed: {e}')
             return True
 
-    async def insert_mcpl(self) -> Optional[int]:
+    async def insert_mcpl(self) -> Optional[list]:
         """
          Tool information Extraction in 'rpc_events' Table
          (local + remote, ++tools duplication check)
 
         Returns:
-            insert tools count
+            list of inserted tools: [{'mcpTag': str, 'producer': str, 'tool': str, 'tool_description': str, ...}, ...]
+            None if error
         """
         try:
+            # RETURNING을 사용하여 INSERT된 데이터 즉시 반환
             cursor = await self.conn.execute(
                 """
                 WITH tool_data AS (
@@ -388,13 +396,34 @@ class Database:
                     WHERE m.mcpTag = td.mcpTag
                       AND m.tool = json_extract(td.tool, '$.name')
                 )
+                RETURNING mcpTag, producer, tool, tool_title, tool_description, tool_parameter, annotations
                 """
             )
 
+            # INSERT된 rows 가져오기 (commit 전에 실행)
+            inserted_rows = await cursor.fetchall()
+
+            # commit 실행 (RETURNING 결과는 이미 가져왔으므로 안전)
             await self.conn.commit()
-            inserted_count = cursor.rowcount
-            # print(f'{inserted_count} tools inserted into mcpl table.')
-            return inserted_count
+
+            if not inserted_rows:
+                return []
+
+            # 결과를 dict list로 변환
+            inserted_tools = []
+            for row in inserted_rows:
+                inserted_tools.append({
+                    'mcpTag': row[0],
+                    'producer': row[1],
+                    'tool': row[2],
+                    'tool_title': row[3],
+                    'tool_description': row[4],
+                    'tool_parameter': row[5],
+                    'annotations': row[6]
+                })
+
+            print(f'{len(inserted_tools)} tools inserted into mcpl table.')
+            return inserted_tools
 
         except Exception as e:
             print(f'mcpl insert failed : {e}')
