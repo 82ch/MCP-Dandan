@@ -189,7 +189,7 @@ async def handle_http_only_message(request):
                     )
 
                 # Get response data
-                # Check if response is SSE stream (Streamable HTTP like Postman)
+                # Check if response is SSE stream (Streamable HTTP)
                 content_type = response.headers.get('Content-Type', '')
                 if 'text/event-stream' in content_type:
                     print(f"[HTTP-Only] Response is SSE stream, reading events...")

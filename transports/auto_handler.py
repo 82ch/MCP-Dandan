@@ -7,7 +7,7 @@ Automatically detects if target is SSE or HTTP-only based on initial connection.
 import aiohttp
 import asyncio
 from transports.sse_transport import handle_sse_connection
-from transports.http_only_handler import handle_http_only_message
+from transports.http_handler import handle_http_only_message
 
 
 async def handle_auto_detect(request):
