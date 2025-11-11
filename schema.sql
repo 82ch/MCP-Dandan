@@ -3,7 +3,7 @@
 -- 1. 원시 이벤트 (mcpTag, serverName 추가)
 CREATE TABLE IF NOT EXISTS raw_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ts BIGINT NOT NULL,
+    ts DATETIME NOT NULL,
     producer TEXT NOT NULL,
     pid INTEGER,
     pname TEXT,
@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS rpc_events (
     mcptype TEXT NOT NULL,
     mcptag TEXT NOT NULL,
     raw_event_id INTEGER,
-    ts BIGINT NOT NULL,
+    ts DATETIME NOT NULL,
     direction TEXT NOT NULL,
     method TEXT,
     message_id TEXT,
@@ -40,7 +40,7 @@ CREATE INDEX IF NOT EXISTS idx_rpc_method ON rpc_events(method);
 CREATE TABLE IF NOT EXISTS file_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     raw_event_id INTEGER,
-    ts BIGINT NOT NULL,
+    ts DATETIME NOT NULL,
     pid INTEGER,
     pname TEXT,
     operation TEXT,
@@ -57,7 +57,7 @@ CREATE INDEX IF NOT EXISTS idx_file_path ON file_events(file_path);
 CREATE TABLE IF NOT EXISTS process_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     raw_event_id INTEGER,
-    ts BIGINT NOT NULL,
+    ts DATETIME NOT NULL,
     pid INTEGER NOT NULL,
     pname TEXT,
     parent_pid INTEGER,
