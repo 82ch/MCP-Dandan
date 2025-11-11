@@ -10,10 +10,8 @@ import sys
 import asyncio
 from aiohttp import web
 
-# Observer components
-from transports.sse_transport import handle_sse_connection
+from transports.auto_handler import handle_auto_detect
 from transports.message_handler import handle_message_endpoint
-from transports.http_only_handler import handle_http_only_message
 from transports.stdio_handlers import (
     handle_verify_request,
     handle_verify_response,
@@ -122,25 +120,23 @@ def setup_routes(app):
     app.router.add_post('/verify/response', handle_verify_response)
     app.router.add_post('/register-tools', handle_register_tools)
 
-    # HTTP+SSE transport endpoints
-    # Format: /{appName}/{serverName}/sse (GET)
-    app.router.add_get('/{app}/{server}/sse', handle_sse_connection)
+    # Unified auto-detect endpoint
+    # Format: /{appName}/{serverName} (GET or POST)
+    # Automatically detects SSE vs HTTP-only based on request
+    app.router.add_route('*', '/{app}/{server}', handle_auto_detect)
 
+    # Message endpoint for SSE mode
     # Format: /{appName}/{serverName}/message (POST)
+    # Used when SSE connection sends 'endpoint' event
     app.router.add_post('/{app}/{server}/message', handle_message_endpoint)
 
-    # HTTP-only transport endpoint (no SSE)
-    # Format: /{appName}/{serverName}/mcp (POST)
-    app.router.add_post('/{app}/{server}/mcp', handle_http_only_message)
-
-    print(f"\n[Server] Routes configured:")
+    print(f"[Server] Routes configured:")
     print(f"  GET  /health - Health check")
     print(f"  POST /verify/request - STDIO verification API")
     print(f"  POST /verify/response - STDIO verification API")
     print(f"  POST /register-tools - Tool registration")
-    print(f"  GET  /{{app}}/{{server}}/sse - SSE connection endpoint")
-    print(f"  POST /{{app}}/{{server}}/message - Message endpoint")
-    print(f"  POST /{{app}}/{{server}}/mcp - HTTP-only endpoint (no SSE)")
+    print(f"  *    /{{app}}/{{server}} - Unified MCP endpoint (auto-detect)")
+    print(f"  POST /{{app}}/{{server}}/message - SSE message endpoint")
 
 
 async def on_startup(app):

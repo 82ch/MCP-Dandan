@@ -313,13 +313,18 @@ def main():
 
     # Start target server process
     try:
+        # Windows requires shell=True for .cmd files like npx
+        import platform
+        use_shell = platform.system() == 'Windows'
+
         process = subprocess.Popen(
             [command] + args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=sys.stderr,
             text=True,
-            bufsize=1
+            bufsize=1,
+            shell=use_shell
         )
     except Exception as e:
         log('ERROR', f"Failed to start target server: {e}")

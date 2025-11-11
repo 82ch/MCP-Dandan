@@ -132,29 +132,42 @@ async def handle_http_only_message(request):
             content_type='application/json'
         )
 
-    # Collect custom headers (X-MCP-Header-* pattern)
+    # Forward all headers from client to target (except proxy-specific ones)
+    skip_headers = {'host', 'content-length', 'connection', 'transfer-encoding'}
     for header_name, header_value in request.headers.items():
-        if header_name.startswith('X-MCP-Header-'):
-            actual_header = header_name[len('X-MCP-Header-'):]
-            target_headers[actual_header] = header_value
-            print(f"[HTTP-Only] Forwarding custom header: {actual_header}")
+        if header_name.lower() not in skip_headers:
+            target_headers[header_name] = header_value
+
+    if target_headers:
+        print(f"[HTTP-Only] Forwarding headers: {list(target_headers.keys())}")
 
     # Forward request to target server
     print(f"[HTTP-Only] Forwarding to target: {target_url}")
 
     try:
         async with aiohttp.ClientSession() as session:
-            # Merge default headers with custom headers
+            # Merge default headers with client headers
             headers_to_send = {
                 'Content-Type': 'application/json',
                 'Accept': 'application/json, text/event-stream'
             }
-            
+            headers_to_send.update(target_headers)
+
             async with session.post(
                 target_url,
                 json=message,
                 headers=headers_to_send
             ) as response:
+                # Handle 202 Accepted (no body) - typically for notifications
+                if response.status == 202:
+                    print(f"[HTTP-Only] Target accepted request (202)")
+                    return aiohttp.web.Response(
+                        status=202,
+                        text="",
+                        content_type='application/json'
+                    )
+
+                # Handle other non-200 status codes
                 if response.status != 200:
                     error_text = await response.text()
                     print(f"[HTTP-Only] Target returned HTTP {response.status}")
@@ -163,14 +176,6 @@ async def handle_http_only_message(request):
                     return aiohttp.web.Response(
                         status=response.status,
                         text=error_text,
-                        content_type='application/json'
-                    )
-
-                # Handle 202 Accepted (no body)
-                if response.status == 202:
-                    return aiohttp.web.Response(
-                        status=202,
-                        text="",
                         content_type='application/json'
                     )
 
@@ -184,7 +189,31 @@ async def handle_http_only_message(request):
                     )
 
                 # Get response data
-                response_data = await response.json()
+                # Check if response is SSE stream (Streamable HTTP)
+                content_type = response.headers.get('Content-Type', '')
+                if 'text/event-stream' in content_type:
+                    print(f"[HTTP-Only] Response is SSE stream, reading events...")
+                    # Read SSE stream and extract JSON from data events
+                    response_data = None
+                    async for line in response.content:
+                        line_str = line.decode('utf-8').strip()
+                        if line_str.startswith('data: '):
+                            data_str = line_str[6:]  # Remove 'data: ' prefix
+                            try:
+                                response_data = json.loads(data_str)
+                                print(f"[HTTP-Only] Parsed JSON from SSE: {data_str[:100]}...")
+                                break  # Use first data event
+                            except json.JSONDecodeError:
+                                continue
+
+                    if not response_data:
+                        return aiohttp.web.Response(
+                            status=502,
+                            text=json.dumps({"error": "No valid JSON in SSE stream"}),
+                            content_type='application/json'
+                        )
+                else:
+                    response_data = await response.json()
 
                 # Verify tool response if this was a tool call
                 if message.get('method') == 'tools/call' and response_data.get('result'):
