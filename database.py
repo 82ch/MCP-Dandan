@@ -79,6 +79,7 @@ class Database:
             pid = event.get('pid')
             pname = event.get('pname')
             event_type = event.get('eventType', 'Unknown')
+
             # JSON 직렬화 시 surrogate 문자 처리
             try:
                 data = json.dumps(event.get('data', {}), ensure_ascii=False)
@@ -86,6 +87,7 @@ class Database:
                 # Surrogate 문자를 제거하고 다시 시도
                 data = json.dumps(event.get('data', {}), ensure_ascii=True)
                 print(f'[DB] Warning: Event contains invalid UTF-8 characters, using ASCII encoding')
+
             match producer:
                 case 'local':
                     mcpTag = event.get('mcpTag', None)

@@ -8,7 +8,9 @@ not HTTP POST /message endpoint.
 import aiohttp
 import asyncio
 import json
+import time
 from verification import verify_tool_call, verify_tool_response
+from state import state
 
 
 async def write_chunked(response, data: str, chunk_size: int = 4000):
@@ -104,6 +106,35 @@ async def handle_sse_bidirectional(
                                 # SSE events are separated by blank lines
                                 if line_str.strip() == '':
                                     # End of event - process it
+                                    # Log all received events to EventHub
+                                    if current_event and current_data_lines:
+                                        try:
+                                            # Try to parse JSON data for logging
+                                            parsed_data = None
+                                            if current_data_lines and current_event != 'endpoint':
+                                                try:
+                                                    parsed_data = json.loads(current_data_lines[0])
+                                                except:
+                                                    pass
+
+                                            if state.event_hub:
+                                                event = {
+                                                    'ts': int(time.time() * 1000),
+                                                    'producer': 'remote',
+                                                    'pid': None,
+                                                    'pname': connection.app_name,
+                                                    'eventType': 'MCP',
+                                                    'mcpTag': connection.server_name,
+                                                    'data': {
+                                                        'task': 'RECV',
+                                                        'message': parsed_data if parsed_data else {'raw': current_data_lines},
+                                                        'mcpTag': connection.server_name
+                                                    }
+                                                }
+                                                await state.event_hub.process_event(event)
+                                        except Exception as log_err:
+                                            print(f"[SSE-Bidir] Error logging event to EventHub: {log_err}")
+
                                     if current_event == 'endpoint' and current_data_lines:
                                         # Capture target's message endpoint
                                         target_message_endpoint = ''.join(current_data_lines)
@@ -198,11 +229,29 @@ async def handle_sse_bidirectional(
 
                                                                 print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
 
-                                                                # Verify the tool response
+                                                                # Log response to EventHub
+                                                                if state.event_hub:
+                                                                    event = {
+                                                                        'ts': int(time.time() * 1000),
+                                                                        'producer': 'remote',
+                                                                        'pid': None,
+                                                                        'pname': connection.app_name,
+                                                                        'eventType': 'MCP',
+                                                                        'mcpTag': connection.server_name,
+                                                                        'data': {
+                                                                            'task': 'RECV',
+                                                                            'message': parsed,
+                                                                            'mcpTag': connection.server_name
+                                                                        }
+                                                                    }
+                                                                    await state.event_hub.process_event(event)
+
+                                                                # Verify the tool response (skip logging since we already logged above)
                                                                 verification = await verify_tool_response(
                                                                     tool_name=tool_name,
                                                                     response_data=parsed,
-                                                                    server_info=server_info
+                                                                    server_info=server_info,
+                                                                    skip_logging=True
                                                                 )
 
                                                                 if not verification.allowed:
@@ -324,6 +373,23 @@ async def handle_sse_bidirectional(
 
                             print(f"[SSE-Bidir] Client -> Target: {message.get('method', 'response')}")
 
+                            # Log all requests to EventHub
+                            if state.event_hub:
+                                event = {
+                                    'ts': int(time.time() * 1000),
+                                    'producer': 'remote',
+                                    'pid': None,
+                                    'pname': connection.app_name,
+                                    'eventType': 'MCP',
+                                    'mcpTag': connection.server_name,
+                                    'data': {
+                                        'task': 'SEND',
+                                        'message': message,
+                                        'mcpTag': connection.server_name
+                                    }
+                                }
+                                await state.event_hub.process_event(event)
+
                             # Check for tool calls and verify
                             if message.get('method') == 'tools/call':
                                 params = message.get('params', {})
@@ -344,12 +410,13 @@ async def handle_sse_bidirectional(
                                 if user_intent:
                                     print(f"[Verify] User intent: {user_intent}")
 
-                                # Verify the tool call
+                                # Verify the tool call (skip logging since we already logged above)
                                 verification = await verify_tool_call(
                                     tool_name=tool_name,
                                     tool_args=tool_args_clean,
                                     server_info=server_info,
-                                    user_intent=user_intent
+                                    user_intent=user_intent,
+                                    skip_logging=True
                                 )
 
                                 if not verification.allowed:
@@ -446,11 +513,29 @@ async def handle_sse_bidirectional(
 
                                             print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
 
-                                            # Verify the tool response
+                                            # Log response to EventHub
+                                            if state.event_hub:
+                                                event = {
+                                                    'ts': int(time.time() * 1000),
+                                                    'producer': 'remote',
+                                                    'pid': None,
+                                                    'pname': connection.app_name,
+                                                    'eventType': 'MCP',
+                                                    'mcpTag': connection.server_name,
+                                                    'data': {
+                                                        'task': 'RECV',
+                                                        'message': response_data,
+                                                        'mcpTag': connection.server_name
+                                                    }
+                                                }
+                                                await state.event_hub.process_event(event)
+
+                                            # Verify the tool response (skip logging since we already logged above)
                                             verification = await verify_tool_response(
                                                 tool_name=tool_name,
                                                 response_data=response_data,
-                                                server_info=server_info
+                                                server_info=server_info,
+                                                skip_logging=True
                                             )
 
                                             if not verification.allowed:

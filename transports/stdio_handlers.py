@@ -5,6 +5,7 @@ These endpoints are used by the CLI proxy for verifying tool calls and responses
 """
 
 import json
+import time
 from aiohttp import web
 
 from state import state
@@ -13,14 +14,14 @@ from verification import verify_tool_call, verify_tool_response
 
 async def handle_verify_request(request):
     """
-    Handle verification request for a tool call from STDIO proxy.
+    Handle verification and logging for all requests from STDIO proxy.
 
     POST /verify/request
 
     Body:
     {
         "message": {...},  // JSON-RPC message
-        "toolName": "...",
+        "toolName": "...",  // Tool name or method name
         "serverInfo": {...}
     }
 
@@ -42,66 +43,101 @@ async def handle_verify_request(request):
 
     message = data.get('message')
     tool_name = data.get('toolName')
+    server_info = data.get('serverInfo', {})
 
-    if not message or not tool_name:
+    if not message:
         return web.Response(
             status=400,
-            text=json.dumps({"error": "Missing required fields"}),
+            text=json.dumps({"error": "Missing message"}),
             content_type='application/json'
         )
 
     try:
-        # Extract args from message
-        tool_args = message.get('params', {}).get('arguments', {})
+        app_name = server_info.get('appName', 'unknown')
+        server_name = server_info.get('name', 'unknown')
+        method = message.get('method', tool_name)
 
-        # Extract user_intent and remove from args
-        user_intent = tool_args.get('user_intent', '')
-        tool_args_clean = {k: v for k, v in tool_args.items() if k != 'user_intent'}
+        # Create event for EventHub (logs all requests)
+        event = {
+            'ts': int(time.time() * 1000),
+            'producer': 'local',
+            'pid': None,
+            'pname': app_name,
+            'eventType': 'MCP',
+            'mcpTag': server_name,
+            'data': {
+                'task': 'SEND',
+                'message': message,
+                'mcpTag': server_name
+            }
+        }
 
-        # Server info
-        server_info = data.get('serverInfo', {})
-        print(f"[Verify] Tool call: {tool_name} from {server_info.get('appName')}/{server_info.get('name')}")
+        # Send to EventHub for DB logging
+        if state.event_hub:
+            await state.event_hub.process_event(event)
 
-        if user_intent:
-            print(f"[Verify] User intent: {user_intent}")
+        # Only verify tools/call for security
+        if message.get('method') == 'tools/call':
+            tool_args = message.get('params', {}).get('arguments', {})
+            user_intent = tool_args.get('user_intent', '')
+            tool_args_clean = {k: v for k, v in tool_args.items() if k != 'user_intent'}
 
-        # Verify the tool call
-        verification = await verify_tool_call(
-            tool_name=tool_name,
-            tool_args=tool_args_clean,
-            server_info=server_info,
-            user_intent=user_intent
-        )
+            print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
+            if user_intent:
+                print(f"[Verify] User intent: {user_intent}")
 
-        return web.Response(
-            status=200,
-            text=json.dumps({
-                "blocked": not verification.allowed,
-                "reason": verification.reason if not verification.allowed else None,
-                "modified": False
-            }),
-            content_type='application/json'
-        )
+            # Verify the tool call (skip logging since we already logged above)
+            verification = await verify_tool_call(
+                tool_name=tool_name,
+                tool_args=tool_args_clean,
+                server_info=server_info,
+                user_intent=user_intent,
+                skip_logging=True
+            )
+
+            return web.Response(
+                status=200,
+                text=json.dumps({
+                    "blocked": not verification.allowed,
+                    "reason": verification.reason if not verification.allowed else None,
+                    "modified": False
+                }),
+                content_type='application/json'
+            )
+        else:
+            # Other methods: just log, don't block
+            print(f"[Log] Request: {method} from {app_name}/{server_name}")
+            return web.Response(
+                status=200,
+                text=json.dumps({
+                    "blocked": False,
+                    "reason": None,
+                    "modified": False
+                }),
+                content_type='application/json'
+            )
 
     except Exception as e:
-        print(f"[Verify] Error verifying tool call: {e}")
+        print(f"[Verify] Error processing request: {e}")
+        import traceback
+        traceback.print_exc()
         return web.Response(
             status=500,
-            text=json.dumps({"error": "Verification error", "blocked": True}),
+            text=json.dumps({"error": "Processing error", "blocked": False}),
             content_type='application/json'
         )
 
 
 async def handle_verify_response(request):
     """
-    Handle verification request for a tool response from STDIO proxy.
+    Handle verification and logging for all responses from STDIO proxy.
 
     POST /verify/response
 
     Body:
     {
         "message": {...},  // JSON-RPC response message
-        "toolName": "...",
+        "toolName": "...",  // Tool name or method name
         "serverInfo": {...}
     }
 
@@ -122,41 +158,80 @@ async def handle_verify_response(request):
         )
 
     message = data.get('message')
-    tool_name = data.get('toolName')
+    server_info = data.get('serverInfo', {})
+    tool_name = data.get('toolName', 'unknown')
 
-    if not message or not tool_name:
+    if not message:
         return web.Response(
             status=400,
-            text=json.dumps({"error": "Missing required fields"}),
+            text=json.dumps({"error": "Missing message"}),
             content_type='application/json'
         )
 
     try:
-        server_info = data.get('serverInfo', {})
-        print(f"[Verify] Tool response: {tool_name} from {server_info.get('appName')}/{server_info.get('name')}")
+        app_name = server_info.get('appName', 'unknown')
+        server_name = server_info.get('name', 'unknown')
 
-        # Verify the tool response
-        verification = await verify_tool_response(
-            tool_name=tool_name,
-            response_data=message,
-            server_info=server_info
-        )
+        # Create event for EventHub (logs all responses)
+        event = {
+            'ts': int(time.time() * 1000),
+            'producer': 'local',
+            'pid': None,
+            'pname': app_name,
+            'eventType': 'MCP',
+            'mcpTag': server_name,
+            'data': {
+                'task': 'RECV',
+                'message': message,
+                'mcpTag': server_name
+            }
+        }
 
-        return web.Response(
-            status=200,
-            text=json.dumps({
-                "blocked": not verification.allowed,
-                "reason": verification.reason if not verification.allowed else None,
-                "modified": False
-            }),
-            content_type='application/json'
-        )
+        # Send to EventHub for DB logging
+        if state.event_hub:
+            await state.event_hub.process_event(event)
+
+        # Only verify tools/call responses for security
+        if tool_name != 'unknown' and tool_name not in ['initialize', 'tools/list', 'notifications/initialized']:
+            print(f"[Verify] Tool response: {tool_name} from {app_name}/{server_name}")
+
+            # Verify the tool response (skip logging since we already logged above)
+            verification = await verify_tool_response(
+                tool_name=tool_name,
+                response_data=message,
+                server_info=server_info,
+                skip_logging=True
+            )
+
+            return web.Response(
+                status=200,
+                text=json.dumps({
+                    "blocked": not verification.allowed,
+                    "reason": verification.reason if not verification.allowed else None,
+                    "modified": False
+                }),
+                content_type='application/json'
+            )
+        else:
+            # Other responses: just log, don't block
+            print(f"[Log] Response from {app_name}/{server_name}")
+            return web.Response(
+                status=200,
+                text=json.dumps({
+                    "blocked": False,
+                    "reason": None,
+                    "modified": False
+                }),
+                content_type='application/json'
+            )
 
     except Exception as e:
-        print(f"[Verify] Error verifying response: {e}")
+        print(f"[Verify] Error processing response: {e}")
+        import traceback
+        traceback.print_exc()
         return web.Response(
             status=500,
-            text=json.dumps({"error": "Verification error", "blocked": False}),
+            text=json.dumps({"error": "Processing error", "blocked": False}),
             content_type='application/json'
         )
 
