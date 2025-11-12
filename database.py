@@ -73,13 +73,16 @@ class Database:
 
     async def insert_raw_event(self, event: Dict[str, Any]) -> Optional[int]:
         try:
-            ts = event.get('ts', 0)
+            ts_millis = event.get('ts', 0)
+            # 밀리초 타임스탬프를 DATETIME으로 변환
+            ts = datetime.fromtimestamp(ts_millis / 1000).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if ts_millis else None
+
             producer = event.get('producer', 'unknown')
             pid = event.get('pid')
             pname = event.get('pname')
             event_type = event.get('eventType', 'Unknown')
             data = json.dumps(event.get('data', {}), ensure_ascii=False)
-        
+
             match producer:
                 case 'local':
                     mcpTag = event.get('mcpTag', None)
@@ -88,7 +91,7 @@ class Database:
                 case _:
                     mcpTag = None
 
-            
+
             cursor = await self.conn.execute(
                 """
                 INSERT INTO raw_events (ts, producer, pid, pname, event_type, mcpTag, data)
@@ -109,7 +112,10 @@ class Database:
 
         try:
             data = event.get('data', {})
-            ts = event.get('ts', 0)
+            ts_millis = event.get('ts', 0)
+            # 밀리초 타임스탬프를 DATETIME으로 변환
+            ts = datetime.fromtimestamp(ts_millis / 1000).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if ts_millis else None
+
             # mcpTag 위치가 producer에 따라 다름
             # - remote: data.mcpTag
             # - local: event.mcpTag
@@ -163,7 +169,10 @@ class Database:
 
         try:
             data = event.get('data', {})
-            ts = event.get('ts', 0)
+            ts_millis = event.get('ts', 0)
+            # 밀리초 타임스탬프를 DATETIME으로 변환
+            ts = datetime.fromtimestamp(ts_millis / 1000).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if ts_millis else None
+
             pid = event.get('pid')
             pname = event.get('pname')
             operation = data.get('operation', 'Unknown')
@@ -194,7 +203,10 @@ class Database:
 
         try:
             data = event.get('data', {})
-            ts = event.get('ts', 0)
+            ts_millis = event.get('ts', 0)
+            # 밀리초 타임스탬프를 DATETIME으로 변환
+            ts = datetime.fromtimestamp(ts_millis / 1000).strftime('%Y-%m-%d %H:%M:%S.%f')[:-3] if ts_millis else None
+
             pid = event.get('pid') or data.get('pid')
             pname = event.get('pname') or data.get('processName')
             parent_pid = data.get('parentPid')

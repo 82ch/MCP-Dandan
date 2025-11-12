@@ -9,7 +9,6 @@ import sys
 import os
 import json
 import subprocess
-import asyncio
 import requests
 from typing import Optional, Dict, Any
 
@@ -85,23 +84,20 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         - None if message should be dropped
     """
     try:
-        # Track tools/list request
-        if message.get('method') == 'tools/list':
-            log('DEBUG', f"Detected tools/list request: {message.get('id')}")
-            state.pending_tools_list_id = message.get('id')
+        # Send all requests to verification endpoint for logging and security check
+        method = message.get('method')
+        if method:
+            log('DEBUG', f"Processing request: {method}")
 
-        # Check for tool calls
-        if message.get('method') == 'tools/call':
-            params = message.get('params', {})
-            state.current_tool_name = params.get('name', 'unknown')
-            state.current_tool_id = message.get('id')
+            # Track tools/list request
+            if method == 'tools/list':
+                log('DEBUG', f"Detected tools/list request: {message.get('id')}")
+                state.pending_tools_list_id = message.get('id')
 
-            log('INFO', f"Verifying tool call: {state.current_tool_name}")
-
-            # Send for verification
+            # Prepare verification data for all methods
             verification_data = {
                 'message': message,
-                'toolName': state.current_tool_name,
+                'toolName': message.get('params', {}).get('name', method),
                 'serverInfo': {
                     'appName': CONFIG['app_name'],
                     'name': CONFIG['server_name'],
@@ -109,35 +105,35 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                 }
             }
 
-            verification = make_api_request('/verify/request', verification_data)
+            # Send to verification endpoint (logs all methods, only blocks dangerous ones)
+            try:
+                result = make_api_request('/verify/request', verification_data)
+                if result:
+                    log('DEBUG', f"Verified and logged request: {method}")
+                    # Check if blocked
+                    if result.get('blocked'):
+                        reason = result.get('reason', 'Security policy violation')
+                        log('INFO', f"Request blocked: {reason}")
+                        return {
+                            "jsonrpc": "2.0",
+                            "id": message.get('id'),
+                            "result": {
+                                "content": [{
+                                    "type": "text",
+                                    "text": f"Request blocked: {reason}"
+                                }]
+                            }
+                        }
+                else:
+                    log('ERROR', f"Failed to verify request: {method}")
+            except Exception as e:
+                log('ERROR', f"Exception verifying request {method}: {e}")
 
-            if verification is None:
-                # Verification failed - block for security
-                log('ERROR', f"Blocking {state.current_tool_name} - verification service unavailable")
-                return {
-                    "jsonrpc": "2.0",
-                    "id": message.get('id'),
-                    "result": {
-                        "content": [{
-                            "type": "text",
-                            "text": f"Tool call blocked - verification service unavailable"
-                        }]
-                    }
-                }
-
-            if verification.get('blocked'):
-                reason = verification.get('reason', 'Security policy violation')
-                log('INFO', f"Tool call blocked: {reason}")
-                return {
-                    "jsonrpc": "2.0",
-                    "id": message.get('id'),
-                    "result": {
-                        "content": [{
-                            "type": "text",
-                            "text": f"Tool call blocked: {reason}"
-                        }]
-                    }
-                }
+        # Handle tool calls specifically (for user_intent stripping and state tracking)
+        if message.get('method') == 'tools/call':
+            params = message.get('params', {})
+            state.current_tool_name = params.get('name', 'unknown')
+            state.current_tool_id = message.get('id')
 
             # Strip user_intent before forwarding to target
             if params.get('arguments') and 'user_intent' in params['arguments']:
@@ -166,6 +162,43 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
         - Modified message to forward to stdout
     """
     try:
+        # Send all responses to verification endpoint for logging
+        if message.get('id') or message.get('result') or message.get('error'):
+            log('DEBUG', f"Processing response")
+
+            verification_data = {
+                'message': message,
+                'toolName': state.current_tool_name or 'unknown',
+                'serverInfo': {
+                    'appName': CONFIG['app_name'],
+                    'name': CONFIG['server_name'],
+                    'version': state.server_version
+                }
+            }
+
+            try:
+                result = make_api_request('/verify/response', verification_data)
+                if result:
+                    log('DEBUG', f"Verified and logged response")
+                    # Check if blocked
+                    if result.get('blocked'):
+                        reason = result.get('reason', 'Security policy violation')
+                        log('INFO', f"Response blocked: {reason}")
+                        message = {
+                            "jsonrpc": "2.0",
+                            "id": message.get('id'),
+                            "result": {
+                                "content": [{
+                                    "type": "text",
+                                    "text": f"Response blocked: {reason}"
+                                }]
+                            }
+                        }
+                else:
+                    log('ERROR', f"Failed to verify response")
+            except Exception as e:
+                log('ERROR', f"Exception verifying response: {e}")
+
         # Check for tools/list response
         if state.pending_tools_list_id is not None and message.get('id') == state.pending_tools_list_id:
             if message.get('result') and message['result'].get('tools'):
@@ -228,39 +261,8 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
 
                 state.pending_tools_list_id = None
 
-        # Check for tool response
-        if (state.current_tool_name and
-            message.get('id') == state.current_tool_id and
-            message.get('result')):
-
-            log('DEBUG', f"Verifying response for {state.current_tool_name}")
-
-            verification_data = {
-                'message': message,
-                'toolName': state.current_tool_name,
-                'serverInfo': {
-                    'appName': CONFIG['app_name'],
-                    'name': CONFIG['server_name'],
-                    'version': state.server_version
-                }
-            }
-
-            verification = make_api_request('/verify/response', verification_data)
-
-            if verification and verification.get('blocked'):
-                reason = verification.get('reason', 'Security policy violation')
-                log('INFO', f"Response blocked: {reason}")
-                message = {
-                    "jsonrpc": "2.0",
-                    "id": message.get('id'),
-                    "result": {
-                        "content": [{
-                            "type": "text",
-                            "text": f"Response blocked: {reason}"
-                        }]
-                    }
-                }
-
+        # Clear tool call state after processing response
+        if state.current_tool_name and message.get('id') == state.current_tool_id:
             state.current_tool_name = None
             state.current_tool_id = None
 
@@ -313,13 +315,18 @@ def main():
 
     # Start target server process
     try:
+        # Windows requires shell=True for .cmd files like npx
+        import platform
+        use_shell = platform.system() == 'Windows'
+
         process = subprocess.Popen(
             [command] + args,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=sys.stderr,
             text=True,
-            bufsize=1
+            bufsize=1,
+            shell=use_shell
         )
     except Exception as e:
         log('ERROR', f"Failed to start target server: {e}")

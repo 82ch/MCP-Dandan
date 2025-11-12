@@ -22,7 +22,8 @@ async def verify_tool_call(
     tool_name: str,
     tool_args: Dict[str, Any],
     server_info: Dict[str, Any],
-    user_intent: str = ""
+    user_intent: str = "",
+    skip_logging: bool = False
 ) -> VerificationResult:
     """
     Verify a tool call against security policies.
@@ -32,6 +33,7 @@ async def verify_tool_call(
         tool_args: Arguments passed to the tool
         server_info: Information about the MCP server
         user_intent: User's explanation for the tool call
+        skip_logging: If True, skip EventHub logging (used when already logged)
 
     Returns:
         VerificationResult indicating if the call is allowed
@@ -45,8 +47,8 @@ async def verify_tool_call(
     if user_intent:
         print(f"[Verification] User intent: {user_intent}")
 
-    # Send event to EventHub for engine analysis
-    if state.event_hub:
+    # Send event to EventHub for engine analysis (unless already logged)
+    if not skip_logging and state.event_hub:
         event = {
             'ts': int(time.time() * 1000),
             'producer': 'local',  # STDIO
@@ -91,7 +93,8 @@ async def verify_tool_call(
 async def verify_tool_response(
     tool_name: str,
     response_data: Dict[str, Any],
-    server_info: Dict[str, Any]
+    server_info: Dict[str, Any],
+    skip_logging: bool = False
 ) -> VerificationResult:
     """
     Verify a tool response against security policies.
@@ -100,6 +103,7 @@ async def verify_tool_response(
         tool_name: Name of the tool that was called
         response_data: Response data from the tool
         server_info: Information about the MCP server
+        skip_logging: If True, skip EventHub logging (used when already logged)
 
     Returns:
         VerificationResult indicating if the response is allowed
@@ -109,8 +113,8 @@ async def verify_tool_response(
 
     print(f"[Verification] Checking tool response: {tool_name}")
 
-    # Send event to EventHub for engine analysis
-    if state.event_hub:
+    # Send event to EventHub for engine analysis (unless already logged)
+    if not skip_logging and state.event_hub:
         event = {
             'ts': int(time.time() * 1000),
             'producer': 'local',  # STDIO

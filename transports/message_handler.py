@@ -6,6 +6,7 @@ Handles POST requests to the message endpoint for tool calls.
 
 import aiohttp
 import json
+import time
 
 from state import state
 from verification import verify_tool_call, verify_tool_response
@@ -59,6 +60,23 @@ async def handle_message_endpoint(request):
 
     print(f"[Message] {msg_type}: method={message.get('method')}, id={message.get('id', 'N/A')}")
     print(f"[Message] Payload: {json.dumps(message, indent=2)}")
+
+    # Log all requests to EventHub
+    if state.event_hub:
+        event = {
+            'ts': int(time.time() * 1000),
+            'producer': 'remote',
+            'pid': None,
+            'pname': app_name,
+            'eventType': 'MCP',
+            'mcpTag': server_name,
+            'data': {
+                'task': 'SEND',
+                'message': message,
+                'mcpTag': server_name
+            }
+        }
+        await state.event_hub.process_event(event)
 
     # Find matching SSE connection
     connection = await state.find_sse_connection(server_name, app_name)
@@ -117,7 +135,8 @@ async def handle_message_endpoint(request):
                 tool_name=tool_name,
                 tool_args=tool_args,
                 server_info=server_info,
-                user_intent=""  # HTTP+SSE doesn't have user_intent
+                user_intent="",  # HTTP+SSE doesn't have user_intent
+                skip_logging=True  # Skip logging since we already logged above
             )
 
             if not verification.allowed:
@@ -211,6 +230,23 @@ async def handle_message_endpoint(request):
                 print(f"[Message] Received response from target")
                 print(f"[Message] Response payload: {json.dumps(response_data, indent=2)}")
 
+                # Log all responses to EventHub
+                if state.event_hub:
+                    event = {
+                        'ts': int(time.time() * 1000),
+                        'producer': 'remote',
+                        'pid': None,
+                        'pname': app_name,
+                        'eventType': 'MCP',
+                        'mcpTag': server_name,
+                        'data': {
+                            'task': 'RECV',
+                            'message': response_data,
+                            'mcpTag': server_name
+                        }
+                    }
+                    await state.event_hub.process_event(event)
+
                 # Verify tool response if this was a tool call
                 call_key = state.get_call_key(message.get('id'), server_name, app_name)
                 pending_call = await state.get_pending_call(call_key)
@@ -227,7 +263,8 @@ async def handle_message_endpoint(request):
                         verification = await verify_tool_response(
                             tool_name=tool_name,
                             response_data=response_data.get('result'),
-                            server_info=server_info
+                            server_info=server_info,
+                            skip_logging=True  # Skip logging since we already logged above
                         )
 
                         if not verification.allowed:

@@ -99,13 +99,14 @@ async def handle_sse_connection(request):
 
     print(f"[SSE] Final target URL: {target_url}")
 
-    # Collect custom headers from client (X-MCP-Header-* pattern)
+    # Forward all headers from client to target (except proxy-specific ones)
+    skip_headers = {'host', 'content-length', 'connection', 'transfer-encoding', 'accept'}
     for header_name, header_value in request.headers.items():
-        if header_name.startswith('X-MCP-Header-'):
-            # Extract actual header name (e.g., X-MCP-Header-CONTEXT7_API_KEY -> CONTEXT7_API_KEY)
-            actual_header = header_name[len('X-MCP-Header-'):]
-            target_headers[actual_header] = header_value
-            print(f"[SSE] Forwarding custom header: {actual_header}")
+        if header_name.lower() not in skip_headers:
+            target_headers[header_name] = header_value
+
+    if target_headers:
+        print(f"[SSE] Forwarding headers: {list(target_headers.keys())}")
 
     # Create SSE response to client with compression disabled
     response = aiohttp.web.StreamResponse(
