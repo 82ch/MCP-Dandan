@@ -148,6 +148,26 @@ class Database:
             result = json.dumps(message.get('result'), ensure_ascii=False) if message.get('result') else None
             error = json.dumps(message.get('error'), ensure_ascii=False) if message.get('error') else None
 
+            # Response 메시지는 method 필드가 없으므로, 같은 message_id를 가진 Request에서 method를 찾아야 함
+            if direction == 'Response' and method is None and message_id is not None:
+                try:
+                    cursor = await self.conn.execute(
+                        """
+                        SELECT method FROM rpc_events
+                        WHERE mcptag = ? AND message_id = ? AND direction = 'Request'
+                        ORDER BY ts DESC LIMIT 1
+                        """,
+                        (mcpTag, str(message_id))
+                    )
+                    row = await cursor.fetchone()
+                    if row:
+                        method = row[0]
+                        print(f'[DB] Response 메시지의 method를 Request에서 찾음: {method} (id={message_id})')
+                    else:
+                        print(f'[DB] Warning: Response 메시지의 Request를 찾을 수 없음 (id={message_id}, mcpTag={mcpTag})')
+                except Exception as e:
+                    print(f'[DB] Response method 조회 실패: {e}')
+
             cursor = await self.conn.execute(
                 """
                 INSERT INTO rpc_events
@@ -382,8 +402,8 @@ class Database:
                     WHERE 1=1
                       AND e.mcptype IN ('remote', 'local')
                       AND e.direction = 'Response'
-                      AND e.mcpTag IN (SELECT mcpTag FROM rpc_events WHERE method = 'tools/list')
-                      AND e.message_id = '1'
+                      AND e.method = 'tools/list'
+                      AND e.mcpTag IS NOT NULL
                 )
                 INSERT INTO mcpl (mcpTag, producer, tool, tool_title, tool_description, tool_parameter, annotations)
                 SELECT
