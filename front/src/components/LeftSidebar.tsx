@@ -68,8 +68,21 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
                   selectedServer?.id === server.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
                 }`}
               >
-                <span className="text-xl">{server.icon}</span>
-                <span className="text-sm text-gray-700">{server.name}</span>
+                <img
+                  src={`/logos/${server.icon}`}
+                  alt={server.appName || server.name}
+                  className="w-6 h-6 rounded object-contain"
+                  onError={(e) => {
+                    // Fallback to default icon if image fails to load
+                    e.currentTarget.src = '/logos/default.svg'
+                  }}
+                />
+                <div className="flex flex-col">
+                  <span className="text-sm text-gray-700 font-medium">{server.name}</span>
+                  {server.appName && (
+                    <span className="text-xs text-gray-500">{server.appName}</span>
+                  )}
+                </div>
               </button>
             ))}
           </div>

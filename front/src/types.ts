@@ -10,6 +10,7 @@ export interface MCPServer {
   name: string
   type: string
   icon: string
+  appName?: string
   tools: MCPTool[]
 }
 
