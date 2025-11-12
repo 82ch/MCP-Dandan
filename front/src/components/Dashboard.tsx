@@ -228,7 +228,7 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
                       className="w-full rounded-t transition-all duration-300"
                       style={{ height: `${barHeightPx}px`, backgroundColor: '#D4EDFA' }}
                     />
-                    <div className="text-xs text-gray-700 text-center break-words w-full mt-1">{server.name}</div>
+                    <div className="text-xs text-gray-700 text-center wrap-words w-full mt-1">{server.name}</div>
                   </div>
                 )
               })}
@@ -334,7 +334,7 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
                   className={`border rounded-lg p-4 ${threat.bgColor} ${threat.borderColor}`}
                 >
                   <div className="flex items-start gap-3">
-                    <Icon className={`${threat.color} flex-shrink-0`} size={20} />
+                    <Icon className={`${threat.color} shrink-0`} size={20} />
                     <div className="flex-1 min-w-0">
                       <h3 className={`font-semibold ${threat.color} text-sm`}>{threat.name}</h3>
                       <p className="text-xs text-gray-600 mt-1 line-clamp-2">{threat.description}</p>

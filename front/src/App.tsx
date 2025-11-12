@@ -172,13 +172,13 @@ function App() {
 
           {/* Horizontal Resize Handle */}
           <div
-            className="w-1 bg-gray-300 hover:bg-blue-400 cursor-ew-resize transition-colors flex-shrink-0"
+            className="w-1 bg-gray-300 hover:bg-blue-400 cursor-ew-resize transition-colors shrink-0"
             onMouseDown={handleHorizontalMouseDown}
           />
 
           {/* Right Chat Panel */}
           <div
-            className="border-l border-gray-300 flex-shrink-0"
+            className="border-l border-gray-300 -shrink-0"
             style={{ width: `${rightPanelWidth}px`, minWidth: '300px', maxWidth: '60vw' }}
           >
             <RightChatPanel
