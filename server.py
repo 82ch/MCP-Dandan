@@ -100,11 +100,37 @@ async def handle_health(request):
     )
 
 
+async def handle_analysis_status(request):
+    """Get analysis status for all servers."""
+    import json
+    from state import state
+
+    statuses = {}
+    for server_name, status in state.analysis_status.items():
+        statuses[server_name] = {
+            'total_tools': status.total_tools,
+            'analyzed_tools': status.analyzed_tools,
+            'malicious_found': status.malicious_found,
+            'status': status.status,
+            'started_at': status.started_at.isoformat(),
+            'completed_at': status.completed_at.isoformat() if status.completed_at else None,
+            'progress_percent': int((status.analyzed_tools / status.total_tools * 100) if status.total_tools > 0 else 0)
+        }
+
+    return web.Response(
+        text=json.dumps(statuses),
+        content_type='application/json'
+    )
+
+
 def setup_routes(app):
     """Setup application routes."""
 
     # Health check
     app.router.add_get('/health', handle_health)
+
+    # Analysis status
+    app.router.add_get('/analysis/status', handle_analysis_status)
 
     # STDIO verification API endpoints
     app.router.add_post('/verify/request', handle_verify_request)
@@ -257,19 +283,20 @@ async def start_server():
     except (KeyboardInterrupt, asyncio.CancelledError):
         print("\n[Server] Interrupted")
     finally:
-        # Trigger shutdown callbacks to clean up SSE connections, etc.
+        # Stop the site FIRST to prevent new connections and close the socket
+        try:
+            await site.stop()
+            print("[Server] Site stopped")
+        except Exception as e:
+            print(f"[Server] Site stop error: {e}")
+
+        # Then trigger shutdown callbacks to clean up SSE connections, etc.
         try:
             await asyncio.wait_for(app.shutdown(), timeout=2.0)
         except asyncio.TimeoutError:
             print("[Server] App shutdown timeout")
         except Exception as e:
             print(f"[Server] App shutdown error: {e}")
-
-        # Stop the site first to prevent new connections
-        try:
-            await site.stop()
-        except Exception as e:
-            print(f"[Server] Site stop error: {e}")
 
         # Cancel all remaining tasks
         try:
