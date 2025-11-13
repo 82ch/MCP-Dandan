@@ -49,9 +49,10 @@ const threatDefinitions: ThreatDefinition[] = [
 interface DashboardProps {
   setSelectedServer: (server: MCPServer | null) => void
   servers: MCPServer[]
+  setSelectedMessageId: (messageId: string | number | null) => void
 }
 
-function Dashboard({ setSelectedServer, servers }: DashboardProps) {
+function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: DashboardProps) {
   const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([])
   const [topServers, setTopServers] = useState<TopServer[]>([])
   const [threatStats, setThreatStats] = useState<Record<string, ThreatStats>>({})
@@ -147,7 +148,8 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
           severityColor,
           description,
           lastSeen: timestamp,
-          engineResultId: result.id
+          engineResultId: result.id,
+          rawEventId: result.raw_event_id
         })
       })
 
@@ -197,10 +199,12 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
     }
   }
 
-  const handleGoToServer = (serverName: string) => {
+  const handleGoToServer = (serverName: string, rawEventId: string | number) => {
     const server = servers.find(s => s.name === serverName)
     if (server) {
       setSelectedServer(server)
+      // Set the message ID to auto-select it
+      setSelectedMessageId(rawEventId)
     }
   }
 
@@ -403,7 +407,7 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap text-sm">
                     <button
-                      onClick={() => handleGoToServer(event.serverName)}
+                      onClick={() => handleGoToServer(event.serverName, event.rawEventId)}
                       className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
                     >
                       {event.serverName}
