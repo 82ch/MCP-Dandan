@@ -1,4 +1,3 @@
-import { Settings } from 'lucide-react'
 import type { ChatMessage } from '../types'
 
 interface RightChatPanelProps {
@@ -13,9 +12,6 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
       <div className="h-full bg-white flex flex-col">
         <div className="p-4 border-b border-gray-200 flex items-center justify-between">
           <h2 className="font-semibold text-gray-800">Chat</h2>
-          <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-            <Settings size={20} className="text-gray-600" />
-          </button>
         </div>
         <div className="flex-1 flex items-center justify-center text-gray-500">
           <p>Select a server to view messages</p>
@@ -29,9 +25,6 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
       {/* Header */}
       <div className="p-3 md:p-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
         <h2 className="font-semibold text-sm md:text-base text-gray-800">Chat</h2>
-        <button className="p-2 hover:bg-gray-100 rounded-lg transition-colors">
-          <Settings size={18} className="text-gray-600 md:w-5 md:h-5" />
-        </button>
       </div>
 
       {/* Messages */}
