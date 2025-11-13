@@ -55,7 +55,7 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
             // Find the most recent client message with matching id
             const clientMessage = messages
               .filter(m => m.sender === 'client' && m.data?.message?.id === requestId)
-              .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0]
+              .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())[0]
 
             if (clientMessage) {
               let clientText = clientMessage.type || 'Unknown'
@@ -92,8 +92,8 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
                 <div className="flex items-center gap-1 mt-1 px-2">
                   <div
                     className={`w-2 h-2 rounded-full ${
-                      message.maliciousScore > 50 ? 'bg-red-500' :
-                      message.maliciousScore > 20 ? 'bg-yellow-500' : 'bg-green-500'
+                      (message.maliciousScore ?? 0) > 5 ? 'bg-red-500' :
+                      (message.maliciousScore ?? 0) > 2 ? 'bg-yellow-500' : 'bg-green-500'
                     }`}
                   />
                   <span className="text-xs text-gray-500 font-mono">{message.timestamp}</span>
