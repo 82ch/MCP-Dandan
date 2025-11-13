@@ -77,25 +77,25 @@ function MiddleBottomPanel({ selectedMessage }: MiddleBottomPanelProps) {
             <div className="flex items-center gap-2">
               <span className="text-sm text-gray-600">Score:</span>
               <span className={`font-mono text-lg font-semibold ${
-                selectedMessage.maliciousScore > 5 ? 'text-red-600' :
-                selectedMessage.maliciousScore > 2 ? 'text-yellow-600' : 'text-green-600'
+                selectedMessage.maliciousScore > 50 ? 'text-red-600' :
+                selectedMessage.maliciousScore > 20 ? 'text-yellow-600' : 'text-green-600'
               }`}>
                 {selectedMessage.maliciousScore !== undefined ? selectedMessage.maliciousScore : 'N/A'}
               </span>
-              <span className="text-sm text-gray-500">/ 10</span>
+              <span className="text-sm text-gray-500">/ 100</span>
             </div>
             <div className="mt-3 bg-gray-200 rounded-full h-2 overflow-hidden">
               <div
                 className={`h-full transition-all ${
-                  selectedMessage.maliciousScore > 5 ? 'bg-red-500' :
-                  selectedMessage.maliciousScore > 2 ? 'bg-yellow-500' : 'bg-green-500'
+                  selectedMessage.maliciousScore > 50 ? 'bg-red-500' :
+                  selectedMessage.maliciousScore > 20 ? 'bg-yellow-500' : 'bg-green-500'
                 }`}
-                style={{ width: `${(selectedMessage.maliciousScore || 0) * 10}%` }}
+                style={{ width: `${(selectedMessage.maliciousScore || 0)}%` }}
               />
             </div>
             <div className="mt-2 text-xs text-gray-600">
-              {selectedMessage.maliciousScore > 5 ? '⚠️ High Risk' :
-               selectedMessage.maliciousScore > 2 ? '⚡ Medium Risk' : '✓ Safe'}
+              {selectedMessage.maliciousScore > 50 ? '⚠️ High Risk' :
+               selectedMessage.maliciousScore > 20 ? '⚡ Medium Risk' : '✓ Safe'}
             </div>
           </div>
         </div>

@@ -304,20 +304,24 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
     console.log(`[DB] Found server: ${server.name}`)
 
     // Query raw_events table for messages with matching mcpTag
+    // Join with engine_results to get malicious scores
     const query = `
       SELECT
-        id,
-        ts,
-        producer,
-        pid,
-        pname,
-        event_type,
-        mcpTag,
-        data,
-        created_at
-      FROM raw_events
-      WHERE mcpTag = ? AND event_type = 'MCP'
-      ORDER BY ts ASC
+        re.id,
+        re.ts,
+        re.producer,
+        re.pid,
+        re.pname,
+        re.event_type,
+        re.mcpTag,
+        re.data,
+        re.created_at,
+        COALESCE(MAX(er.score), 0) as max_score
+      FROM raw_events re
+      LEFT JOIN engine_results er ON re.id = er.raw_event_id
+      WHERE re.mcpTag = ? AND re.event_type = 'MCP'
+      GROUP BY re.id
+      ORDER BY re.ts ASC
     `
 
     console.log(`[DB] Executing query for mcpTag: ${server.name}`)
@@ -348,8 +352,8 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
         sender = 'server'
       }
 
-      // Calculate maliciousScore (placeholder - should come from analysis)
-      const maliciousScore = 0
+      // Get maliciousScore from engine_results (max_score from JOIN)
+      const maliciousScore = row.max_score || 0
 
       // Convert ts to readable timestamp
       // Handle both string timestamps and numeric timestamps
