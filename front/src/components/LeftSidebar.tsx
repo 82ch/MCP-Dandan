@@ -57,39 +57,38 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
           />
         </button>
 
-        {/* Server List */}
-        {isServersExpanded && (
-          <div className="flex-1 overflow-y-auto transition-all duration-300">
-            {servers.map((server) => (
-              <button
-                key={server.id}
-                onClick={() => setSelectedServer(server)}
-                className={`w-full pl-8 pr-4 py-3 text-left hover:bg-gray-100 transition-colors flex items-center gap-3 ${
-                  selectedServer?.id === server.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
-                }`}
-              >
-                <img
-                  src={`/logos/${server.icon}`}
-                  alt={server.appName || server.name}
-                  className="w-6 h-6 rounded object-contain"
-                  onError={(e) => {
-                    // Fallback to default icon if image fails to load
-                    e.currentTarget.src = '/logos/default.svg'
-                  }}
-                />
-                <div className="flex flex-col">
-                  <span className="text-sm text-gray-700 font-medium">{server.name}</span>
-                  {server.appName && (
-                    <span className="text-xs text-gray-500">{server.appName}</span>
-                  )}
-                </div>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Spacer */}
-        <div className="flex-1"></div>
+        {/* Server List with Spacer */}
+        <div className="flex-1 overflow-y-auto transition-all duration-300">
+          {isServersExpanded && (
+            <>
+              {servers.map((server) => (
+                <button
+                  key={server.id}
+                  onClick={() => setSelectedServer(server)}
+                  className={`w-full pl-8 pr-4 py-3 text-left hover:bg-gray-100 transition-colors flex items-center gap-3 ${
+                    selectedServer?.id === server.id ? 'bg-blue-50 border-l-4 border-blue-500' : ''
+                  }`}
+                >
+                  <img
+                    src={`/logos/${server.icon}`}
+                    alt={server.appName || server.name}
+                    className="w-6 h-6 rounded object-contain"
+                    onError={(e) => {
+                      // Fallback to default icon if image fails to load
+                      e.currentTarget.src = '/logos/default.svg'
+                    }}
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-sm text-gray-700 font-medium">{server.name}</span>
+                    {server.appName && (
+                      <span className="text-xs text-gray-500">{server.appName}</span>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </>
+          )}
+        </div>
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-200">
