@@ -44,6 +44,7 @@ async def handle_verify_request(request):
     message = data.get('message')
     tool_name = data.get('toolName')
     server_info = data.get('serverInfo', {})
+    stage = data.get('stage', None)  # 구분자 읽기
 
     if not message:
         return web.Response(
@@ -106,7 +107,17 @@ async def handle_verify_request(request):
             )
         else:
             # Other methods: just log, don't block
-            print(f"[Log] Request: {method} from {app_name}/{server_name}")
+            # stage 정보가 있으면 로그에 표시
+            if stage:
+                stage_labels = {
+                    'client_to_proxy': '[Client→Proxy]',
+                    'proxy_to_server': '[Proxy→Server]',
+                    'pre_init': '[Pre-Init]'
+                }
+                stage_label = stage_labels.get(stage, f'[{stage}]')
+                print(f"[Log] {stage_label} Request: {method} from {app_name}/{server_name}")
+            else:
+                print(f"[Log] Request: {method} from {app_name}/{server_name}")
             return web.Response(
                 status=200,
                 text=json.dumps({
@@ -160,6 +171,8 @@ async def handle_verify_response(request):
     message = data.get('message')
     server_info = data.get('serverInfo', {})
     tool_name = data.get('toolName', 'unknown')
+    stage = data.get('stage', None)  # 구분자 읽기
+    skip_analysis = data.get('skip_analysis', False)  # 엔진 분석 스킵 플래그
 
     if not message:
         return web.Response(
@@ -187,9 +200,26 @@ async def handle_verify_response(request):
             }
         }
 
-        # Send to EventHub for DB logging
+        # Check if this is a tools/list response - needs synchronous processing
+        is_tools_list = False
+        if message.get('result') and message['result'].get('tools'):
+            is_tools_list = True
+
+        # Send to EventHub for DB logging and analysis
         if state.event_hub:
-            await state.event_hub.process_event(event)
+            if is_tools_list and not skip_analysis:
+                # tools/list: 동기적으로 처리 (엔진 검사 완료까지 대기)
+                stage_label = '[Pre-Init]' if stage == 'pre_init' else ''
+                print(f"[Log] {stage_label} tools/list Response from {app_name}/{server_name} - waiting for engine analysis")
+                await state.event_hub.process_event_sync(event)
+                print(f"[Log] {stage_label} tools/list engine analysis completed for {app_name}/{server_name}")
+            elif is_tools_list and skip_analysis:
+                # tools/list이지만 분석 스킵 (캐시된 응답)
+                print(f"[Log] [Cached] tools/list Response from {app_name}/{server_name} - skipping analysis (already done)")
+                await state.event_hub.process_event(event)
+            else:
+                # 다른 응답: 백그라운드 처리
+                await state.event_hub.process_event(event)
 
         # Only verify tools/call responses for security
         if tool_name != 'unknown' and tool_name not in ['initialize', 'tools/list', 'notifications/initialized']:
@@ -214,7 +244,18 @@ async def handle_verify_response(request):
             )
         else:
             # Other responses: just log, don't block
-            print(f"[Log] Response from {app_name}/{server_name}")
+            if not is_tools_list:
+                # stage 정보가 있으면 로그에 표시
+                if stage:
+                    stage_labels = {
+                        'server_to_proxy': '[Server→Proxy]',
+                        'proxy_to_client': '[Proxy→Client]',
+                        'pre_init': '[Pre-Init]'
+                    }
+                    stage_label = stage_labels.get(stage, f'[{stage}]')
+                    print(f"[Log] {stage_label} Response from {app_name}/{server_name}")
+                else:
+                    print(f"[Log] Response from {app_name}/{server_name}")
             return web.Response(
                 status=200,
                 text=json.dumps({

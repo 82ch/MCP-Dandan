@@ -10,6 +10,10 @@ import sys
 import asyncio
 from aiohttp import web
 
+# Force unbuffered output for real-time logging
+sys.stdout.reconfigure(line_buffering=True)
+sys.stderr.reconfigure(line_buffering=True)
+
 from transports.auto_handler import handle_auto_detect
 from transports.message_handler import handle_message_endpoint
 from transports.stdio_handlers import (

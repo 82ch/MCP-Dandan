@@ -23,7 +23,7 @@ class ToolsPoisoningEngine(BaseEngine):
         self.mistral_client = Mistral(api_key=api_key) if api_key else None
         self.model = "mistral-medium-latest"
         
-        # ✅ [수정 1] 동시 실행 수를 제한하기 위한 세마포어 추가
+        # [수정 1] 동시 실행 수를 제한하기 위한 세마포어 추가
         # API Rate Limit 방지 및 시스템 리소스 보호 (동시 3개 제한)
         self.semaphore = asyncio.Semaphore(3)
 
@@ -195,7 +195,7 @@ class ToolsPoisoningEngine(BaseEngine):
         """
         단일 도구를 분석하고 악성인 경우에만 결과 반환
         """
-        # ✅ [수정 2] 세마포어를 사용하여 동시 실행 제어
+        # [수정 2] 세마포어를 사용하여 동시 실행 제어
         async with self.semaphore:
             try:
                 # 취소 확인
@@ -290,7 +290,7 @@ class ToolsPoisoningEngine(BaseEngine):
                 # 분석할 텍스트 구성
                 analysis_text = f"Tool Name: {tool_name}\nTool Description: {tool_description}"
 
-                # ✅ [수정 3] 핵심 변경: Blocking Call을 별도 스레드로 격리
+                # [수정 3] 핵심 변경: Blocking Call을 별도 스레드로 격리
                 # asyncio.to_thread를 사용하여 메인 스레드(DB, Log 등)가 멈추지 않게 함
                 response = await asyncio.to_thread(
                     self.mistral_client.chat.complete,

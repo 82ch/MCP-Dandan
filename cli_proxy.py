@@ -39,8 +39,7 @@ def make_api_request(endpoint: str, data: Dict[str, Any]) -> Optional[Dict[str, 
         response = requests.post(
             url,
             json=data,
-            headers={'Content-Type': 'application/json'},
-            timeout=35
+            headers={'Content-Type': 'application/json'}
         )
 
         if response.status_code >= 200 and response.status_code < 300:
@@ -69,9 +68,15 @@ class MCPState:
         self.current_tool_id: Optional[Any] = None
         self.pending_tools_list_id: Optional[Any] = None
         self.server_version = "unknown"
+        self.server_initialized = False
+        self.server_tools_fetched = False
+        self.pending_client_initialize_id: Optional[Any] = None
+        self.server_initialize_result: Optional[Dict[str, Any]] = None
+        self.server_tools: Optional[list] = None
 
 
 state = MCPState()
+server_process = None  # Will be set in main()
 
 
 def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -93,6 +98,86 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             if method == 'tools/list':
                 log('DEBUG', f"Detected tools/list request: {message.get('id')}")
                 state.pending_tools_list_id = message.get('id')
+
+                # If we already have tools from pre-initialization, return them immediately
+                if state.server_tools_fetched and state.server_tools is not None:
+                    log('INFO', "Returning cached tools from pre-initialization")
+
+                    # Verify request for logging
+                    verification_data = {
+                        'message': message,
+                        'toolName': 'tools/list',
+                        'serverInfo': {
+                            'appName': CONFIG['app_name'],
+                            'name': CONFIG['server_name'],
+                            'version': state.server_version
+                        }
+                    }
+                    try:
+                        make_api_request('/verify/request', verification_data)
+                    except Exception as e:
+                        log('ERROR', f"Exception verifying tools/list request: {e}")
+
+                    # Modify tools to add user_intent parameter (same as process_response)
+                    modified_tools = []
+                    for tool in state.server_tools:
+                        modified_tool = tool.copy()
+
+                        # Ensure inputSchema exists
+                        if 'inputSchema' not in modified_tool:
+                            modified_tool['inputSchema'] = {
+                                'type': 'object',
+                                'properties': {},
+                                'required': []
+                            }
+
+                        # Add user_intent to properties
+                        if 'properties' not in modified_tool['inputSchema']:
+                            modified_tool['inputSchema']['properties'] = {}
+
+                        modified_tool['inputSchema']['properties']['user_intent'] = {
+                            'type': 'string',
+                            'description': 'Explain the reasoning and context for why you are calling this tool.'
+                        }
+
+                        # Add to required fields
+                        required = modified_tool['inputSchema'].get('required', [])
+                        if 'user_intent' not in required:
+                            modified_tool['inputSchema']['required'] = required + ['user_intent']
+
+                        # Add security prefix to description
+                        if modified_tool.get('description'):
+                            modified_tool['description'] = f"🔒{modified_tool['description']}"
+
+                        modified_tools.append(modified_tool)
+
+                    # Create response message
+                    response_msg = {
+                        "jsonrpc": "2.0",
+                        "id": message.get('id'),
+                        "result": {
+                            "tools": modified_tools
+                        }
+                    }
+
+                    # Verify response for logging (skip engine analysis - already done in pre-init)
+                    verification_data = {
+                        'message': response_msg,
+                        'toolName': 'tools/list',
+                        'serverInfo': {
+                            'appName': CONFIG['app_name'],
+                            'name': CONFIG['server_name'],
+                            'version': state.server_version
+                        },
+                        'skip_analysis': True  # 이미 pre-init에서 분석 완료
+                    }
+                    try:
+                        make_api_request('/verify/response', verification_data)
+                    except Exception as e:
+                        log('ERROR', f"Exception verifying cached tools/list response: {e}")
+
+                    # Return cached tools response
+                    return response_msg
 
             # Prepare verification data for all methods
             verification_data = {
@@ -259,6 +344,11 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
                 except:
                     pass
 
+                # Cache tools for future requests
+                state.server_tools = tools
+                state.server_tools_fetched = True
+                log('INFO', f"Cached {len(tools)} tools for future requests")
+
                 state.pending_tools_list_id = None
 
         # Clear tool call state after processing response
@@ -303,6 +393,8 @@ def write_jsonrpc_message(stream, message: Dict[str, Any]):
 
 def main():
     """Main entry point."""
+    global server_process
+
     if len(sys.argv) < 2:
         print("Usage: python cli_proxy.py <command> [args...]", file=sys.stderr)
         sys.exit(1)
@@ -328,11 +420,168 @@ def main():
             bufsize=1,
             shell=use_shell
         )
+        server_process = process  # Set global for pre-initialization
     except Exception as e:
         log('ERROR', f"Failed to start target server: {e}")
         sys.exit(1)
 
     log('INFO', f"Target server started (PID: {process.pid})")
+
+    # Wait for first message (should be initialize)
+    first_message = read_jsonrpc_message(sys.stdin)
+    if first_message and first_message.get('method') == 'initialize':
+        log('INFO', "Received client initialize, performing pre-initialization with server")
+
+        # Step 1: Send initialize to server
+        server_init_msg = {
+            "jsonrpc": "2.0",
+            "id": first_message.get('id'),
+            "method": "initialize",
+            "params": first_message.get('params', {})
+        }
+
+        # Log client initialize request
+        verification_data = {
+            'message': first_message,
+            'toolName': 'initialize',
+            'serverInfo': {
+                'appName': CONFIG['app_name'],
+                'name': CONFIG['server_name'],
+                'version': state.server_version
+            },
+            'stage': 'client_to_proxy'  # 구분자 추가
+        }
+        try:
+            make_api_request('/verify/request', verification_data)
+        except Exception as e:
+            log('ERROR', f"Failed to log client initialize request: {e}")
+
+        # Log proxy->server initialize request
+        verification_data = {
+            'message': server_init_msg,
+            'toolName': 'initialize',
+            'serverInfo': {
+                'appName': CONFIG['app_name'],
+                'name': CONFIG['server_name'],
+                'version': state.server_version
+            },
+            'stage': 'proxy_to_server'  # 구분자 추가
+        }
+        try:
+            make_api_request('/verify/request', verification_data)
+        except Exception as e:
+            log('ERROR', f"Failed to log proxy->server initialize request: {e}")
+
+        # Send to server and wait
+        write_jsonrpc_message(process.stdin, server_init_msg)
+        server_init_response = read_jsonrpc_message(process.stdout)
+
+        if not server_init_response:
+            log('ERROR', "Failed to get initialize response from server")
+            sys.exit(1)
+
+        log('INFO', "Received initialize response from server")
+
+        # Log server initialize response
+        verification_data = {
+            'message': server_init_response,
+            'toolName': 'initialize',
+            'serverInfo': {
+                'appName': CONFIG['app_name'],
+                'name': CONFIG['server_name'],
+                'version': state.server_version
+            },
+            'stage': 'server_to_proxy'  # 구분자 추가
+        }
+        try:
+            make_api_request('/verify/response', verification_data)
+        except Exception as e:
+            log('ERROR', f"Failed to log server initialize response: {e}")
+
+        # Save server version
+        if server_init_response.get('result', {}).get('serverInfo', {}).get('version'):
+            state.server_version = server_init_response['result']['serverInfo']['version']
+
+        # Step 2: Send tools/list to server
+        log('INFO', "Requesting tools/list from server")
+        tools_list_msg = {
+            "jsonrpc": "2.0",
+            "id": "pre_tools_1",
+            "method": "tools/list",
+            "params": {}
+        }
+
+        # Log tools/list request
+        verification_data = {
+            'message': tools_list_msg,
+            'toolName': 'tools/list',
+            'serverInfo': {
+                'appName': CONFIG['app_name'],
+                'name': CONFIG['server_name'],
+                'version': state.server_version
+            },
+            'stage': 'pre_init'  # 구분자 추가
+        }
+        try:
+            make_api_request('/verify/request', verification_data)
+        except Exception as e:
+            log('ERROR', f"Failed to log tools/list request: {e}")
+
+        # Send to server and wait
+        write_jsonrpc_message(process.stdin, tools_list_msg)
+        tools_list_response = read_jsonrpc_message(process.stdout)
+
+        if not tools_list_response:
+            log('ERROR', "Failed to get tools/list response from server")
+            sys.exit(1)
+
+        log('INFO', "Received tools/list response from server")
+
+        # Log and WAIT for tools/list response verification (includes engine analysis)
+        if tools_list_response.get('result', {}).get('tools'):
+            verification_data = {
+                'message': tools_list_response,
+                'toolName': 'tools/list',
+                'serverInfo': {
+                    'appName': CONFIG['app_name'],
+                    'name': CONFIG['server_name'],
+                    'version': state.server_version
+                },
+                'stage': 'pre_init'  # 구분자 추가
+            }
+            try:
+                log('INFO', "Waiting for tools/list engine analysis to complete...")
+                make_api_request('/verify/response', verification_data)
+                log('INFO', "Engine analysis completed")
+            except Exception as e:
+                log('ERROR', f"Failed to verify tools/list response: {e}")
+
+            # Cache tools
+            state.server_tools = tools_list_response['result']['tools']
+            state.server_tools_fetched = True
+
+        state.server_initialized = True
+
+        # Now send initialize response to client
+        log('INFO', "Sending initialize response to client")
+
+        # Log client initialize response
+        verification_data = {
+            'message': server_init_response,
+            'toolName': 'initialize',
+            'serverInfo': {
+                'appName': CONFIG['app_name'],
+                'name': CONFIG['server_name'],
+                'version': state.server_version
+            },
+            'stage': 'proxy_to_client'  # 구분자 추가
+        }
+        try:
+            make_api_request('/verify/response', verification_data)
+        except Exception as e:
+            log('ERROR', f"Failed to log client initialize response: {e}")
+
+        write_jsonrpc_message(sys.stdout, server_init_response)
 
     # Process stdin -> target
     def stdin_to_target():

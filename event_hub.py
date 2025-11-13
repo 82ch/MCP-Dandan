@@ -78,18 +78,39 @@ class EventHub:
             # Step 1: 즉시 DB 저장 (빠른 응답)
             await self._save_event(event)
 
-            # Step 2: 백그라운드에서 엔진 분석 실행 
+            # Step 2: 백그라운드에서 엔진 분석 실행
             asyncio.create_task(self._analyze_event_async(event))
 
         except Exception as e:
             print(f'[EventHub] Error processing event: {e}')
 
-    async def _analyze_event_async(self, event: Dict[str, Any]) -> None:
+    async def process_event_sync(self, event: Dict[str, Any]) -> None:
+        """
+        이벤트를 동기적으로 처리 (tools/list 검사 시 사용).
+
+        Args:
+            event: Event dictionary with eventType, producer, data, etc.
+        """
+        if not self.running:
+            return
+
+        try:
+            # Step 1: 즉시 DB 저장
+            await self._save_event(event)
+
+            # Step 2: 엔진 분석을 동기적으로 수행 (기다림)
+            await self._analyze_event_async(event, sync_mode=True)
+
+        except Exception as e:
+            print(f'[EventHub] Error processing event synchronously: {e}')
+
+    async def _analyze_event_async(self, event: Dict[str, Any], sync_mode: bool = False) -> None:
         """
         백그라운드에서 엔진 분석 수행 및 결과 일괄 저장.
 
         Args:
             event: 분석할 이벤트
+            sync_mode: True이면 ToolsPoisoningEngine도 동기적으로 실행 (기다림)
         """
         try:
             # ToolsPoisoningEngine과 다른 엔진 분리
@@ -123,13 +144,17 @@ class EventHub:
                 if all_results:
                     await self._save_results_batch(all_results)
 
-            # ToolsPoisoningEngine은 완전히 독립적인 백그라운드 태스크로 실행
-            # 이렇게 하면 tools/list 응답이 즉시 반환됨
+            # ToolsPoisoningEngine 처리
             if tools_poisoning_engine:
-                task = asyncio.create_task(self._run_tools_poisoning_analysis(tools_poisoning_engine, event))
-                self.background_tasks.add(task)
-                # 태스크 완료 시 자동으로 제거
-                task.add_done_callback(self.background_tasks.discard)
+                if sync_mode:
+                    # 동기 모드: ToolsPoisoningEngine 완료까지 대기
+                    await self._run_tools_poisoning_analysis(tools_poisoning_engine, event)
+                else:
+                    # 비동기 모드: 백그라운드 태스크로 실행
+                    task = asyncio.create_task(self._run_tools_poisoning_analysis(tools_poisoning_engine, event))
+                    self.background_tasks.add(task)
+                    # 태스크 완료 시 자동으로 제거
+                    task.add_done_callback(self.background_tasks.discard)
 
         except Exception as e:
             print(f'[EventHub] Error in async analysis: {e}')
