@@ -10,6 +10,7 @@ function App() {
   const [isLeftSidebarOpen, setIsLeftSidebarOpen] = useState<boolean>(true)
   const [selectedServer, setSelectedServer] = useState<MCPServer | null>(null)
   const [selectedMessage, setSelectedMessage] = useState<ChatMessage | null>(null)
+  const [pendingMessageId, setPendingMessageId] = useState<string | number | null>(null)
 
   // Data from backend
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
@@ -36,6 +37,17 @@ function App() {
       setChatMessages([])
     }
   }, [selectedServer])
+
+  // Auto-select message when pendingMessageId is set and messages are loaded
+  useEffect(() => {
+    if (pendingMessageId !== null && chatMessages.length > 0) {
+      const message = chatMessages.find(m => m.id === pendingMessageId)
+      if (message) {
+        setSelectedMessage(message)
+        setPendingMessageId(null)
+      }
+    }
+  }, [pendingMessageId, chatMessages])
 
   const fetchServers = async () => {
     try {
@@ -139,7 +151,11 @@ function App() {
       {selectedServer === null ? (
         /* Dashboard View */
         <div className="flex-1">
-          <Dashboard setSelectedServer={setSelectedServer} servers={mcpServers} />
+          <Dashboard
+            setSelectedServer={setSelectedServer}
+            servers={mcpServers}
+            setSelectedMessageId={setPendingMessageId}
+          />
         </div>
       ) : (
         <>

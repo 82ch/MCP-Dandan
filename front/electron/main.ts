@@ -304,20 +304,24 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
     console.log(`[DB] Found server: ${server.name}`)
 
     // Query raw_events table for messages with matching mcpTag
+    // Join with engine_results to get malicious scores
     const query = `
       SELECT
-        id,
-        ts,
-        producer,
-        pid,
-        pname,
-        event_type,
-        mcpTag,
-        data,
-        created_at
-      FROM raw_events
-      WHERE mcpTag = ? AND event_type = 'MCP'
-      ORDER BY ts ASC
+        re.id,
+        re.ts,
+        re.producer,
+        re.pid,
+        re.pname,
+        re.event_type,
+        re.mcpTag,
+        re.data,
+        re.created_at,
+        COALESCE(MAX(er.score), 0) as max_score
+      FROM raw_events re
+      LEFT JOIN engine_results er ON re.id = er.raw_event_id
+      WHERE re.mcpTag = ? AND re.event_type = 'MCP'
+      GROUP BY re.id
+      ORDER BY re.ts ASC
     `
 
     console.log(`[DB] Executing query for mcpTag: ${server.name}`)
@@ -348,8 +352,8 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
         sender = 'server'
       }
 
-      // Calculate maliciousScore (placeholder - should come from analysis)
-      const maliciousScore = 0
+      // Get maliciousScore from engine_results (max_score from JOIN)
+      const maliciousScore = row.max_score || 0
 
       // Convert ts to readable timestamp
       // Handle both string timestamps and numeric timestamps
@@ -419,6 +423,7 @@ ipcMain.handle('api:engine-results', () => {
     const query = `
       SELECT
         er.id,
+        er.raw_event_id,
         er.engine_name,
         er.serverName,
         er.severity,
@@ -439,6 +444,42 @@ ipcMain.handle('api:engine-results', () => {
     return results
   } catch (error) {
     console.error('[IPC] Error fetching engine results:', error)
+    return []
+  }
+})
+
+// Get engine results for a specific raw_event_id
+ipcMain.handle('api:engine-results:by-event', (_event, rawEventId: number) => {
+  console.log(`[IPC] api:engine-results:by-event called with rawEventId: ${rawEventId}`)
+
+  if (!db) {
+    console.error(`[DB] Database not initialized`)
+    return []
+  }
+
+  try {
+    const query = `
+      SELECT
+        id,
+        raw_event_id,
+        engine_name,
+        serverName,
+        producer,
+        severity,
+        score,
+        detail,
+        created_at
+      FROM engine_results
+      WHERE raw_event_id = ?
+      ORDER BY score DESC
+    `
+    console.log(`[DB] Executing query for raw_event_id: ${rawEventId}`)
+    const results = db.prepare(query).all(rawEventId)
+    console.log(`[DB] Query returned ${results.length} engine results`)
+    console.log(`[IPC] api:engine-results:by-event returning ${results.length} results`)
+    return results
+  } catch (error) {
+    console.error('[IPC] Error fetching engine results by event:', error)
     return []
   }
 })

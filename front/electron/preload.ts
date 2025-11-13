@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServers: () => ipcRenderer.invoke('api:servers'),
   getServerMessages: (serverId: number) => ipcRenderer.invoke('api:servers:messages', serverId),
   getEngineResults: () => ipcRenderer.invoke('api:engine-results'),
+  getEngineResultsByEvent: (rawEventId: number) => ipcRenderer.invoke('api:engine-results:by-event', rawEventId),
 
   // 필요에 따라 추가 API 노출
   platform: process.platform,
@@ -33,6 +34,7 @@ declare global {
       getServers: () => Promise<any[]>
       getServerMessages: (serverId: number) => Promise<any[]>
       getEngineResults: () => Promise<any[]>
+      getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
       platform: string
       versions: {
         node: string

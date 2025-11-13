@@ -50,6 +50,7 @@ export interface DetectedEvent {
   description: string
   lastSeen: string
   engineResultId: string | number
+  rawEventId: string | number
 }
 
 export interface ThreatStats {
