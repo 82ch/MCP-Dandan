@@ -59,6 +59,13 @@ function Dashboard({ setSelectedServer, servers }: DashboardProps) {
 
   useEffect(() => {
     fetchDashboardData()
+
+    // Poll dashboard data every 2 seconds
+    const dashboardInterval = setInterval(() => {
+      fetchDashboardData()
+    }, 1000)
+
+    return () => clearInterval(dashboardInterval)
   }, [])
 
   const fetchDashboardData = async () => {

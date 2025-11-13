@@ -23,15 +23,29 @@ function App() {
   const isDraggingVertical = useRef(false)
   const isDraggingHorizontal = useRef(false)
 
-  // Fetch servers on mount
+  // Fetch servers on mount and set up polling
   useEffect(() => {
     fetchServers()
+
+    // Poll servers every 2 seconds
+    const serverInterval = setInterval(() => {
+      fetchServers()
+    }, 2000)
+
+    return () => clearInterval(serverInterval)
   }, [])
 
-  // Fetch messages when server is selected
+  // Fetch messages when server is selected and set up polling
   useEffect(() => {
     if (selectedServer) {
       fetchMessages(selectedServer.id)
+
+      // Poll messages every 1 second when a server is selected
+      const messageInterval = setInterval(() => {
+        fetchMessages(selectedServer.id)
+      }, 1000)
+
+      return () => clearInterval(messageInterval)
     } else {
       setChatMessages([])
     }
