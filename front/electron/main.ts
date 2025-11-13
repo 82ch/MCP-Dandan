@@ -319,7 +319,7 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
         COALESCE(MAX(er.score), 0) as max_score
       FROM raw_events re
       LEFT JOIN engine_results er ON re.id = er.raw_event_id
-      WHERE re.mcpTag = ? AND re.event_type = 'MCP'
+      WHERE re.mcpTag = ? AND re.event_type IN ('MCP', 'Proxy')
       GROUP BY re.id
       ORDER BY re.ts ASC
     `
@@ -396,6 +396,7 @@ ipcMain.handle('api:servers:messages', (_event, serverId: number) => {
         sender: sender,
         timestamp: timestamp,
         maliciousScore: maliciousScore,
+        event_type: row.event_type,  // event_type 추가 (Proxy 또는 MCP)
         data: {
           message: parsedData.message || parsedData
         }

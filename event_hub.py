@@ -171,12 +171,15 @@ class EventHub:
             event: 분석할 이벤트
         """
         try:
+            print(f'[EventHub] _run_tools_poisoning_analysis STARTED')
             result = await self._process_with_engine(engine, event)
+            print(f'[EventHub] _run_tools_poisoning_analysis COMPLETED (result: {len(result) if isinstance(result, list) else "None" if result is None else "1"})')
 
             if result:
                 # 결과 저장
                 results_list = result if isinstance(result, list) else [result]
                 await self._save_results_batch(results_list)
+                print(f'[EventHub] _run_tools_poisoning_analysis SAVED {len(results_list)} results')
 
         except Exception as e:
             print(f'[EventHub] Error in ToolsPoisoningEngine analysis: {e}')
@@ -195,7 +198,8 @@ class EventHub:
                 self.event_id_map[event['ts']] = raw_event_id
 
                 # Save to type-specific tables
-                if event_type.lower() in ['rpc', 'jsonrpc', 'mcp']:
+                # Proxy와 MCP 모두 JSON-RPC 프로토콜이므로 rpc_events에 저장
+                if event_type.lower() in ['rpc', 'jsonrpc', 'mcp', 'proxy']:
                     await self.db.insert_rpc_event(event, raw_event_id)
 
                     # Extract MCP tool information if present

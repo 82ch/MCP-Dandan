@@ -33,6 +33,7 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
           // Client messages go LEFT, Server messages go RIGHT
           const isClientMessage = message.sender === 'client'
           const isSelected = selectedMessage?.id === message.id
+          const isProxyEvent = message.event_type === 'Proxy'
 
           // Extract display text from message
           let displayText = message.type || 'Unknown'
@@ -59,6 +60,12 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
             }
           }
 
+          // Determine background color
+          let bubbleColor = isClientMessage ? 'bg-blue-100' : 'bg-gray-200'
+          if (isProxyEvent) {
+            bubbleColor = 'bg-yellow-100'  // Proxy 이벤트는 노란색
+          }
+
           return (
             <div
               key={message.id}
@@ -70,7 +77,7 @@ function RightChatPanel({ messages, selectedMessage, setSelectedMessage }: Right
                 <div
                   className={`relative rounded-2xl px-3 py-2 md:px-4 md:py-3 ${
                     isSelected ? 'ring-2 ring-blue-400' : ''
-                  } ${isClientMessage ? 'bg-blue-100' : 'bg-gray-200'}`}
+                  } ${bubbleColor}`}
                   style={{
                     borderBottomLeftRadius: isClientMessage ? '4px' : '16px',
                     borderBottomRightRadius: isClientMessage ? '16px' : '4px',

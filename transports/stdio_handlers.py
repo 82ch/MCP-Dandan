@@ -58,13 +58,16 @@ async def handle_verify_request(request):
         server_name = server_info.get('name', 'unknown')
         method = message.get('method', tool_name)
 
+        # Determine event type: Proxy only for pre_init stage, MCP otherwise
+        event_type = 'Proxy' if stage == 'pre_init' else 'MCP'
+
         # Create event for EventHub (logs all requests)
         event = {
             'ts': int(time.time() * 1000),
             'producer': 'local',
             'pid': None,
             'pname': app_name,
-            'eventType': 'MCP',
+            'eventType': event_type,
             'mcpTag': server_name,
             'data': {
                 'task': 'SEND',
@@ -107,15 +110,9 @@ async def handle_verify_request(request):
             )
         else:
             # Other methods: just log, don't block
-            # stage 정보가 있으면 로그에 표시
-            if stage:
-                stage_labels = {
-                    'client_to_proxy': '[Client→Proxy]',
-                    'proxy_to_server': '[Proxy→Server]',
-                    'pre_init': '[Pre-Init]'
-                }
-                stage_label = stage_labels.get(stage, f'[{stage}]')
-                print(f"[Log] {stage_label} Request: {method} from {app_name}/{server_name}")
+            # pre_init 단계면 로그에 표시
+            if stage == 'pre_init':
+                print(f"[Log] [Pre-Init] Request: {method} from {app_name}/{server_name}")
             else:
                 print(f"[Log] Request: {method} from {app_name}/{server_name}")
             return web.Response(
@@ -185,13 +182,16 @@ async def handle_verify_response(request):
         app_name = server_info.get('appName', 'unknown')
         server_name = server_info.get('name', 'unknown')
 
+        # Determine event type: Proxy only for pre_init stage, MCP otherwise
+        event_type = 'Proxy' if stage == 'pre_init' else 'MCP'
+
         # Create event for EventHub (logs all responses)
         event = {
             'ts': int(time.time() * 1000),
             'producer': 'local',
             'pid': None,
             'pname': app_name,
-            'eventType': 'MCP',
+            'eventType': event_type,
             'mcpTag': server_name,
             'data': {
                 'task': 'RECV',
@@ -245,15 +245,9 @@ async def handle_verify_response(request):
         else:
             # Other responses: just log, don't block
             if not is_tools_list:
-                # stage 정보가 있으면 로그에 표시
-                if stage:
-                    stage_labels = {
-                        'server_to_proxy': '[Server→Proxy]',
-                        'proxy_to_client': '[Proxy→Client]',
-                        'pre_init': '[Pre-Init]'
-                    }
-                    stage_label = stage_labels.get(stage, f'[{stage}]')
-                    print(f"[Log] {stage_label} Response from {app_name}/{server_name}")
+                # pre_init 단계면 로그에 표시
+                if stage == 'pre_init':
+                    print(f"[Log] [Pre-Init] Response from {app_name}/{server_name}")
                 else:
                     print(f"[Log] Response from {app_name}/{server_name}")
             return web.Response(

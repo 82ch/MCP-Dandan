@@ -22,6 +22,7 @@ export interface ChatMessage {
   serverId?: string | number
   type?: string
   maliciousScore?: number
+  event_type?: string  // 'MCP', 'Proxy' 등
   data?: {
     message?: {
       id?: string | number

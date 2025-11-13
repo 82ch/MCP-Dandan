@@ -440,7 +440,7 @@ def main():
             "params": first_message.get('params', {})
         }
 
-        # Log client initialize request
+        # Log client initialize request (일반 MCP 통신, pre-init 아님)
         verification_data = {
             'message': first_message,
             'toolName': 'initialize',
@@ -448,15 +448,15 @@ def main():
                 'appName': CONFIG['app_name'],
                 'name': CONFIG['server_name'],
                 'version': state.server_version
-            },
-            'stage': 'client_to_proxy'  # 구분자 추가
+            }
+            # stage 없음 - 일반 MCP 이벤트로 기록
         }
         try:
             make_api_request('/verify/request', verification_data)
         except Exception as e:
             log('ERROR', f"Failed to log client initialize request: {e}")
 
-        # Log proxy->server initialize request
+        # Log proxy->server initialize request (pre-init 단계, Proxy 이벤트)
         verification_data = {
             'message': server_init_msg,
             'toolName': 'initialize',
@@ -465,7 +465,7 @@ def main():
                 'name': CONFIG['server_name'],
                 'version': state.server_version
             },
-            'stage': 'proxy_to_server'  # 구분자 추가
+            'stage': 'pre_init'  # pre-init 단계 - Proxy 이벤트로 기록
         }
         try:
             make_api_request('/verify/request', verification_data)
@@ -482,7 +482,7 @@ def main():
 
         log('INFO', "Received initialize response from server")
 
-        # Log server initialize response
+        # Log server initialize response (pre-init 단계, Proxy 이벤트)
         verification_data = {
             'message': server_init_response,
             'toolName': 'initialize',
@@ -491,7 +491,7 @@ def main():
                 'name': CONFIG['server_name'],
                 'version': state.server_version
             },
-            'stage': 'server_to_proxy'  # 구분자 추가
+            'stage': 'pre_init'  # pre-init 단계 - Proxy 이벤트로 기록
         }
         try:
             make_api_request('/verify/response', verification_data)
@@ -565,7 +565,7 @@ def main():
         # Now send initialize response to client
         log('INFO', "Sending initialize response to client")
 
-        # Log client initialize response
+        # Log client initialize response (일반 MCP 통신, pre-init 아님)
         verification_data = {
             'message': server_init_response,
             'toolName': 'initialize',
@@ -573,8 +573,8 @@ def main():
                 'appName': CONFIG['app_name'],
                 'name': CONFIG['server_name'],
                 'version': state.server_version
-            },
-            'stage': 'proxy_to_client'  # 구분자 추가
+            }
+            # stage 없음 - 일반 MCP 이벤트로 기록
         }
         try:
             make_api_request('/verify/response', verification_data)

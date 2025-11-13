@@ -69,10 +69,10 @@ class ToolsPoisoningEngine(BaseEngine):
 
     def should_process(self, data: dict) -> bool:
         """
-        tools/list 관련 MCP RPC 이벤트만 처리
+        tools/list 관련 MCP RPC 이벤트만 처리 (Proxy 이벤트 포함)
         """
         event_type = data.get('eventType', '').lower()
-        if event_type not in ['rpc', 'jsonrpc', 'mcp']:
+        if event_type not in ['rpc', 'jsonrpc', 'mcp', 'proxy']:
             return False
 
         # tools/list method 체크

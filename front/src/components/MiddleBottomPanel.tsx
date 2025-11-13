@@ -177,36 +177,6 @@ function MiddleBottomPanel({ selectedMessage }: MiddleBottomPanelProps) {
             </div>
           </div>
         )}
-
-        {/* Malicious Detect */}
-        <div>
-          <h3 className="text-sm font-semibold text-gray-500 mb-2">Malicious Detect</h3>
-          <div className="bg-gray-50 rounded-lg p-4">
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Score:</span>
-              <span className={`font-mono text-lg font-semibold ${
-                (selectedMessage.maliciousScore ?? 0) > 5 ? 'text-red-600' :
-                (selectedMessage.maliciousScore ?? 0) > 2 ? 'text-yellow-600' : 'text-green-600'
-              }`}>
-                {selectedMessage.maliciousScore !== undefined ? selectedMessage.maliciousScore : 'N/A'}
-              </span>
-              <span className="text-sm text-gray-500">/ 10</span>
-            </div>
-            <div className="mt-3 bg-gray-200 rounded-full h-2 overflow-hidden">
-              <div
-                className={`h-full transition-all ${
-                  (selectedMessage.maliciousScore ?? 0) > 5 ? 'bg-red-500' :
-                  (selectedMessage.maliciousScore ?? 0) > 2 ? 'bg-yellow-500' : 'bg-green-500'
-                }`}
-                style={{ width: `${(selectedMessage.maliciousScore || 0) * 10}%` }}
-              />
-            </div>
-            <div className="mt-2 text-xs text-gray-600">
-              {(selectedMessage.maliciousScore ?? 0) > 5 ? '⚠️ High Risk' :
-               (selectedMessage.maliciousScore ?? 0) > 2 ? '⚡ Medium Risk' : '✓ Safe'}
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   )
