@@ -23,6 +23,7 @@ class EventHub:
         self.db = db
         self.running = False
         self.event_id_map = {}  # {event_ts: raw_event_id} - 이벤트와 결과 연결용
+        self.background_tasks = set()  # 백그라운드 태스크 추적
 
     async def start(self):
         """Start the EventHub."""
@@ -32,6 +33,22 @@ class EventHub:
     async def stop(self):
         """Stop the EventHub."""
         self.running = False
+
+        # 모든 백그라운드 태스크 취소
+        if self.background_tasks:
+            print(f'[EventHub] Cancelling {len(self.background_tasks)} background tasks...')
+            for task in self.background_tasks:
+                if not task.done():
+                    task.cancel()
+
+            # 태스크가 완전히 취소될 때까지 대기
+            try:
+                await asyncio.gather(*self.background_tasks, return_exceptions=True)
+                print('[EventHub] All background tasks cancelled')
+            except Exception as e:
+                print(f'[EventHub] Error cancelling tasks: {e}')
+
+            self.background_tasks.clear()
 
         # Restore Claude config on shutdown
         import subprocess
@@ -75,34 +92,69 @@ class EventHub:
             event: 분석할 이벤트
         """
         try:
-            # 관심 있는 엔진들에게 병렬로 작업 분배
-            tasks = []
+            # ToolsPoisoningEngine과 다른 엔진 분리
+            tools_poisoning_engine = None
+            other_engines = []
+
             for engine in self.engines:
-                if engine.should_process(event):
-                    task = self._process_with_engine(engine, event)
-                    tasks.append(task)
+                if not engine.should_process(event):
+                    continue
 
-            if not tasks:
-                return
+                if engine.name == 'ToolsPoisoningEngine':
+                    tools_poisoning_engine = engine
+                else:
+                    other_engines.append(engine)
 
-            # 모든 엔진 완료 대기
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # 일반 엔진들은 즉시 실행 (빠른 엔진)
+            if other_engines:
+                tasks = [self._process_with_engine(engine, event) for engine in other_engines]
+                results = await asyncio.gather(*tasks, return_exceptions=True)
 
-            # 결과 수집
-            all_results = []
-            for result in results:
-                if result and not isinstance(result, Exception):
-                    if isinstance(result, list):
-                        all_results.extend(result)
-                    else:
-                        all_results.append(result)
+                # 결과 수집
+                all_results = []
+                for result in results:
+                    if result and not isinstance(result, Exception):
+                        if isinstance(result, list):
+                            all_results.extend(result)
+                        else:
+                            all_results.append(result)
 
-            # 결과 일괄 저장 (한 번의 트랜잭션)
-            if all_results:
-                await self._save_results_batch(all_results)
+                # 결과 일괄 저장
+                if all_results:
+                    await self._save_results_batch(all_results)
+
+            # ToolsPoisoningEngine은 완전히 독립적인 백그라운드 태스크로 실행
+            # 이렇게 하면 tools/list 응답이 즉시 반환됨
+            if tools_poisoning_engine:
+                task = asyncio.create_task(self._run_tools_poisoning_analysis(tools_poisoning_engine, event))
+                self.background_tasks.add(task)
+                # 태스크 완료 시 자동으로 제거
+                task.add_done_callback(self.background_tasks.discard)
 
         except Exception as e:
             print(f'[EventHub] Error in async analysis: {e}')
+            import traceback
+            traceback.print_exc()
+
+    async def _run_tools_poisoning_analysis(self, engine, event: Dict[str, Any]) -> None:
+        """
+        ToolsPoisoningEngine 분석을 완전히 독립적으로 실행.
+        이 함수는 다른 처리를 블로킹하지 않음.
+
+        Args:
+            engine: ToolsPoisoningEngine 인스턴스
+            event: 분석할 이벤트
+        """
+        try:
+            result = await self._process_with_engine(engine, event)
+
+            if result:
+                # 결과 저장
+                results_list = result if isinstance(result, list) else [result]
+                await self._save_results_batch(results_list)
+
+        except Exception as e:
+            print(f'[EventHub] Error in ToolsPoisoningEngine analysis: {e}')
             import traceback
             traceback.print_exc()
 

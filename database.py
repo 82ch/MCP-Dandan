@@ -224,11 +224,11 @@ class Database:
             )
 
             await self.conn.commit()
-            print(f'✓ engine_result 저장 완료: id={cursor.lastrowid}')
+            print(f'[OK] engine_result 저장 완료: id={cursor.lastrowid}')
             return cursor.lastrowid
 
         except Exception as e:
-            print(f'✗ engine_result 저장 실패: {e}')
+            print(f'[ERROR] engine_result 저장 실패: {e}')
             import traceback
             traceback.print_exc()
             return None
@@ -251,7 +251,7 @@ class Database:
                 return [dict(zip(columns, row)) for row in rows]
 
         except Exception as e:
-            print(f'✗ 이벤트 조회 실패: {e}')
+            print(f'[ERROR] 이벤트 조회 실패: {e}')
             return []
 
     async def get_event_statistics(self) -> Dict[str, Any]:

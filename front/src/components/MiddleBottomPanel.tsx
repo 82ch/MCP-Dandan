@@ -81,8 +81,8 @@ function MiddleBottomPanel({ selectedMessage }: MiddleBottomPanelProps) {
               />
             </div>
             <div className="mt-2 text-xs text-gray-600">
-              {selectedMessage.maliciousScore > 50 ? '⚠️ High Risk' :
-               selectedMessage.maliciousScore > 20 ? '⚡ Medium Risk' : '✓ Safe'}
+              {selectedMessage.maliciousScore > 50 ? '[!] High Risk' :
+               selectedMessage.maliciousScore > 20 ? '[*] Medium Risk' : '[OK] Safe'}
             </div>
 
             {/* Engine Detection Details */}

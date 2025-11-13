@@ -2,6 +2,7 @@ from engines.base_engine import BaseEngine
 from typing import Any
 from datetime import datetime
 from mistralai import Mistral
+import asyncio
 
 
 class ToolsPoisoningEngine(BaseEngine):
@@ -101,86 +102,166 @@ class ToolsPoisoningEngine(BaseEngine):
         """
         tools description을 LLM으로 분석하여 악성 여부 판별
         """
-        if not self.mistral_client:
-            print("[ToolsPoisoningEngine] Mistral client not initialized, skipping")
-            return None
+        try:
+            if not self.mistral_client:
+                print("[ToolsPoisoningEngine] Mistral client not initialized, skipping")
+                return None
 
-        # tools description 추출
-        tools_info = self._extract_tools_info(data)
+            # tools description 추출
+            tools_info = self._extract_tools_info(data)
 
-        if not tools_info:
-            return None
+            if not tools_info:
+                return None
 
-        # MCP 서버 정보 추출
-        producer = data.get('producer', 'unknown')
+            # MCP 서버 정보 추출
+            producer = data.get('producer', 'unknown')
 
-        # producer에 따라 mcpTag 위치가 다름
-        if producer == 'local':
-            mcp_tag = data.get('mcpTag', 'unknown')
-        elif producer == 'remote':
-            mcp_tag = data.get('data', {}).get('mcpTag', 'unknown')
-        else:
-            mcp_tag = data.get('mcpTag') or data.get('data', {}).get('mcpTag', 'unknown')
+            # producer에 따라 mcpTag 위치가 다름
+            if producer == 'local':
+                mcp_tag = data.get('mcpTag', 'unknown')
+            elif producer == 'remote':
+                mcp_tag = data.get('data', {}).get('mcpTag', 'unknown')
+            else:
+                mcp_tag = data.get('mcpTag') or data.get('data', {}).get('mcpTag', 'unknown')
 
-        # print(f"[ToolsPoisoningEngine] Analyzing tools from MCP server: {mcp_tag}")
-        # print(f"[ToolsPoisoningEngine] Number of tools: {len(tools_info)}")
+            print(f"[ToolsPoisoningEngine] Starting analysis of {len(tools_info)} tools from {mcp_tag}")
 
-        # 각 tool에 대해 LLM 분석 수행
-        import asyncio
-        findings = []
-        for idx, tool in enumerate(tools_info):
-            tool_name = tool.get('name', 'unknown')
-            tool_description = tool.get('description', '')
+            # 분석 상태 초기화
+            from state import state, AnalysisStatus
+            status = AnalysisStatus(
+                server_name=mcp_tag,
+                total_tools=len(tools_info),
+                status="analyzing"
+            )
+            state.analysis_status[mcp_tag] = status
 
-            if not tool_description:
-                continue
+            # 각 tool에 대해 병렬로 LLM 분석 수행
+            tasks = []
 
-            # Rate limit 방지를 위해 요청 간 딜레이 추가 (첫 번째 요청 제외)
-            if idx > 0:
-                await asyncio.sleep(1.0)  # 1초 대기
+            for tool in tools_info:
+                tool_name = tool.get('name', 'unknown')
+                tool_description = tool.get('description', '')
+
+                if not tool_description:
+                    continue
+
+                # 병렬 처리를 위해 각 도구를 개별 태스크로 생성
+                task = self._analyze_single_tool(
+                    tool_name=tool_name,
+                    tool_description=tool_description,
+                    mcp_tag=mcp_tag,
+                    producer=producer,
+                    data=data
+                )
+                tasks.append(task)
+
+            if not tasks:
+                status.status = "completed"
+                status.completed_at = datetime.now()
+                return None
+
+            # 모든 분석을 병렬로 실행 (rate limit 처리는 _analyze_with_llm 내부에서)
+            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analyzing {len(tasks)} tools in parallel...", flush=True)
+            print(f"[ToolsPoisoningEngine] [{mcp_tag}] This may take 1-2 minutes depending on the number of tools...", flush=True)
+            analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # 결과 수집 (DENY된 것만)
+            results = []
+            for result in analysis_results:
+                if result and not isinstance(result, Exception):
+                    results.append(result)
+
+            # 분석 상태 업데이트
+            status.analyzed_tools = len(tasks)
+            status.malicious_found = len(results)
+            status.status = "completed"
+            status.completed_at = datetime.now()
+
+            if not results:
+                print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - No malicious tools detected", flush=True)
+                return None
+
+            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - Detected {len(results)} malicious tool(s)", flush=True)
+            return results
+
+        except asyncio.CancelledError:
+            # 태스크 취소됨
+            print(f"[ToolsPoisoningEngine] Analysis cancelled", flush=True)
+            # 분석 상태를 error로 업데이트
+            from state import state
+            if 'mcp_tag' in locals() and mcp_tag in state.analysis_status:
+                status = state.analysis_status[mcp_tag]
+                status.status = "cancelled"
+                status.completed_at = datetime.now()
+            raise  # CancelledError는 반드시 다시 raise
+
+    async def _analyze_single_tool(self, tool_name: str, tool_description: str,
+                                   mcp_tag: str, producer: str, data: dict):
+        """
+        단일 도구를 분석하고 악성인 경우에만 결과 반환
+
+        Args:
+            tool_name: 도구 이름
+            tool_description: 도구 설명
+            mcp_tag: MCP 서버 태그
+            producer: 프로듀서
+            data: 원본 이벤트 데이터
+
+        Returns:
+            악성인 경우 탐지 결과 딕셔너리, 정상인 경우 None
+        """
+        try:
+            # 취소 확인
+            await asyncio.sleep(0)  # Allow cancellation check
 
             # LLM으로 분석
             verdict, confidence, reason = await self._analyze_with_llm(tool_name, tool_description)
 
+            # 분석 상태 업데이트 (thread-safe)
+            from state import state
+            if mcp_tag in state.analysis_status:
+                async with state._lock:  # Use lock for thread-safe counter increment
+                    status = state.analysis_status[mcp_tag]
+                    status.analyzed_tools += 1
+                    progress = int((status.analyzed_tools / status.total_tools * 100) if status.total_tools > 0 else 0)
+                    print(f"[ToolsPoisoningEngine] [{mcp_tag}] Progress: {status.analyzed_tools}/{status.total_tools} ({progress}%) - {tool_name}: {verdict}", flush=True)
+
             if verdict == 'DENY':
-                findings.append({
+                # 악성으로 판정된 경우에만 결과 생성
+                detection_time = datetime.now().isoformat()
+                severity = 'high'
+                score = 85 + int(confidence * 0.15)  # 85-100 범위
+
+                finding = {
                     'tool_name': tool_name,
                     'description': tool_description,
                     'verdict': verdict,
                     'confidence': confidence,
                     'reason': reason if reason else 'Potential prompt injection or malicious instruction detected in tool description'
-                })
+                }
 
-        # 탐지되지 않은 경우
-        if not findings:
-            # print(f"[ToolsPoisoningEngine] No malicious tools detected")
+                result = self._format_single_tool_result(
+                    engine_name='ToolsPoisoningEngine',
+                    mcp_server=mcp_tag,
+                    producer=producer,
+                    severity=severity,
+                    score=score,
+                    finding=finding,
+                    detection_time=detection_time,
+                    data=data
+                )
+                return result
+            else:
+                # 정상인 경우 None 반환
+                return None
+
+        except asyncio.CancelledError:
+            # 태스크가 취소됨 - 정상적인 종료
+            print(f"[ToolsPoisoningEngine] Analysis cancelled for tool '{tool_name}'", flush=True)
+            raise  # CancelledError는 다시 raise해야 함
+        except Exception as e:
+            print(f"[ToolsPoisoningEngine] Error analyzing tool '{tool_name}': {e}")
             return None
-
-        # 각 finding을 개별 결과로 변환
-        detection_time = datetime.now().isoformat()
-        results = []
-
-        for finding in findings:
-            # 각 도구별 severity 계산 (개별)
-            severity = 'high'  # DENY된 도구는 모두 high로 처리
-            score = 85 + int(finding['confidence'] * 0.15)  # 85-100 범위
-
-            result = self._format_single_tool_result(
-                engine_name='ToolsPoisoningEngine',
-                mcp_server=mcp_tag,
-                producer=producer,
-                severity=severity,
-                score=score,
-                finding=finding,
-                detection_time=detection_time,
-                data=data
-            )
-            results.append(result)
-
-        # print(f"[ToolsPoisoningEngine] Malicious tools detected!")
-        # print(f"[ToolsPoisoningEngine] Total findings: {len(findings)}")
-
-        return results
 
     def _extract_tools_info(self, data: dict) -> list:
         """
@@ -213,8 +294,13 @@ class ToolsPoisoningEngine(BaseEngine):
             (verdict, confidence, reason): ('ALLOW' or 'DENY', confidence score 0-100, reason for verdict)
         """
         import asyncio
+        import random
         max_retries = 3
         retry_delay = 2.0  # 초
+
+        # Rate limit 방지: 랜덤 지연 추가 (0.5-1.5초)
+        # 병렬 요청이 동시에 몰리는 것을 방지
+        await asyncio.sleep(random.uniform(0.5, 1.5))
 
         for attempt in range(max_retries):
             try:

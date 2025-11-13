@@ -43,6 +43,18 @@ class ServerToolsInfo:
     last_updated: datetime = field(default_factory=datetime.now)
 
 
+@dataclass
+class AnalysisStatus:
+    """Tracks the status of ongoing tool poisoning analysis."""
+    server_name: str
+    total_tools: int
+    analyzed_tools: int = 0
+    malicious_found: int = 0
+    started_at: datetime = field(default_factory=datetime.now)
+    completed_at: Optional[datetime] = None
+    status: str = "analyzing"  # "analyzing", "completed", "error"
+
+
 class GlobalState:
     """Global state for the proxy server."""
 
@@ -58,6 +70,9 @@ class GlobalState:
 
         # Protected server configurations: app_name -> List[server_configs]
         self.protected_servers: Dict[str, list] = {}
+
+        # Analysis status tracking: "server_name" -> AnalysisStatus
+        self.analysis_status: Dict[str, AnalysisStatus] = {}
 
         # Settings
         self.scan_mode: str = "REQUEST_RESPONSE"

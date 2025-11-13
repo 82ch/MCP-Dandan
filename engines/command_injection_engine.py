@@ -46,19 +46,21 @@ class CommandInjectionEngine(BaseEngine):
 
         # High-risk 패턴
         self.high_risk_patterns = [
-            # 기본 쉘 메타문자
-            r'[;&|`$]',
-            r'\$\{.*\}',
-            r'\$\(.*\)',
+            # 쉘 메타문자 - 실제 명령어 주입 문맥에서만 탐지
+            r';\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)',
+            r'&&\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)',
+            r'\|\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)',
+            r'`[^`]*\b(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)\b[^`]*`',
 
-            # 명령어 치환
+            # 명령어 치환 (실제 명령어 실행 문맥)
+            r'\$\{[^}]*(rm|del|wget|curl|bash|sh|cmd)[^}]*\}',
+            r'\$\([^)]*(rm|del|wget|curl|bash|sh|cmd)[^)]*\)',
+
+            # 환경 변수 악용
             r'%COMSPEC%',
             r'%SYSTEMROOT%',
-            # 파일 시스템 조작 
-            # r'\.\.[/\\]',  # 디렉토리 트래버설
-            # r'/etc/passwd',
-            # r'/etc/shadow',
-            # r'C:\\Windows\\System32',
+            r'\$PATH\s*=',
+            r'\$LD_PRELOAD',
 
             # 스크립트 인젝션
             r'<script',
@@ -305,11 +307,16 @@ class CommandInjectionEngine(BaseEngine):
             r'curl.*-d\s*@': 'Data upload via curl',
             r'wget.*-O.*-': 'Data download to stdout',
             # High-risk
-            r'[;&|`$]': 'Shell metacharacter detected',
-            r'\$\{.*\}': 'Variable expansion',
-            r'\$\(.*\)': 'Command substitution',
+            r';\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)': 'Command chaining with dangerous command',
+            r'&&\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)': 'Command chaining with dangerous command',
+            r'\|\s*(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)': 'Pipe to dangerous command',
+            r'`[^`]*\b(rm|del|wget|curl|bash|sh|cmd|powershell|python|perl|ruby|node)\b[^`]*`': 'Command substitution with dangerous command',
+            r'\$\{[^}]*(rm|del|wget|curl|bash|sh|cmd)[^}]*\}': 'Variable expansion with command execution',
+            r'\$\([^)]*(rm|del|wget|curl|bash|sh|cmd)[^)]*\)': 'Command substitution with dangerous command',
             r'%COMSPEC%': 'Windows command interpreter reference',
             r'%SYSTEMROOT%': 'Windows system directory reference',
+            r'\$PATH\s*=': 'PATH environment variable manipulation',
+            r'\$LD_PRELOAD': 'LD_PRELOAD injection attempt',
             r'\.\.[/\\]': 'Directory traversal attempt',
             r'/etc/passwd': 'System password file access',
             r'/etc/shadow': 'System shadow file access',
