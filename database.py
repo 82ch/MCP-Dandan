@@ -389,6 +389,35 @@ class Database:
             print(f'mcpl 조회 실패: {e}')
             return []
 
+    async def get_tool_safety_status(self, mcp_tag: str, tool_name: str) -> int | None:
+        """
+        Get safety status for a specific tool from mcpl table.
+
+        Args:
+            mcp_tag: MCP server tag
+            tool_name: Tool name
+
+        Returns:
+            0: unchecked, 1: safe (ALLOW), 2: danger (DENY), None: not found
+        """
+        try:
+            cursor = await self.conn.execute(
+                """
+                SELECT safety
+                FROM mcpl
+                WHERE mcpTag = ? AND tool = ?
+                """,
+                (mcp_tag, tool_name)
+            )
+            row = await cursor.fetchone()
+            if row:
+                return row[0]
+            return None
+
+        except Exception as e:
+            print(f'[DB] Failed to get tool safety status: {e}')
+            return None
+
     async def update_tool_safety(self, mcp_tag: str, tool_name: str, is_safe: bool) -> bool:
         """
         Update safety status for a specific tool in mcpl table.

@@ -119,8 +119,6 @@ class ToolsPoisoningEngine(BaseEngine):
             else:
                 mcp_tag = data.get('mcpTag') or data.get('data', {}).get('mcpTag', 'unknown')
 
-            print(f"[ToolsPoisoningEngine] Starting analysis of {len(tools_info)} tools from {mcp_tag}")
-
             # 분석 상태 초기화
             from state import state, AnalysisStatus
             status = AnalysisStatus(
@@ -130,14 +128,24 @@ class ToolsPoisoningEngine(BaseEngine):
             )
             state.analysis_status[mcp_tag] = status
 
+            print(f"[ToolsPoisoningEngine] Starting analysis of {len(tools_info)} tools from {mcp_tag}")
+
             # 각 tool에 대해 병렬로 LLM 분석 수행
             tasks = []
+            cached_count = 0
 
             for tool in tools_info:
                 tool_name = tool.get('name', 'unknown')
                 tool_description = tool.get('description', '')
 
                 if not tool_description:
+                    continue
+
+                # 캐시 확인: 이미 검사된 도구는 건너뛰기 (safety=1 or safety=2)
+                safety_status = await self.db.get_tool_safety_status(mcp_tag, tool_name)
+                if safety_status in [1, 2]:
+                    cached_count += 1
+                    print(f"[ToolsPoisoningEngine] [{mcp_tag}] Tool '{tool_name}' already analyzed (safety={safety_status}), skipping...", flush=True)
                     continue
 
                 # 병렬 처리를 위해 각 도구를 개별 태스크로 생성
@@ -150,14 +158,21 @@ class ToolsPoisoningEngine(BaseEngine):
                 )
                 tasks.append(task)
 
+            if cached_count > 0:
+                print(f"[ToolsPoisoningEngine] [{mcp_tag}] Skipped {cached_count} already-analyzed tool(s)", flush=True)
+
             if not tasks:
+                # 모든 도구가 캐시되어 있는 경우
+                status.analyzed_tools = len(tools_info)
                 status.status = "completed"
                 status.completed_at = datetime.now()
+                print(f"[ToolsPoisoningEngine] [{mcp_tag}] All tools already analyzed (cached)", flush=True)
                 return None
 
             # 모든 분석을 병렬로 실행 (rate limit 처리는 _analyze_with_llm 내부에서)
-            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analyzing {len(tasks)} tools in parallel...", flush=True)
-            print(f"[ToolsPoisoningEngine] [{mcp_tag}] This may take 1-2 minutes depending on the number of tools...", flush=True)
+            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analyzing {len(tasks)} new tool(s) in parallel ({cached_count} cached)...", flush=True)
+            if len(tasks) > 5:
+                print(f"[ToolsPoisoningEngine] [{mcp_tag}] This may take 1-2 minutes depending on the number of tools...", flush=True)
             analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # 결과 수집 (DENY된 것만)
