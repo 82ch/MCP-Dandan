@@ -62,6 +62,24 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
     fetchDashboardData()
   }, [])
 
+  // Subscribe to WebSocket updates for real-time dashboard data
+  useEffect(() => {
+    const unsubscribe = window.electronAPI.onWebSocketUpdate((message: any) => {
+      console.log('[Dashboard] WebSocket update received:', message.type)
+
+      // Refresh dashboard data on relevant events
+      if (message.type === 'server_update' ||
+          message.type === 'detection_result' ||
+          message.type === 'reload_all') {
+        fetchDashboardData()
+      }
+    })
+
+    return () => {
+      unsubscribe()
+    }
+  }, [])
+
   const fetchDashboardData = async () => {
     try {
       const engineResults = await window.electronAPI.getEngineResults()
