@@ -8,6 +8,7 @@ No ZeroMQ - direct in-process communication.
 import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+from utils import safe_print
 
 
 class EventHub:
@@ -28,7 +29,7 @@ class EventHub:
     async def start(self):
         """Start the EventHub."""
         self.running = True
-        print('[EventHub] Started')
+        safe_print('[EventHub] Started')
 
     async def stop(self):
         """Stop the EventHub."""
@@ -36,7 +37,7 @@ class EventHub:
 
         # 모든 백그라운드 태스크 취소
         if self.background_tasks:
-            print(f'[EventHub] Cancelling {len(self.background_tasks)} background tasks...')
+            safe_print(f'[EventHub] Cancelling {len(self.background_tasks)} background tasks...')
             for task in self.background_tasks:
                 if not task.done():
                     task.cancel()
@@ -44,9 +45,9 @@ class EventHub:
             # 태스크가 완전히 취소될 때까지 대기
             try:
                 await asyncio.gather(*self.background_tasks, return_exceptions=True)
-                print('[EventHub] All background tasks cancelled')
+                safe_print('[EventHub] All background tasks cancelled')
             except Exception as e:
-                print(f'[EventHub] Error cancelling tasks: {e}')
+                safe_print(f'[EventHub] Error cancelling tasks: {e}')
 
             self.background_tasks.clear()
 
@@ -55,11 +56,11 @@ class EventHub:
         try:
             subprocess.run(['python', './transports/config_finder.py', '--restore'],
                          capture_output=True, text=True, timeout=10)
-            print('[EventHub] Claude config restored')
+            safe_print('[EventHub] Claude config restored')
         except Exception as e:
-            print(f'[EventHub] Failed to restore config: {e}')
+            safe_print(f'[EventHub] Failed to restore config: {e}')
 
-        print('[EventHub] Stopped')
+        safe_print('[EventHub] Stopped')
 
     async def process_event(self, event: Dict[str, Any]) -> None:
         """
@@ -82,7 +83,7 @@ class EventHub:
             asyncio.create_task(self._analyze_event_async(event))
 
         except Exception as e:
-            print(f'[EventHub] Error processing event: {e}')
+            safe_print(f'[EventHub] Error processing event: {e}')
 
     async def process_event_sync(self, event: Dict[str, Any]) -> None:
         """
@@ -102,7 +103,7 @@ class EventHub:
             await self._analyze_event_async(event, sync_mode=True)
 
         except Exception as e:
-            print(f'[EventHub] Error processing event synchronously: {e}')
+            safe_print(f'[EventHub] Error processing event synchronously: {e}')
 
     async def _analyze_event_async(self, event: Dict[str, Any], sync_mode: bool = False) -> None:
         """
@@ -157,7 +158,7 @@ class EventHub:
                     task.add_done_callback(self.background_tasks.discard)
 
         except Exception as e:
-            print(f'[EventHub] Error in async analysis: {e}')
+            safe_print(f'[EventHub] Error in async analysis: {e}')
             import traceback
             traceback.print_exc()
 
@@ -171,18 +172,18 @@ class EventHub:
             event: 분석할 이벤트
         """
         try:
-            print(f'[EventHub] _run_tools_poisoning_analysis STARTED')
+            safe_print(f'[EventHub] _run_tools_poisoning_analysis STARTED')
             result = await self._process_with_engine(engine, event)
-            print(f'[EventHub] _run_tools_poisoning_analysis COMPLETED (result: {len(result) if isinstance(result, list) else "None" if result is None else "1"})')
+            safe_print(f'[EventHub] _run_tools_poisoning_analysis COMPLETED (result: {len(result) if isinstance(result, list) else "None" if result is None else "1"})')
 
             if result:
                 # 결과 저장
                 results_list = result if isinstance(result, list) else [result]
                 await self._save_results_batch(results_list)
-                print(f'[EventHub] _run_tools_poisoning_analysis SAVED {len(results_list)} results')
+                safe_print(f'[EventHub] _run_tools_poisoning_analysis SAVED {len(results_list)} results')
 
         except Exception as e:
-            print(f'[EventHub] Error in ToolsPoisoningEngine analysis: {e}')
+            safe_print(f'[EventHub] Error in ToolsPoisoningEngine analysis: {e}')
             import traceback
             traceback.print_exc()
 
@@ -210,13 +211,13 @@ class EventHub:
                     if task == 'RECV' and 'tools' in message.get('result', {}):
                         count = await self.db.insert_mcpl()
                         if count and count > 0:
-                            print(f'[EventHub] Extracted {count} tool(s) to mcpl table')
+                            safe_print(f'[EventHub] Extracted {count} tool(s) to mcpl table')
 
                             # mcpl에 insert된 tools를 백그라운드에서 분석
                             asyncio.create_task(self._analyze_mcpl_tools(count, event))
 
         except Exception as e:
-            print(f'[EventHub] Error saving event: {e}')
+            safe_print(f'[EventHub] Error saving event: {e}')
 
     async def _save_results_batch(self, results: List[Dict[str, Any]]):
         """
@@ -249,10 +250,10 @@ class EventHub:
                     saved_count += 1
 
             if saved_count > 0:
-                print(f'[EventHub] Batch saved {saved_count} detection results')
+                safe_print(f'[EventHub] Batch saved {saved_count} detection results')
 
         except Exception as e:
-            print(f'[EventHub] Error in batch save: {e}')
+            safe_print(f'[EventHub] Error in batch save: {e}')
             import traceback
             traceback.print_exc()
 
@@ -279,10 +280,10 @@ class EventHub:
             if engine_result_id:
                 detector = result_data.get('detector')
                 severity = result_data.get('severity')
-                print(f'[EventHub] Saved detection result (id={engine_result_id}, detector={detector}, severity={severity}, server={server_name})')
+                safe_print(f'[EventHub] Saved detection result (id={engine_result_id}, detector={detector}, severity={severity}, server={server_name})')
 
         except Exception as e:
-            print(f'[EventHub] Error saving result: {e}')
+            safe_print(f'[EventHub] Error saving result: {e}')
 
     async def _process_with_engine(self, engine, event: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Process event with a specific engine."""
@@ -290,7 +291,7 @@ class EventHub:
             result = await engine.handle_event(event)
             return result
         except Exception as e:
-            print(f'[EventHub] [{engine.name}] Error: {e}')
+            safe_print(f'[EventHub] [{engine.name}] Error: {e}')
             return None
 
     async def _analyze_mcpl_tools(self, count: int, original_event: Dict[str, Any]):
@@ -306,10 +307,10 @@ class EventHub:
             tools = await self.db.get_recent_mcpl_tools(limit=count)
 
             if not tools:
-                print(f'[EventHub] No tools found in mcpl table')
+                safe_print(f'[EventHub] No tools found in mcpl table')
                 return
 
-            print(f'[EventHub] Analyzing {len(tools)} tools with ToolsPoisoningEngine')
+            safe_print(f'[EventHub] Analyzing {len(tools)} tools with ToolsPoisoningEngine')
 
             # ToolsPoisoningEngine 찾기
             tools_poisoning_engine = None
@@ -319,7 +320,7 @@ class EventHub:
                     break
 
             if not tools_poisoning_engine:
-                print(f'[EventHub] ToolsPoisoningEngine not found')
+                safe_print(f'[EventHub] ToolsPoisoningEngine not found')
                 return
 
             # 각 tool에 대해 병렬 분석 수행
@@ -366,4 +367,4 @@ class EventHub:
                 await self._save_results_batch(all_results)
 
         except Exception as e:
-            print(f'[EventHub] Error analyzing mcpl tools: {e}')
+            safe_print(f'[EventHub] Error analyzing mcpl tools: {e}')

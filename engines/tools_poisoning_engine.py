@@ -3,6 +3,7 @@ from typing import Any
 from datetime import datetime
 from mistralai import Mistral
 import asyncio
+from utils import safe_print
 
 
 class ToolsPoisoningEngine(BaseEngine):
@@ -62,9 +63,9 @@ class ToolsPoisoningEngine(BaseEngine):
 
         api_key = os.getenv('MISTRAL_API_KEY')
         if not api_key:
-            print("[ToolsPoisoningEngine] Warning: MISTRAL_API_KEY not found in environment or .env file")
+            safe_print("[ToolsPoisoningEngine] Warning: MISTRAL_API_KEY not found in environment or .env file")
         else:
-            print(f"[ToolsPoisoningEngine] Mistral API key loaded successfully")
+            safe_print(f"[ToolsPoisoningEngine] Mistral API key loaded successfully")
         return api_key
 
     def should_process(self, data: dict) -> bool:
@@ -99,7 +100,7 @@ class ToolsPoisoningEngine(BaseEngine):
         """
         try:
             if not self.mistral_client:
-                print("[ToolsPoisoningEngine] Mistral client not initialized, skipping")
+                safe_print("[ToolsPoisoningEngine] Mistral client not initialized, skipping")
                 return None
 
             # tools description 추출
@@ -128,7 +129,7 @@ class ToolsPoisoningEngine(BaseEngine):
             )
             state.analysis_status[mcp_tag] = status
 
-            print(f"[ToolsPoisoningEngine] Starting analysis of {len(tools_info)} tools from {mcp_tag}")
+            safe_print(f"[ToolsPoisoningEngine] Starting analysis of {len(tools_info)} tools from {mcp_tag}")
 
             # 각 tool에 대해 병렬로 LLM 분석 수행
             tasks = []
@@ -145,7 +146,7 @@ class ToolsPoisoningEngine(BaseEngine):
                 safety_status = await self.db.get_tool_safety_status(mcp_tag, tool_name)
                 if safety_status in [1, 2]:
                     cached_count += 1
-                    print(f"[ToolsPoisoningEngine] [{mcp_tag}] Tool '{tool_name}' already analyzed (safety={safety_status}), skipping...", flush=True)
+                    safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Tool '{tool_name}' already analyzed (safety={safety_status}), skipping...", flush=True)
                     continue
 
                 # 병렬 처리를 위해 각 도구를 개별 태스크로 생성
@@ -159,20 +160,20 @@ class ToolsPoisoningEngine(BaseEngine):
                 tasks.append(task)
 
             if cached_count > 0:
-                print(f"[ToolsPoisoningEngine] [{mcp_tag}] Skipped {cached_count} already-analyzed tool(s)", flush=True)
+                safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Skipped {cached_count} already-analyzed tool(s)", flush=True)
 
             if not tasks:
                 # 모든 도구가 캐시되어 있는 경우
                 status.analyzed_tools = len(tools_info)
                 status.status = "completed"
                 status.completed_at = datetime.now()
-                print(f"[ToolsPoisoningEngine] [{mcp_tag}] All tools already analyzed (cached)", flush=True)
+                safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] All tools already analyzed (cached)", flush=True)
                 return None
 
             # 모든 분석을 병렬로 실행 (rate limit 처리는 _analyze_with_llm 내부에서)
-            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analyzing {len(tasks)} new tool(s) in parallel ({cached_count} cached)...", flush=True)
+            safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analyzing {len(tasks)} new tool(s) in parallel ({cached_count} cached)...", flush=True)
             if len(tasks) > 5:
-                print(f"[ToolsPoisoningEngine] [{mcp_tag}] This may take 1-2 minutes depending on the number of tools...", flush=True)
+                safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] This may take 1-2 minutes depending on the number of tools...", flush=True)
             analysis_results = await asyncio.gather(*tasks, return_exceptions=True)
 
             # 결과 수집 (DENY된 것만)
@@ -188,15 +189,15 @@ class ToolsPoisoningEngine(BaseEngine):
             status.completed_at = datetime.now()
 
             if not results:
-                print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - No malicious tools detected", flush=True)
+                safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - No malicious tools detected", flush=True)
                 return None
 
-            print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - Detected {len(results)} malicious tool(s)", flush=True)
+            safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Analysis complete - Detected {len(results)} malicious tool(s)", flush=True)
             return results
 
         except asyncio.CancelledError:
             # 태스크 취소됨
-            print(f"[ToolsPoisoningEngine] Analysis cancelled", flush=True)
+            safe_print(f"[ToolsPoisoningEngine] Analysis cancelled", flush=True)
             # 분석 상태를 error로 업데이트
             from state import state
             if 'mcp_tag' in locals() and mcp_tag in state.analysis_status:
@@ -226,7 +227,7 @@ class ToolsPoisoningEngine(BaseEngine):
                         status = state.analysis_status[mcp_tag]
                         status.analyzed_tools += 1
                         progress = int((status.analyzed_tools / status.total_tools * 100) if status.total_tools > 0 else 0)
-                        print(f"[ToolsPoisoningEngine] [{mcp_tag}] Progress: {status.analyzed_tools}/{status.total_tools} ({progress}%) - {tool_name}: {verdict}", flush=True)
+                        safe_print(f"[ToolsPoisoningEngine] [{mcp_tag}] Progress: {status.analyzed_tools}/{status.total_tools} ({progress}%) - {tool_name}: {verdict}", flush=True)
 
                 # Update tool safety in mcpl table
                 is_safe = (verdict == 'ALLOW')
@@ -263,10 +264,10 @@ class ToolsPoisoningEngine(BaseEngine):
 
             except asyncio.CancelledError:
                 # 태스크가 취소됨 - 정상적인 종료
-                print(f"[ToolsPoisoningEngine] Analysis cancelled for tool '{tool_name}'", flush=True)
+                safe_print(f"[ToolsPoisoningEngine] Analysis cancelled for tool '{tool_name}'", flush=True)
                 raise  # CancelledError는 다시 raise해야 함
             except Exception as e:
-                print(f"[ToolsPoisoningEngine] Error analyzing tool '{tool_name}': {e}")
+                safe_print(f"[ToolsPoisoningEngine] Error analyzing tool '{tool_name}': {e}")
                 return None
 
     def _extract_tools_info(self, data: dict) -> list:
@@ -289,7 +290,7 @@ class ToolsPoisoningEngine(BaseEngine):
 
             return tools_info
         except Exception as e:
-            print(f"[ToolsPoisoningEngine] Error extracting tools info: {e}")
+            safe_print(f"[ToolsPoisoningEngine] Error extracting tools info: {e}")
             return []
 
     async def _analyze_with_llm(self, tool_name: str, tool_description: str) -> tuple[str, float, str]:
@@ -380,18 +381,18 @@ class ToolsPoisoningEngine(BaseEngine):
                                     function_name = result[key]
                                     break
 
-                            print(f'[ToolsPoisoningEngine] "function_name": "{function_name}", "is_malicious": 1, "score": {confidence}, "reason": "{reason}"')
+                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{function_name}", "is_malicious": 1, "score": {confidence}, "reason": "{reason}"')
 
                             return verdict, confidence, reason if reason else 'Malicious tool detected'
                         else:
                             verdict = 'ALLOW'
                             confidence = 10.0
-                            print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
+                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
 
                             return verdict, confidence, None
                     else:
                         # JSON 형식이지만 예상과 다른 경우
-                        print(f"[ToolsPoisoningEngine] Unexpected JSON structure: {parsed}")
+                        safe_print(f"[ToolsPoisoningEngine] Unexpected JSON structure: {parsed}")
                         verdict = 'ALLOW'
                         confidence = 50.0
                         return verdict, confidence, None
@@ -406,16 +407,16 @@ class ToolsPoisoningEngine(BaseEngine):
                             reason_start = llm_response.find('"reason"')
                             if reason_start != -1:
                                 reason_text = llm_response[reason_start:reason_start+200]
-                                print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "{reason_text[:100]}..."')
+                                safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "{reason_text[:100]}..."')
                             else:
-                                print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
+                                safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
                         except:
-                             print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
+                             safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
                         return verdict, confidence, 'Detected via text analysis'
                     elif 'ALLOW' in llm_response_upper or 'IS_MALICIOUS": 0' in llm_response_upper:
                         verdict = 'ALLOW'
                         confidence = 10.0
-                        print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
+                        safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
                         return verdict, confidence, None
                     else:
                         verdict = 'ALLOW'
@@ -429,14 +430,14 @@ class ToolsPoisoningEngine(BaseEngine):
                 if '429' in error_msg or 'rate' in error_msg.lower():
                     if attempt < max_retries - 1:
                         wait_time = retry_delay * (attempt + 1)
-                        print(f"[ToolsPoisoningEngine] Rate limit hit, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
+                        safe_print(f"[ToolsPoisoningEngine] Rate limit hit, retrying in {wait_time}s... (attempt {attempt + 1}/{max_retries})")
                         await asyncio.sleep(wait_time)
                         continue
                     else:
-                        print(f"[ToolsPoisoningEngine] Rate limit exceeded after {max_retries} attempts: {e}")
+                        safe_print(f"[ToolsPoisoningEngine] Rate limit exceeded after {max_retries} attempts: {e}")
                         return 'ALLOW', 0.0, None
                 else:
-                    print(f"[ToolsPoisoningEngine] Error in LLM analysis: {e}")
+                    safe_print(f"[ToolsPoisoningEngine] Error in LLM analysis: {e}")
                     return 'ALLOW', 0.0, None
 
         return 'ALLOW', 0.0, None

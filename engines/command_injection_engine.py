@@ -1,6 +1,7 @@
 from engines.base_engine import BaseEngine
 from typing import Any
 import re
+from utils import safe_print
 
 
 class CommandInjectionEngine(BaseEngine):
@@ -106,16 +107,16 @@ class CommandInjectionEngine(BaseEngine):
         ]
 
     def process(self, data: Any) -> Any:
-        print(f"[CommandInjectionEngine] 입력 데이터: {data}")
+        safe_print(f"[CommandInjectionEngine] 입력 데이터: {data}")
 
         # 분석할 텍스트 추출
         analysis_text = self._extract_analysis_text(data)
 
         if not analysis_text:
-            print(f"[CommandInjectionEngine] 분석할 텍스트 없음, 무시\n")
+            safe_print(f"[CommandInjectionEngine] 분석할 텍스트 없음, 무시\n")
             return None
 
-        print(f"[CommandInjectionEngine] 분석 중: {analysis_text[:200]}")
+        safe_print(f"[CommandInjectionEngine] 분석 중: {analysis_text[:200]}")
 
         findings = []
         severity = 'none'
@@ -179,7 +180,7 @@ class CommandInjectionEngine(BaseEngine):
 
         # severity가 'none'인 경우 (탐지되지 않음) None 반환
         if severity == 'none':
-            print(f"[CommandInjectionEngine] 이상 없음, 탐지되지 않음\n")
+            safe_print(f"[CommandInjectionEngine] 이상 없음, 탐지되지 않음\n")
             return None
 
         # Calculate score based on severity and findings count
@@ -203,8 +204,8 @@ class CommandInjectionEngine(BaseEngine):
             }
         }
 
-        print(f"[CommandInjectionEngine] Command Injection 의심! severity={severity}, score={score}")
-        print(f"[CommandInjectionEngine] 탐지 결과: {len(findings)}개 발견\n")
+        safe_print(f"[CommandInjectionEngine] Command Injection 의심! severity={severity}, score={score}")
+        safe_print(f"[CommandInjectionEngine] 탐지 결과: {len(findings)}개 발견\n")
 
         return result
 

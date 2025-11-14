@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
 import asyncio
+from utils import safe_print
 
 
 @dataclass
@@ -133,7 +134,7 @@ class GlobalState:
                 del self.pending_tool_calls[key]
 
             if stale_keys:
-                print(f"Cleaned up {len(stale_keys)} stale tool calls")
+                safe_print(f"Cleaned up {len(stale_keys)} stale tool calls")
 
     async def register_tools(
         self,
@@ -149,7 +150,7 @@ class GlobalState:
                 tools=tools,
                 server_info=server_info
             )
-            print(f"Registered {len(tools)} tools for {key}")
+            safe_print(f"Registered {len(tools)} tools for {key}")
 
     async def add_sse_connection(self, connection: SSEConnection):
         """Add an active SSE connection."""

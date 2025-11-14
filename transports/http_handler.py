@@ -9,6 +9,7 @@ import json
 import time
 from verification import verify_tool_call, verify_tool_response
 from state import state
+from utils import safe_print
 
 
 async def handle_http_only_message(request):
@@ -29,7 +30,7 @@ async def handle_http_only_message(request):
             content_type='application/json'
         )
 
-    print(f"[HTTP-Only] Request for {app_name}/{server_name}")
+    safe_print(f"[HTTP-Only] Request for {app_name}/{server_name}")
 
     # Parse request body
     try:
@@ -45,8 +46,8 @@ async def handle_http_only_message(request):
     is_notification = 'id' not in message
     msg_type = "Notification" if is_notification else "Request"
 
-    print(f"[HTTP-Only] {msg_type}: method={message.get('method')}, id={message.get('id', 'N/A')}")
-    print(f"[HTTP-Only] Payload: {json.dumps(message, indent=2)}")
+    safe_print(f"[HTTP-Only] {msg_type}: method={message.get('method')}, id={message.get('id', 'N/A')}")
+    safe_print(f"[HTTP-Only] Payload: {json.dumps(message, indent=2)}")
 
     # Log all requests to EventHub
     if state.event_hub:
@@ -81,9 +82,9 @@ async def handle_http_only_message(request):
             'version': 'unknown'
         }
 
-        print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
+        safe_print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
         if user_intent:
-            print(f"[Verify] User intent: {user_intent}")
+            safe_print(f"[Verify] User intent: {user_intent}")
 
         # Verify the tool call (skip logging since we already logged above)
         verification = await verify_tool_call(
@@ -96,7 +97,7 @@ async def handle_http_only_message(request):
 
         if not verification.allowed:
             reason = verification.reason or 'Security policy violation'
-            print(f"[Verify] Tool call blocked: {reason}")
+            safe_print(f"[Verify] Tool call blocked: {reason}")
             return aiohttp.web.Response(
                 status=200,
                 text=json.dumps({
@@ -114,7 +115,7 @@ async def handle_http_only_message(request):
 
         # Strip user_intent before forwarding to target
         if 'user_intent' in tool_args:
-            print(f"[HTTP-Only] Stripping user_intent before forwarding")
+            safe_print(f"[HTTP-Only] Stripping user_intent before forwarding")
             message = {
                 **message,
                 'params': {
@@ -131,19 +132,19 @@ async def handle_http_only_message(request):
     # 1. Check query parameter
     if 'target' in request.url.query:
         target_url = request.url.query.get('target')
-        print(f"[HTTP-Only] Using target URL from query: {target_url}")
+        safe_print(f"[HTTP-Only] Using target URL from query: {target_url}")
 
     # 2. Check header
     if not target_url:
         target_url = request.headers.get('X-MCP-Target-URL')
         if target_url:
-            print(f"[HTTP-Only] Using target URL from header: {target_url}")
+            safe_print(f"[HTTP-Only] Using target URL from header: {target_url}")
 
     # 3. Check environment variable
     if not target_url:
         target_url = os.getenv('MCP_TARGET_URL')
         if target_url:
-            print(f"[HTTP-Only] Using target URL from env: {target_url}")
+            safe_print(f"[HTTP-Only] Using target URL from env: {target_url}")
 
     if not target_url:
         return aiohttp.web.Response(
@@ -159,10 +160,10 @@ async def handle_http_only_message(request):
             target_headers[header_name] = header_value
 
     if target_headers:
-        print(f"[HTTP-Only] Forwarding headers: {list(target_headers.keys())}")
+        safe_print(f"[HTTP-Only] Forwarding headers: {list(target_headers.keys())}")
 
     # Forward request to target server
-    print(f"[HTTP-Only] Forwarding to target: {target_url}")
+    safe_print(f"[HTTP-Only] Forwarding to target: {target_url}")
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -180,7 +181,7 @@ async def handle_http_only_message(request):
             ) as response:
                 # Handle 202 Accepted (no body) - typically for notifications
                 if response.status == 202:
-                    print(f"[HTTP-Only] Target accepted request (202)")
+                    safe_print(f"[HTTP-Only] Target accepted request (202)")
                     return aiohttp.web.Response(
                         status=202,
                         text="",
@@ -190,9 +191,9 @@ async def handle_http_only_message(request):
                 # Handle other non-200 status codes
                 if response.status != 200:
                     error_text = await response.text()
-                    print(f"[HTTP-Only] Target returned HTTP {response.status}")
-                    print(f"[HTTP-Only] Error response: {error_text}")
-                    print(f"[HTTP-Only] Response headers: {dict(response.headers)}")
+                    safe_print(f"[HTTP-Only] Target returned HTTP {response.status}")
+                    safe_print(f"[HTTP-Only] Error response: {error_text}")
+                    safe_print(f"[HTTP-Only] Response headers: {dict(response.headers)}")
                     return aiohttp.web.Response(
                         status=response.status,
                         text=error_text,
@@ -201,7 +202,7 @@ async def handle_http_only_message(request):
 
                 # Handle notifications (no response body expected)
                 if is_notification:
-                    print(f"[HTTP-Only] Notification forwarded successfully")
+                    safe_print(f"[HTTP-Only] Notification forwarded successfully")
                     return aiohttp.web.Response(
                         status=202,
                         text="",
@@ -212,7 +213,7 @@ async def handle_http_only_message(request):
                 # Check if response is SSE stream (Streamable HTTP)
                 content_type = response.headers.get('Content-Type', '')
                 if 'text/event-stream' in content_type:
-                    print(f"[HTTP-Only] Response is SSE stream, reading events...")
+                    safe_print(f"[HTTP-Only] Response is SSE stream, reading events...")
                     # Read SSE stream and extract JSON from data events
                     response_data = None
                     async for line in response.content:
@@ -221,7 +222,7 @@ async def handle_http_only_message(request):
                             data_str = line_str[6:]  # Remove 'data: ' prefix
                             try:
                                 response_data = json.loads(data_str)
-                                print(f"[HTTP-Only] Parsed JSON from SSE: {data_str[:100]}...")
+                                safe_print(f"[HTTP-Only] Parsed JSON from SSE: {data_str[:100]}...")
                                 break  # Use first data event
                             except json.JSONDecodeError:
                                 continue
@@ -263,7 +264,7 @@ async def handle_http_only_message(request):
                         'version': 'unknown'
                     }
 
-                    print(f"[Verify] Tool response: {tool_name} from {app_name}/{server_name}")
+                    safe_print(f"[Verify] Tool response: {tool_name} from {app_name}/{server_name}")
 
                     # Log response to EventHub
                     if state.event_hub:
@@ -292,7 +293,7 @@ async def handle_http_only_message(request):
 
                     if not verification.allowed:
                         reason = verification.reason or 'Security policy violation'
-                        print(f"[Verify] Response blocked: {reason}")
+                        safe_print(f"[Verify] Response blocked: {reason}")
                         response_data = {
                             "jsonrpc": "2.0",
                             "id": response_data.get('id'),
@@ -312,14 +313,14 @@ async def handle_http_only_message(request):
                 if result.get('tools'):
                     response_type = "tools/list"
                     tools = result.get('tools', [])
-                    print(f"[HTTP-Only] Discovered {len(tools)} tools")
+                    safe_print(f"[HTTP-Only] Discovered {len(tools)} tools")
 
                     # Modify tools to add user_intent parameter (like STDIO)
                     modified_tools = []
                     for i, tool in enumerate(tools):
                         tool_name = tool.get('name', 'unknown')
                         description = tool.get('description', '(no description)')
-                        print(f"  {i+1}. {tool_name} - {description}")
+                        safe_print(f"  {i+1}. {tool_name} - {description}")
 
                         modified_tool = tool.copy()
 
@@ -353,60 +354,60 @@ async def handle_http_only_message(request):
 
                     # Replace tools in response
                     response_data['result']['tools'] = modified_tools
-                    print()  # Empty line after tool list
+                    safe_print()  # Empty line after tool list
                 elif result.get('content'):
                     response_type = "tools/call"
                     # Print response info
                     response_json = json.dumps(response_data)
-                    print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print()
+                    safe_print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
+                    safe_print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    safe_print()
                 elif result.get('prompts'):
                     response_type = "prompts/list"
                     # Print prompts list
                     prompts = result.get('prompts', [])
-                    print(f"[HTTP-Only] Discovered {len(prompts)} prompts")
+                    safe_print(f"[HTTP-Only] Discovered {len(prompts)} prompts")
                     for i, prompt in enumerate(prompts):
                         prompt_name = prompt.get('name', 'unknown')
                         description = prompt.get('description', '(no description)')
-                        print(f"  {i+1}. {prompt_name} - {description}")
-                    print()
+                        safe_print(f"  {i+1}. {prompt_name} - {description}")
+                    safe_print()
                 elif result.get('messages'):
                     response_type = "prompts/get"
                     response_json = json.dumps(response_data)
-                    print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print()
+                    safe_print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
+                    safe_print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    safe_print()
                 elif result.get('resources'):
                     response_type = "resources/list"
                     # Print resources list
                     resources = result.get('resources', [])
-                    print(f"[HTTP-Only] Discovered {len(resources)} resources")
+                    safe_print(f"[HTTP-Only] Discovered {len(resources)} resources")
                     for i, resource in enumerate(resources):
                         resource_uri = resource.get('uri', 'unknown')
                         name = resource.get('name', '')
                         description = resource.get('description', '(no description)')
                         display = f"{name} ({resource_uri})" if name else resource_uri
-                        print(f"  {i+1}. {display} - {description}")
-                    print()
+                        safe_print(f"  {i+1}. {display} - {description}")
+                    safe_print()
                 elif 'initialize' in method or result.get('protocolVersion'):
                     response_type = "initialize"
                     response_json = json.dumps(response_data)
-                    print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print()
+                    safe_print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
+                    safe_print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    safe_print()
                 elif response_data.get('error'):
                     response_type = "error"
                     response_json = json.dumps(response_data)
-                    print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print()
+                    safe_print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
+                    safe_print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    safe_print()
                 else:
                     response_type = "Response"
                     response_json = json.dumps(response_data)
-                    print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
-                    print(json.dumps(response_data, indent=2, ensure_ascii=False))
-                    print()
+                    safe_print(f"\n[HTTP-Only] {response_type} ({len(response_json)} chars)")
+                    safe_print(json.dumps(response_data, indent=2, ensure_ascii=False))
+                    safe_print()
 
                 # Return response to client
                 return aiohttp.web.Response(
@@ -416,7 +417,7 @@ async def handle_http_only_message(request):
                 )
 
     except Exception as e:
-        print(f"[HTTP-Only] Error forwarding to target: {e}")
+        safe_print(f"[HTTP-Only] Error forwarding to target: {e}")
         import traceback
         traceback.print_exc()
         return aiohttp.web.Response(

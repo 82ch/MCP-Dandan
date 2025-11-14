@@ -10,6 +10,7 @@ from aiohttp import web
 
 from state import state
 from verification import verify_tool_call, verify_tool_response
+from utils import safe_print
 
 
 async def handle_verify_request(request):
@@ -86,9 +87,9 @@ async def handle_verify_request(request):
             user_intent = tool_args.get('user_intent', '')
             tool_args_clean = {k: v for k, v in tool_args.items() if k != 'user_intent'}
 
-            print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
+            safe_print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
             if user_intent:
-                print(f"[Verify] User intent: {user_intent}")
+                safe_print(f"[Verify] User intent: {user_intent}")
 
             # Verify the tool call (skip logging since we already logged above)
             verification = await verify_tool_call(
@@ -112,9 +113,9 @@ async def handle_verify_request(request):
             # Other methods: just log, don't block
             # pre_init 단계면 로그에 표시
             if stage == 'pre_init':
-                print(f"[Log] [Pre-Init] Request: {method} from {app_name}/{server_name}")
+                safe_print(f"[Log] [Pre-Init] Request: {method} from {app_name}/{server_name}")
             else:
-                print(f"[Log] Request: {method} from {app_name}/{server_name}")
+                safe_print(f"[Log] Request: {method} from {app_name}/{server_name}")
             return web.Response(
                 status=200,
                 text=json.dumps({
@@ -126,7 +127,7 @@ async def handle_verify_request(request):
             )
 
     except Exception as e:
-        print(f"[Verify] Error processing request: {e}")
+        safe_print(f"[Verify] Error processing request: {e}")
         import traceback
         traceback.print_exc()
         return web.Response(
@@ -210,12 +211,12 @@ async def handle_verify_response(request):
             if is_tools_list and not skip_analysis:
                 # tools/list: 동기적으로 처리 (엔진 검사 완료까지 대기)
                 stage_label = '[Pre-Init]' if stage == 'pre_init' else ''
-                print(f"[Log] {stage_label} tools/list Response from {app_name}/{server_name} - waiting for engine analysis")
+                safe_print(f"[Log] {stage_label} tools/list Response from {app_name}/{server_name} - waiting for engine analysis")
                 await state.event_hub.process_event_sync(event)
-                print(f"[Log] {stage_label} tools/list engine analysis completed for {app_name}/{server_name}")
+                safe_print(f"[Log] {stage_label} tools/list engine analysis completed for {app_name}/{server_name}")
             elif is_tools_list and skip_analysis:
                 # tools/list이지만 분석 스킵 (캐시된 응답)
-                print(f"[Log] [Cached] tools/list Response from {app_name}/{server_name} - skipping analysis (already done)")
+                safe_print(f"[Log] [Cached] tools/list Response from {app_name}/{server_name} - skipping analysis (already done)")
                 await state.event_hub.process_event(event)
             else:
                 # 다른 응답: 백그라운드 처리
@@ -223,7 +224,7 @@ async def handle_verify_response(request):
 
         # Only verify tools/call responses for security
         if tool_name != 'unknown' and tool_name not in ['initialize', 'tools/list', 'notifications/initialized']:
-            print(f"[Verify] Tool response: {tool_name} from {app_name}/{server_name}")
+            safe_print(f"[Verify] Tool response: {tool_name} from {app_name}/{server_name}")
 
             # Verify the tool response (skip logging since we already logged above)
             verification = await verify_tool_response(
@@ -247,9 +248,9 @@ async def handle_verify_response(request):
             if not is_tools_list:
                 # pre_init 단계면 로그에 표시
                 if stage == 'pre_init':
-                    print(f"[Log] [Pre-Init] Response from {app_name}/{server_name}")
+                    safe_print(f"[Log] [Pre-Init] Response from {app_name}/{server_name}")
                 else:
-                    print(f"[Log] Response from {app_name}/{server_name}")
+                    safe_print(f"[Log] Response from {app_name}/{server_name}")
             return web.Response(
                 status=200,
                 text=json.dumps({
@@ -261,7 +262,7 @@ async def handle_verify_response(request):
             )
 
     except Exception as e:
-        print(f"[Verify] Error processing response: {e}")
+        safe_print(f"[Verify] Error processing response: {e}")
         import traceback
         traceback.print_exc()
         return web.Response(
@@ -314,12 +315,12 @@ async def handle_register_tools(request):
         )
 
     try:
-        print(f"[Register] Registering {len(tools)} tools for {app_name}/{server_name}")
+        safe_print(f"[Register] Registering {len(tools)} tools for {app_name}/{server_name}")
 
         # Log tool information
         for i, tool in enumerate(tools):
             description = tool.get('description', '(no description)')
-            print(f"  {i+1}. {tool.get('name')} - {description}")
+            safe_print(f"  {i+1}. {tool.get('name')} - {description}")
 
         # Register tools in state
         await state.register_tools(
@@ -333,8 +334,8 @@ async def handle_register_tools(request):
         with_desc = sum(1 for t in tools if t.get('description'))
         without_desc = len(tools) - with_desc
 
-        print(f"[Register] Successfully registered {len(tools)} tools for {app_name}:{server_name}")
-        print(f"  {with_desc} with descriptions, {without_desc} without")
+        safe_print(f"[Register] Successfully registered {len(tools)} tools for {app_name}:{server_name}")
+        safe_print(f"  {with_desc} with descriptions, {without_desc} without")
 
         return web.Response(
             status=200,
@@ -351,7 +352,7 @@ async def handle_register_tools(request):
         )
 
     except Exception as e:
-        print(f"[Register] Error registering tools: {e}")
+        safe_print(f"[Register] Error registering tools: {e}")
         return web.Response(
             status=500,
             text=json.dumps({"error": "Tool registration error"}),

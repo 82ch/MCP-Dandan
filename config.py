@@ -7,6 +7,7 @@ Combines Observer and Engine configurations.
 import os
 import configparser
 from typing import Optional
+from utils import safe_print
 
 
 class Config:
@@ -29,7 +30,7 @@ class Config:
         if os.path.exists(config_file):
             self.config.read(config_file, encoding='utf-8')
         else:
-            print(f'[Config] Warning: {config_file} not found, using defaults')
+            safe_print(f'[Config] Warning: {config_file} not found, using defaults')
 
     # ========== Engine Settings ==========
 

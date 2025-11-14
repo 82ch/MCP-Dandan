@@ -10,6 +10,7 @@ import time
 
 from state import state
 from verification import verify_tool_call, verify_tool_response
+from utils import safe_print
 
 
 async def handle_message_endpoint(request):
@@ -42,7 +43,7 @@ async def handle_message_endpoint(request):
             content_type='application/json'
         )
 
-    print(f"[Message] Handling message for {app_name}/{server_name}")
+    safe_print(f"[Message] Handling message for {app_name}/{server_name}")
 
     # Parse request body
     try:
@@ -58,8 +59,8 @@ async def handle_message_endpoint(request):
     is_notification = 'id' not in message
     msg_type = "Notification" if is_notification else "Request"
 
-    print(f"[Message] {msg_type}: method={message.get('method')}, id={message.get('id', 'N/A')}")
-    print(f"[Message] Payload: {json.dumps(message, indent=2)}")
+    safe_print(f"[Message] {msg_type}: method={message.get('method')}, id={message.get('id', 'N/A')}")
+    safe_print(f"[Message] Payload: {json.dumps(message, indent=2)}")
 
     # Log all requests to EventHub
     if state.event_hub:
@@ -82,7 +83,7 @@ async def handle_message_endpoint(request):
     connection = await state.find_sse_connection(server_name, app_name)
 
     if not connection:
-        print(f"[Message] No active SSE connection found for {server_name}")
+        safe_print(f"[Message] No active SSE connection found for {server_name}")
         return aiohttp.web.Response(
             status=404,
             text=json.dumps({"error": "SSE connection not found"}),
@@ -94,7 +95,7 @@ async def handle_message_endpoint(request):
 
     # Check if this is an SSE-only server with message queue
     if hasattr(connection, 'message_queue') and connection.message_queue is not None:
-        print(f"[Message] Using SSE bidirectional mode (message queue)")
+        safe_print(f"[Message] Using SSE bidirectional mode (message queue)")
         # Put message in queue for SSE handler to send
         await connection.message_queue.put(message)
         # For SSE-only servers, the response comes back via SSE, not HTTP
@@ -105,7 +106,7 @@ async def handle_message_endpoint(request):
             content_type='application/json'
         )
 
-    print(f"[Message] Target headers to forward: {list(target_headers.keys())}")
+    safe_print(f"[Message] Target headers to forward: {list(target_headers.keys())}")
 
     # Verify tool calls
     if message.get('method') == 'tools/call' and message.get('params'):
@@ -122,7 +123,7 @@ async def handle_message_endpoint(request):
                 args=tool_args
             )
 
-            print(f"[Message] Tracking tool call: {tool_name} as {call_key}")
+            safe_print(f"[Message] Tracking tool call: {tool_name} as {call_key}")
 
             # Verify the tool call
             server_info = {
@@ -140,7 +141,7 @@ async def handle_message_endpoint(request):
             )
 
             if not verification.allowed:
-                print(f"[Message] Tool call blocked: {verification.reason}")
+                safe_print(f"[Message] Tool call blocked: {verification.reason}")
                 await state.remove_pending_call(call_key)
 
                 return aiohttp.web.Response(
@@ -160,7 +161,7 @@ async def handle_message_endpoint(request):
             await state.cleanup_stale_calls()
 
         except Exception as e:
-            print(f"[Message] Error during verification: {e}")
+            safe_print(f"[Message] Error during verification: {e}")
 
     # Forward request to target server
     # Convert SSE URL to message endpoint
@@ -175,7 +176,7 @@ async def handle_message_endpoint(request):
         # For servers like composio/coingecko that don't use /sse suffix
         message_endpoint = target_url
 
-    print(f"[Message] Forwarding to target: {message_endpoint}")
+    safe_print(f"[Message] Forwarding to target: {message_endpoint}")
 
     try:
         async with aiohttp.ClientSession() as session:
@@ -188,7 +189,7 @@ async def handle_message_endpoint(request):
             # Forward MCP-Protocol-Version header if present
             if 'MCP-Protocol-Version' in request.headers:
                 headers_to_send['MCP-Protocol-Version'] = request.headers['MCP-Protocol-Version']
-                print(f"[Message] Forwarding MCP-Protocol-Version: {request.headers['MCP-Protocol-Version']}")
+                safe_print(f"[Message] Forwarding MCP-Protocol-Version: {request.headers['MCP-Protocol-Version']}")
 
             headers_to_send.update(target_headers)
 
@@ -199,9 +200,9 @@ async def handle_message_endpoint(request):
             ) as response:
                 if response.status != 200:
                     error_text = await response.text()
-                    print(f"[Message] Target returned HTTP {response.status}")
-                    print(f"[Message] Error response: {error_text}")
-                    print(f"[Message] Response headers: {dict(response.headers)}")
+                    safe_print(f"[Message] Target returned HTTP {response.status}")
+                    safe_print(f"[Message] Error response: {error_text}")
+                    safe_print(f"[Message] Response headers: {dict(response.headers)}")
                     return aiohttp.web.Response(
                         status=response.status,
                         text=error_text,
@@ -218,7 +219,7 @@ async def handle_message_endpoint(request):
 
                 # Handle 202 or notifications (no response body expected)
                 if is_notification:
-                    print(f"[Message] Notification forwarded successfully")
+                    safe_print(f"[Message] Notification forwarded successfully")
                     return aiohttp.web.Response(
                         status=202,
                         text="",
@@ -227,8 +228,8 @@ async def handle_message_endpoint(request):
 
                 # Get response data
                 response_data = await response.json()
-                print(f"[Message] Received response from target")
-                print(f"[Message] Response payload: {json.dumps(response_data, indent=2)}")
+                safe_print(f"[Message] Received response from target")
+                safe_print(f"[Message] Response payload: {json.dumps(response_data, indent=2)}")
 
                 # Log all responses to EventHub
                 if state.event_hub:
@@ -268,7 +269,7 @@ async def handle_message_endpoint(request):
                         )
 
                         if not verification.allowed:
-                            print(f"[Message] Response blocked: {verification.reason}")
+                            safe_print(f"[Message] Response blocked: {verification.reason}")
                             await state.remove_pending_call(call_key)
 
                             return aiohttp.web.Response(
@@ -288,7 +289,7 @@ async def handle_message_endpoint(request):
                         await state.remove_pending_call(call_key)
 
                     except Exception as e:
-                        print(f"[Message] Error verifying response: {e}")
+                        safe_print(f"[Message] Error verifying response: {e}")
 
                 # Return response to client
                 return aiohttp.web.Response(
@@ -298,7 +299,7 @@ async def handle_message_endpoint(request):
                 )
 
     except Exception as e:
-        print(f"[Message] Error forwarding to target: {e}")
+        safe_print(f"[Message] Error forwarding to target: {e}")
         return aiohttp.web.Response(
             status=502,
             text=json.dumps({

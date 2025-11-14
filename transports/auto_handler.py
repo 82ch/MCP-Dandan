@@ -8,6 +8,7 @@ import aiohttp
 import asyncio
 from transports.sse_transport import handle_sse_connection
 from transports.http_handler import handle_http_only_message
+from utils import safe_print
 
 
 async def handle_auto_detect(request):
@@ -23,13 +24,13 @@ async def handle_auto_detect(request):
     if request.method == 'GET':
         accept_header = request.headers.get('Accept', '')
         if 'text/event-stream' in accept_header:
-            print(f"[Auto] Detected SSE connection (GET + text/event-stream)")
+            safe_print(f"[Auto] Detected SSE connection (GET + text/event-stream)")
             return await handle_sse_connection(request)
 
     # POST request = Could be HTTP-only or message endpoint
     # Delegate to HTTP-only handler (which handles both cases now)
     if request.method == 'POST':
-        print(f"[Auto] Detected POST request, using HTTP-only handler")
+        safe_print(f"[Auto] Detected POST request, using HTTP-only handler")
         return await handle_http_only_message(request)
 
     # Unsupported method

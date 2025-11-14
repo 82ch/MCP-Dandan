@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import Any
+from utils import safe_print
 
 
 class BaseEngine(ABC):
@@ -38,7 +39,7 @@ class BaseEngine(ABC):
             return result
         except Exception as e:
             try:
-                print(f"[{self.name}] ERROR during processing: {e}")
+                safe_print(f"[{self.name}] ERROR during processing: {e}")
             except Exception:
                 pass
             return None

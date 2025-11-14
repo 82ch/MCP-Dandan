@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional
 import json
 import time
 from state import state
+from utils import safe_print
 
 
 class VerificationResult:
@@ -41,11 +42,11 @@ async def verify_tool_call(
     app_name = server_info.get('appName', 'unknown')
     server_name = server_info.get('name', 'unknown')
 
-    print(f"[Verification] Checking tool call: {tool_name}")
-    print(f"[Verification] Server: {app_name}/{server_name}")
+    safe_print(f"[Verification] Checking tool call: {tool_name}")
+    safe_print(f"[Verification] Server: {app_name}/{server_name}")
 
     if user_intent:
-        print(f"[Verification] User intent: {user_intent}")
+        safe_print(f"[Verification] User intent: {user_intent}")
 
     # Send event to EventHub for engine analysis (unless already logged)
     if not skip_logging and state.event_hub:
@@ -74,7 +75,7 @@ async def verify_tool_call(
         try:
             await state.event_hub.process_event(event)
         except Exception as e:
-            print(f"[Verification] Error sending event to EventHub: {e}")
+            safe_print(f"[Verification] Error sending event to EventHub: {e}")
 
     # Basic blocking checks
     dangerous_patterns = ["rm -rf", "/etc/", "format", "del /f"]
@@ -111,7 +112,7 @@ async def verify_tool_response(
     app_name = server_info.get('appName', 'unknown')
     server_name = server_info.get('name', 'unknown')
 
-    print(f"[Verification] Checking tool response: {tool_name}")
+    safe_print(f"[Verification] Checking tool response: {tool_name}")
 
     # Send event to EventHub for engine analysis (unless already logged)
     if not skip_logging and state.event_hub:
@@ -133,7 +134,7 @@ async def verify_tool_response(
         try:
             await state.event_hub.process_event(event)
         except Exception as e:
-            print(f"[Verification] Error sending event to EventHub: {e}")
+            safe_print(f"[Verification] Error sending event to EventHub: {e}")
 
     # Basic warning checks
     response_str = json.dumps(response_data).lower()
@@ -141,6 +142,6 @@ async def verify_tool_response(
 
     for pattern in sensitive_patterns:
         if pattern in response_str:
-            print(f"[Verification] Warning: Response may contain sensitive data: {pattern}")
+            safe_print(f"[Verification] Warning: Response may contain sensitive data: {pattern}")
 
     return VerificationResult(allowed=True)

@@ -11,6 +11,7 @@ import json
 import time
 from verification import verify_tool_call, verify_tool_response
 from state import state
+from utils import safe_print
 
 
 async def write_chunked(response, data: str, chunk_size: int = 4000):
@@ -28,7 +29,7 @@ async def write_chunked(response, data: str, chunk_size: int = 4000):
             await response.write(chunk)
             await response.drain()
         except Exception as e:
-            print(f"[write_chunked] Error at offset {i}/{len(data_bytes)}: {e}")
+            safe_print(f"[write_chunked] Error at offset {i}/{len(data_bytes)}: {e}")
             raise
 
 
@@ -52,7 +53,7 @@ async def handle_sse_bidirectional(
         message_endpoint: Proxy message endpoint for client
         connection: SSEConnection object from state
     """
-    print(f"[SSE-Bidir] Starting bidirectional SSE mode for {target_url}")
+    safe_print(f"[SSE-Bidir] Starting bidirectional SSE mode for {target_url}")
 
     # Create message queue for client -> target messages
     message_queue = asyncio.Queue()
@@ -79,7 +80,7 @@ async def handle_sse_bidirectional(
                 headers=headers_to_send,
                 timeout=aiohttp.ClientTimeout(total=None, connect=30)  # No total timeout for SSE
             ) as target_response:
-                print(f"[SSE-Bidir] Connected to target: HTTP {target_response.status}")
+                safe_print(f"[SSE-Bidir] Connected to target: HTTP {target_response.status}")
 
                 if target_response.status != 200:
                     error_event = f"event: error\ndata: {json.dumps({'error': f'Target returned {target_response.status}'})}\n\n"
@@ -133,20 +134,20 @@ async def handle_sse_bidirectional(
                                                 }
                                                 await state.event_hub.process_event(event)
                                         except Exception as log_err:
-                                            print(f"[SSE-Bidir] Error logging event to EventHub: {log_err}")
+                                            safe_print(f"[SSE-Bidir] Error logging event to EventHub: {log_err}")
 
                                     if current_event == 'endpoint' and current_data_lines:
                                         # Capture target's message endpoint
                                         target_message_endpoint = ''.join(current_data_lines)
-                                        print(f"[SSE-Bidir] Captured target message endpoint: {target_message_endpoint}")
+                                        safe_print(f"[SSE-Bidir] Captured target message endpoint: {target_message_endpoint}")
 
                                         # Rewrite to proxy endpoint
-                                        print(f"[SSE-Bidir] Rewriting endpoint event")
+                                        safe_print(f"[SSE-Bidir] Rewriting endpoint event")
                                         try:
                                             rewritten = f"event: endpoint\ndata: {message_endpoint}\n\n"
                                             await write_chunked(client_response, rewritten)
                                         except Exception as e:
-                                            print(f"[SSE-Bidir] Cannot write endpoint (connection may be closing): {e}")
+                                            safe_print(f"[SSE-Bidir] Cannot write endpoint (connection may be closing): {e}")
                                             return  # Exit if client disconnected
                                     elif current_event or current_data_lines:
                                         # Forward other events as-is
@@ -167,14 +168,14 @@ async def handle_sse_bidirectional(
                                                         if result.get('tools'):
                                                             response_type = "tools/list"
                                                             tools = result.get('tools', [])
-                                                            print(f"[SSE-Bidir] Discovered {len(tools)} tools")
+                                                            safe_print(f"[SSE-Bidir] Discovered {len(tools)} tools")
 
                                                             # Modify tools to add user_intent parameter (like STDIO)
                                                             modified_tools = []
                                                             for i, tool in enumerate(tools):
                                                                 tool_name = tool.get('name', 'unknown')
                                                                 description = tool.get('description', '(no description)')
-                                                                print(f"  {i+1}. {tool_name} - {description}")
+                                                                safe_print(f"  {i+1}. {tool_name} - {description}")
 
                                                                 modified_tool = tool.copy()
 
@@ -212,7 +213,7 @@ async def handle_sse_bidirectional(
                                                             # Update data_line with modified JSON
                                                             data_line = json_lib.dumps(parsed)
                                                             current_data_lines[0] = data_line
-                                                            print()
+                                                            safe_print()
                                                         elif result.get('content'):
                                                             response_type = "tools/call"
 
@@ -227,7 +228,7 @@ async def handle_sse_bidirectional(
                                                                     'version': 'unknown'
                                                                 }
 
-                                                                print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
+                                                                safe_print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
 
                                                                 # Log response to EventHub
                                                                 if state.event_hub:
@@ -256,7 +257,7 @@ async def handle_sse_bidirectional(
 
                                                                 if not verification.allowed:
                                                                     reason = verification.reason or 'Security policy violation'
-                                                                    print(f"[Verify] Response blocked: {reason}")
+                                                                    safe_print(f"[Verify] Response blocked: {reason}")
                                                                     parsed = {
                                                                         "jsonrpc": "2.0",
                                                                         "id": parsed.get('id'),
@@ -273,51 +274,51 @@ async def handle_sse_bidirectional(
                                                                 # Remove from pending
                                                                 del pending_tool_calls[msg_id]
 
-                                                            print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
-                                                            print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
-                                                            print()
+                                                            safe_print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                            safe_print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                            safe_print()
                                                         elif result.get('prompts'):
                                                             response_type = "prompts/list"
                                                             # Print prompts list
                                                             prompts = result.get('prompts', [])
-                                                            print(f"[SSE-Bidir] Discovered {len(prompts)} prompts")
+                                                            safe_print(f"[SSE-Bidir] Discovered {len(prompts)} prompts")
                                                             for i, prompt in enumerate(prompts):
                                                                 prompt_name = prompt.get('name', 'unknown')
                                                                 description = prompt.get('description', '(no description)')
-                                                                print(f"  {i+1}. {prompt_name} - {description}")
-                                                            print()
+                                                                safe_print(f"  {i+1}. {prompt_name} - {description}")
+                                                            safe_print()
                                                         elif result.get('messages'):
                                                             response_type = "prompts/get"
-                                                            print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
-                                                            print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
-                                                            print()
+                                                            safe_print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                            safe_print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                            safe_print()
                                                         elif result.get('resources'):
                                                             response_type = "resources/list"
                                                             # Print resources list
                                                             resources = result.get('resources', [])
-                                                            print(f"[SSE-Bidir] Discovered {len(resources)} resources")
+                                                            safe_print(f"[SSE-Bidir] Discovered {len(resources)} resources")
                                                             for i, resource in enumerate(resources):
                                                                 resource_uri = resource.get('uri', 'unknown')
                                                                 name = resource.get('name', '')
                                                                 description = resource.get('description', '(no description)')
                                                                 display = f"{name} ({resource_uri})" if name else resource_uri
-                                                                print(f"  {i+1}. {display} - {description}")
-                                                            print()
+                                                                safe_print(f"  {i+1}. {display} - {description}")
+                                                            safe_print()
                                                         elif 'initialize' in method or result.get('protocolVersion'):
                                                             response_type = "initialize"
-                                                            print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
-                                                            print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
-                                                            print()
+                                                            safe_print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                            safe_print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                            safe_print()
                                                         elif parsed.get('error'):
                                                             response_type = "error"
-                                                            print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
-                                                            print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
-                                                            print()
+                                                            safe_print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                            safe_print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                            safe_print()
                                                         else:
                                                             response_type = "Response"
-                                                            print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
-                                                            print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
-                                                            print()
+                                                            safe_print(f"\n[SSE-Bidir] {response_type} ({len(data_line)} chars)")
+                                                            safe_print(json_lib.dumps(parsed, indent=2, ensure_ascii=False))
+                                                            safe_print()
                                                     except:
                                                         pass
 
@@ -334,10 +335,10 @@ async def handle_sse_bidirectional(
                                             full_event = ''.join(event_parts)
                                             await write_chunked(client_response, full_event)
                                         except ConnectionResetError:
-                                            print(f"[SSE-Bidir] Client disconnected")
+                                            safe_print(f"[SSE-Bidir] Client disconnected")
                                             return  # Exit gracefully
                                         except Exception as e:
-                                            print(f"[SSE-Bidir] Error writing event to client: {e}")
+                                            safe_print(f"[SSE-Bidir] Error writing event to client: {e}")
                                             # Check if it's a connection error
                                             if "closing" in str(e).lower() or "closed" in str(e).lower():
                                                 return  # Exit gracefully
@@ -347,10 +348,10 @@ async def handle_sse_bidirectional(
                                     current_data_lines = []
                                 elif line_str.startswith('event:'):
                                     current_event = line_str[6:].strip()
-                                    print(f"[SSE-Bidir] Event type: {current_event}")
+                                    safe_print(f"[SSE-Bidir] Event type: {current_event}")
                                 elif line_str.startswith('id:'):
                                     event_id = line_str[3:].strip()
-                                    print(f"[SSE-Bidir] Event ID: {event_id}")
+                                    safe_print(f"[SSE-Bidir] Event ID: {event_id}")
                                 elif line_str.startswith('data:'):
                                     data_content = line_str[5:].strip()
                                     current_data_lines.append(data_content)
@@ -358,7 +359,7 @@ async def handle_sse_bidirectional(
                                     # Other SSE fields (id, retry, etc.) - forward as-is
                                     await write_chunked(client_response, line_bytes + b"\n")
                     except Exception as e:
-                        print(f"[SSE-Bidir] Error forwarding target->client: {e}")
+                        safe_print(f"[SSE-Bidir] Error forwarding target->client: {e}")
 
                 # Task 2: Send queued messages from client to target via POST
                 async def forward_client_to_target():
@@ -371,7 +372,7 @@ async def handle_sse_bidirectional(
                             if message is None:  # Shutdown signal
                                 break
 
-                            print(f"[SSE-Bidir] Client -> Target: {message.get('method', 'response')}")
+                            safe_print(f"[SSE-Bidir] Client -> Target: {message.get('method', 'response')}")
 
                             # Log all requests to EventHub
                             if state.event_hub:
@@ -406,9 +407,9 @@ async def handle_sse_bidirectional(
                                     'version': 'unknown'
                                 }
 
-                                print(f"[Verify] Tool call: {tool_name} from {connection.app_name}/{connection.server_name}")
+                                safe_print(f"[Verify] Tool call: {tool_name} from {connection.app_name}/{connection.server_name}")
                                 if user_intent:
-                                    print(f"[Verify] User intent: {user_intent}")
+                                    safe_print(f"[Verify] User intent: {user_intent}")
 
                                 # Verify the tool call (skip logging since we already logged above)
                                 verification = await verify_tool_call(
@@ -421,7 +422,7 @@ async def handle_sse_bidirectional(
 
                                 if not verification.allowed:
                                     reason = verification.reason or 'Security policy violation'
-                                    print(f"[Verify] Tool call blocked: {reason}")
+                                    safe_print(f"[Verify] Tool call blocked: {reason}")
                                     error_response = {
                                         "jsonrpc": "2.0",
                                         "id": message.get('id'),
@@ -438,7 +439,7 @@ async def handle_sse_bidirectional(
 
                                 # Strip user_intent before forwarding to target
                                 if 'user_intent' in tool_args:
-                                    print(f"[SSE-Bidir] Stripping user_intent before forwarding")
+                                    safe_print(f"[SSE-Bidir] Stripping user_intent before forwarding")
                                     message = {
                                         **message,
                                         'params': {
@@ -451,7 +452,7 @@ async def handle_sse_bidirectional(
                                 msg_id = message.get('id')
                                 if msg_id is not None:
                                     pending_tool_calls[msg_id] = tool_name
-                                    print(f"[SSE-Bidir] Tracking tool call {tool_name} with ID {msg_id}")
+                                    safe_print(f"[SSE-Bidir] Tracking tool call {tool_name} with ID {msg_id}")
 
                             # Wait for target_message_endpoint to be set (from endpoint event)
                             retry_count = 0
@@ -460,7 +461,7 @@ async def handle_sse_bidirectional(
                                 retry_count += 1
 
                             if target_message_endpoint is None:
-                                print(f"[SSE-Bidir] Error: Target message endpoint not received")
+                                safe_print(f"[SSE-Bidir] Error: Target message endpoint not received")
                                 error_response = {
                                     "jsonrpc": "2.0",
                                     "id": message.get('id'),
@@ -483,7 +484,7 @@ async def handle_sse_bidirectional(
                             else:
                                 message_url = target_message_endpoint
 
-                            print(f"[SSE-Bidir] Sending to: {message_url}")
+                            safe_print(f"[SSE-Bidir] Sending to: {message_url}")
 
                             try:
                                 async with session.post(
@@ -498,7 +499,7 @@ async def handle_sse_bidirectional(
                                     if msg_response.status == 200:
                                         # Some servers return 200 with response body
                                         response_data = await msg_response.json()
-                                        print(f"[SSE-Bidir] Got response from target via POST (200)")
+                                        safe_print(f"[SSE-Bidir] Got response from target via POST (200)")
 
                                         # Verify tool response if this was a tool call
                                         if message.get('method') == 'tools/call' and response_data.get('result'):
@@ -511,7 +512,7 @@ async def handle_sse_bidirectional(
                                                 'version': 'unknown'
                                             }
 
-                                            print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
+                                            safe_print(f"[Verify] Tool response: {tool_name} from {connection.app_name}/{connection.server_name}")
 
                                             # Log response to EventHub
                                             if state.event_hub:
@@ -540,7 +541,7 @@ async def handle_sse_bidirectional(
 
                                             if not verification.allowed:
                                                 reason = verification.reason or 'Security policy violation'
-                                                print(f"[Verify] Response blocked: {reason}")
+                                                safe_print(f"[Verify] Response blocked: {reason}")
                                                 response_data = {
                                                     "jsonrpc": "2.0",
                                                     "id": response_data.get('id'),
@@ -557,12 +558,12 @@ async def handle_sse_bidirectional(
                                         await write_chunked(client_response, event)
                                     elif msg_response.status == 202:
                                         # 202 Accepted - response will come via SSE stream
-                                        print(f"[SSE-Bidir] Message accepted (202), waiting for response via SSE")
+                                        safe_print(f"[SSE-Bidir] Message accepted (202), waiting for response via SSE")
                                         # Don't send anything - response will come via SSE
                                     else:
                                         error_text = await msg_response.text()
-                                        print(f"[SSE-Bidir] Target POST failed: {msg_response.status}")
-                                        print(f"[SSE-Bidir] Error: {error_text}")
+                                        safe_print(f"[SSE-Bidir] Target POST failed: {msg_response.status}")
+                                        safe_print(f"[SSE-Bidir] Error: {error_text}")
 
                                         # Return error to client
                                         error_response = {
@@ -576,7 +577,7 @@ async def handle_sse_bidirectional(
                                         event = f"event: message\ndata: {json.dumps(error_response)}\n\n"
                                         await write_chunked(client_response, event)
                             except Exception as e:
-                                print(f"[SSE-Bidir] Error sending to target: {e}")
+                                safe_print(f"[SSE-Bidir] Error sending to target: {e}")
                                 # Return error to client
                                 error_response = {
                                     "jsonrpc": "2.0",
@@ -589,7 +590,7 @@ async def handle_sse_bidirectional(
                                 event = f"event: message\ndata: {json.dumps(error_response)}\n\n"
                                 await write_chunked(client_response, event)
                     except Exception as e:
-                        print(f"[SSE-Bidir] Error forwarding client->target: {e}")
+                        safe_print(f"[SSE-Bidir] Error forwarding client->target: {e}")
 
                 # Run both tasks concurrently
                 await asyncio.gather(
@@ -599,7 +600,7 @@ async def handle_sse_bidirectional(
                 )
 
     except Exception as e:
-        print(f"[SSE-Bidir] Error in bidirectional SSE: {e}")
+        safe_print(f"[SSE-Bidir] Error in bidirectional SSE: {e}")
         error_event = f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         try:
             await write_chunked(client_response, error_event)

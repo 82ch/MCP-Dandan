@@ -9,6 +9,7 @@ import os
 import sys
 import asyncio
 from aiohttp import web
+from utils import safe_print
 
 # Force unbuffered output for real-time logging
 sys.stdout.reconfigure(line_buffering=True)
@@ -42,7 +43,7 @@ def setup_engines(db: Database) -> list:
             engine = ToolsPoisoningEngine(db)
             engines.append(engine)
         except Exception as e:
-            print(f"[Engine] Failed to initialize ToolsPoisoningEngine: {e}")
+            safe_print(f"[Engine] Failed to initialize ToolsPoisoningEngine: {e}")
 
     # Command Injection Engine
     if config.get_command_injection_enabled():
@@ -50,7 +51,7 @@ def setup_engines(db: Database) -> list:
             engine = CommandInjectionEngine(db)
             engines.append(engine)
         except Exception as e:
-            print(f"[Engine] Failed to initialize CommandInjectionEngine: {e}")
+            safe_print(f"[Engine] Failed to initialize CommandInjectionEngine: {e}")
 
     # File System Exposure Engine
     if config.get_file_system_exposure_enabled():
@@ -58,16 +59,16 @@ def setup_engines(db: Database) -> list:
             engine = FileSystemExposureEngine(db)
             engines.append(engine)
         except Exception as e:
-            print(f"[Engine] Failed to initialize FileSystemExposureEngine: {e}")
+            safe_print(f"[Engine] Failed to initialize FileSystemExposureEngine: {e}")
 
     return engines
 
 
 async def initialize_engine_system():
     """Initialize the engine detection system."""
-    print("=" * 80)
-    print("Initializing Engine System")
-    print("=" * 80)
+    safe_print("=" * 80)
+    safe_print("Initializing Engine System")
+    safe_print("=" * 80)
 
     # Initialize database
     db = Database()
@@ -77,11 +78,11 @@ async def initialize_engine_system():
     engines = setup_engines(db)
 
     if engines:
-        print(f"\nActive Detection Engines ({len(engines)}):")
+        safe_print(f"\nActive Detection Engines ({len(engines)}):")
         for i, engine in enumerate(engines, 1):
-            print(f"  {i}. {engine.name}")
+            safe_print(f"  {i}. {engine.name}")
     else:
-        print("\nWarning: No detection engines enabled!")
+        safe_print("\nWarning: No detection engines enabled!")
 
     # Initialize EventHub
     event_hub = EventHub(engines, db)
@@ -90,8 +91,8 @@ async def initialize_engine_system():
     # Store in global state
     state.event_hub = event_hub
 
-    print("\nEngine system initialized successfully")
-    print("=" * 80)
+    safe_print("\nEngine system initialized successfully")
+    safe_print("=" * 80)
 
     return db, event_hub
 
@@ -151,24 +152,24 @@ def setup_routes(app):
     # Used when SSE connection sends 'endpoint' event
     app.router.add_post('/{app}/{server}/message', handle_message_endpoint)
 
-    print(f"[Server] Routes configured:")
-    print(f"  GET  /health - Health check")
-    print(f"  POST /verify/request - STDIO verification API")
-    print(f"  POST /verify/response - STDIO verification API")
-    print(f"  POST /register-tools - Tool registration")
-    print(f"  *    /{{app}}/{{server}} - Unified MCP endpoint (auto-detect)")
-    print(f"  POST /{{app}}/{{server}}/message - SSE message endpoint")
+    safe_print(f"[Server] Routes configured:")
+    safe_print(f"  GET  /health - Health check")
+    safe_print(f"  POST /verify/request - STDIO verification API")
+    safe_print(f"  POST /verify/response - STDIO verification API")
+    safe_print(f"  POST /register-tools - Tool registration")
+    safe_print(f"  *    /{{app}}/{{server}} - Unified MCP endpoint (auto-detect)")
+    safe_print(f"  POST /{{app}}/{{server}}/message - SSE message endpoint")
 
 
 async def on_startup(app):
     """Called when the application starts."""
     state.running = True
 
-    print("\n" + "=" * 80)
-    print("82ch - MCP Security Framework")
-    print("=" * 80)
-    print("Observer + Engine integrated mode")
-    print("=" * 80)
+    safe_print("\n" + "=" * 80)
+    safe_print("82ch - MCP Security Framework")
+    safe_print("=" * 80)
+    safe_print("Observer + Engine integrated mode")
+    safe_print("=" * 80)
 
     # Configure Claude Desktop config on startup
     import subprocess
@@ -176,11 +177,11 @@ async def on_startup(app):
         result = subprocess.run(['python', './transports/config_finder.py'],
                               capture_output=True, text=True, timeout=30)
         if result.returncode == 0:
-            print("\n[Config] Claude Desktop configured successfully")
+            safe_print("\n[Config] Claude Desktop configured successfully")
         else:
-            print(f"\n[Config] Warning: Configuration failed - {result.stderr}")
+            safe_print(f"\n[Config] Warning: Configuration failed - {result.stderr}")
     except Exception as e:
-        print(f"\n[Config] Warning: Failed to configure Claude Desktop - {e}")
+        safe_print(f"\n[Config] Warning: Failed to configure Claude Desktop - {e}")
 
     # Initialize engine system
     try:
@@ -189,31 +190,31 @@ async def on_startup(app):
         app['db'] = db
         app['event_hub'] = event_hub
     except Exception as e:
-        print(f"[Server] Warning: Failed to initialize engines: {e}")
-        print("[Server] Continuing in Observer-only mode...")
+        safe_print(f"[Server] Warning: Failed to initialize engines: {e}")
+        safe_print("[Server] Continuing in Observer-only mode...")
         # Create minimal database without engines
         db = Database()
         await db.connect()
         app['db'] = db
 
-    print(f"\n[Observer] Starting HTTP server...")
-    print(f"[Observer] Listening on http://{config.server_host}:{config.server_port}")
-    print(f"[Observer] Scan mode: {config.scan_mode}")
-    print("\n" + "=" * 80)
-    print("All components ready. Waiting for connections...")
-    print("Press Ctrl+C to stop")
-    print("=" * 80 + "\n")
+    safe_print(f"\n[Observer] Starting HTTP server...")
+    safe_print(f"[Observer] Listening on http://{config.server_host}:{config.server_port}")
+    safe_print(f"[Observer] Scan mode: {config.scan_mode}")
+    safe_print("\n" + "=" * 80)
+    safe_print("All components ready. Waiting for connections...")
+    safe_print("Press Ctrl+C to stop")
+    safe_print("=" * 80 + "\n")
 
 
 async def on_shutdown(app):
     """Called when the application shuts down."""
     state.running = False
 
-    print(f"[Server] Cleanup starting...")
+    safe_print(f"[Server] Cleanup starting...")
 
     # Close all SSE connections gracefully
     if state.sse_connections:
-        print(f"[Server] Closing {len(state.sse_connections)} SSE connections...")
+        safe_print(f"[Server] Closing {len(state.sse_connections)} SSE connections...")
         connections_to_close = list(state.sse_connections.values())
         for conn in connections_to_close:
             try:
@@ -228,31 +229,31 @@ async def on_shutdown(app):
                 if conn.target_session and not conn.target_session.closed:
                     await conn.target_session.close()
             except Exception as e:
-                print(f"[Server] Error closing SSE connection {conn.connection_id}: {e}")
+                safe_print(f"[Server] Error closing SSE connection {conn.connection_id}: {e}")
 
         # Clear all connections
         state.sse_connections.clear()
-        print(f"[Server] All SSE connections closed")
+        safe_print(f"[Server] All SSE connections closed")
 
     # Stop EventHub
     if state.event_hub:
         try:
             await asyncio.wait_for(state.event_hub.stop(), timeout=0.5)
         except asyncio.TimeoutError:
-            print("[Server] EventHub timeout")
+            safe_print("[Server] EventHub timeout")
         except Exception as e:
-            print(f"[Server] EventHub error: {e}")
+            safe_print(f"[Server] EventHub error: {e}")
 
     # Close database
     if 'db' in app:
         try:
             await asyncio.wait_for(app['db'].close(), timeout=0.5)
         except asyncio.TimeoutError:
-            print("[Server] Database timeout")
+            safe_print("[Server] Database timeout")
         except Exception as e:
-            print(f"[Server] Database error: {e}")
+            safe_print(f"[Server] Database error: {e}")
 
-    print(f"[Server] Cleanup done")
+    safe_print(f"[Server] Cleanup done")
 
 
 def create_app():
@@ -278,59 +279,59 @@ async def start_server():
     site = web.TCPSite(runner, config.server_host, config.server_port)
     await site.start()
 
-    print(f"[Observer] Listening on http://{config.server_host}:{config.server_port}")
+    safe_print(f"[Observer] Listening on http://{config.server_host}:{config.server_port}")
 
     # Run the server
     try:
         while True:
             await asyncio.sleep(1)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        print("\n[Server] Interrupted")
+        safe_print("\n[Server] Interrupted")
     finally:
         # Stop the site FIRST to prevent new connections and close the socket
         try:
             await site.stop()
-            print("[Server] Site stopped")
+            safe_print("[Server] Site stopped")
         except Exception as e:
-            print(f"[Server] Site stop error: {e}")
+            safe_print(f"[Server] Site stop error: {e}")
 
         # Then trigger shutdown callbacks to clean up SSE connections, etc.
         try:
             await asyncio.wait_for(app.shutdown(), timeout=2.0)
         except asyncio.TimeoutError:
-            print("[Server] App shutdown timeout")
+            safe_print("[Server] App shutdown timeout")
         except Exception as e:
-            print(f"[Server] App shutdown error: {e}")
+            safe_print(f"[Server] App shutdown error: {e}")
 
         # Cancel all remaining tasks
         try:
             tasks = [t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
             if tasks:
-                print(f"[Server] Cancelling {len(tasks)} remaining tasks...")
+                safe_print(f"[Server] Cancelling {len(tasks)} remaining tasks...")
                 for task in tasks:
                     task.cancel()
 
                 # Wait for tasks to complete cancellation with suppressed exceptions
                 await asyncio.gather(*tasks, return_exceptions=True)
         except Exception as e:
-            print(f"[Server] Task cancellation error: {e}")
+            safe_print(f"[Server] Task cancellation error: {e}")
 
         # Final cleanup
         try:
             await asyncio.wait_for(runner.cleanup(), timeout=1.0)
         except asyncio.TimeoutError:
-            print("[Server] Runner cleanup timeout")
+            safe_print("[Server] Runner cleanup timeout")
         except Exception as e:
-            print(f"[Server] Runner cleanup error: {e}")
+            safe_print(f"[Server] Runner cleanup error: {e}")
 
         try:
             await asyncio.wait_for(app.cleanup(), timeout=1.0)
         except asyncio.TimeoutError:
-            print("[Server] App cleanup timeout")
+            safe_print("[Server] App cleanup timeout")
         except Exception as e:
-            print(f"[Server] App cleanup error: {e}")
+            safe_print(f"[Server] App cleanup error: {e}")
 
-        print("[Server] Server stopped")
+        safe_print("[Server] Server stopped")
 
 if __name__ == '__main__':
     try:

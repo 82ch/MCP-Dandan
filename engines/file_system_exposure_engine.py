@@ -1,6 +1,7 @@
 from engines.base_engine import BaseEngine
 from typing import Any
 import re
+from utils import safe_print
 
 
 class FileSystemExposureEngine(BaseEngine):
@@ -96,16 +97,16 @@ class FileSystemExposureEngine(BaseEngine):
         ]
 
     def process(self, data: Any) -> Any:
-        print(f"[FileSystemExposureEngine] Input data: {data}")
+        safe_print(f"[FileSystemExposureEngine] Input data: {data}")
 
         # Extract paths to analyze
         paths = self._extract_paths(data)
 
         if not paths:
-            print(f"[FileSystemExposureEngine] No paths to analyze, skipping\n")
+            safe_print(f"[FileSystemExposureEngine] No paths to analyze, skipping\n")
             return None
 
-        print(f"[FileSystemExposureEngine] Extracted paths: {paths}")
+        safe_print(f"[FileSystemExposureEngine] Extracted paths: {paths}")
 
         findings = []
         severity = 'none'
@@ -172,7 +173,7 @@ class FileSystemExposureEngine(BaseEngine):
 
         # severity가 'none'인 경우 (탐지되지 않음) None 반환
         if severity == 'none':
-            print(f"[FileSystemExposureEngine] No issues found, 탐지되지 않음\n")
+            safe_print(f"[FileSystemExposureEngine] No issues found, 탐지되지 않음\n")
             return None
 
         # Calculate score based on severity and findings count
@@ -196,8 +197,8 @@ class FileSystemExposureEngine(BaseEngine):
             }
         }
 
-        print(f"[FileSystemExposureEngine] WARNING - File System Exposure detected! severity={severity}, score={score}")
-        print(f"[FileSystemExposureEngine] Detection result: {len(findings)} findings\n")
+        safe_print(f"[FileSystemExposureEngine] WARNING - File System Exposure detected! severity={severity}, score={score}")
+        safe_print(f"[FileSystemExposureEngine] Detection result: {len(findings)} findings\n")
 
         return result
 

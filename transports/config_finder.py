@@ -6,6 +6,7 @@ Local MCP server settings to use a proxy.
 
 Usage:
     from config_finder import ClaudeConfigFinder
+from utils import safe_print
 
     finder = ClaudeConfigFinder()
     finder.configure_claude_proxy()
@@ -285,16 +286,16 @@ def main():
     )
     args = parser.parse_args()
 
-    print("=" * 70)
-    print(r"      ____             __ _         _____ _           _           ")
-    print(r"     / ___|___  _ __  / _(_) __ _  |  ___(_)_ __   __| | ___ _ __ ")
-    print(r"    | |   / _ \| '_ \| |_| |/ _` | | |_  | | '_ \ / _` |/ _ \ '__|")
-    print(r"    | |__| (_) | | | |  _| | (_| | |  _| | | | | | (_| |  __/ |   ")
-    print(r"     \____\___/|_| |_|_| |_|\__, | |_|   |_|_| |_|\__,_|\___|_|   ")
-    print(r"                            |___/                                 ")
-    print("\n    [*] Calude Config Finder")
-    print("=" * 70)
-    print()
+    safe_print("=" * 70)
+    safe_print(r"      ____             __ _         _____ _           _           ")
+    safe_print(r"     / ___|___  _ __  / _(_) __ _  |  ___(_)_ __   __| | ___ _ __ ")
+    safe_print(r"    | |   / _ \| '_ \| |_| |/ _` | | |_  | | '_ \ / _` |/ _ \ '__|")
+    safe_print(r"    | |__| (_) | | | |  _| | (_| | |  _| | | | | | (_| |  __/ |   ")
+    safe_print(r"     \____\___/|_| |_|_| |_|\__, | |_|   |_|_| |_|\__,_|\___|_|   ")
+    safe_print(r"                            |___/                                 ")
+    safe_print("\n    [*] Calude Config Finder")
+    safe_print("=" * 70)
+    safe_print()
 
     finder = ClaudeConfigFinder()
 
@@ -316,17 +317,17 @@ def main():
         success = finder._restore_config(backup_path, config_path)
 
         if success:
-            print("\n[Done] Configuration restored successfully!")
+            safe_print("\n[Done] Configuration restored successfully!")
         else:
-            print("\n[Failed] Restore failed.")
+            safe_print("\n[Failed] Restore failed.")
     else:
         # Normal configuration mode
         success = finder.configure_claude_proxy()
 
         if success:
-            print("\n[Done] Configuration completed successfully!")
+            safe_print("\n[Done] Configuration completed successfully!")
         else:
-            print("\n[Failed] Configuration failed.")
+            safe_print("\n[Failed] Configuration failed.")
 
     return 0 if success else 1
 

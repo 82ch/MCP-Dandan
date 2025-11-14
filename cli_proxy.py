@@ -11,6 +11,7 @@ import json
 import subprocess
 import requests
 from typing import Optional, Dict, Any
+from utils import safe_print
 
 
 # Configuration
@@ -27,7 +28,7 @@ CONFIG = {
 def log(level: str, message: str):
     """Log a message to stderr."""
     if CONFIG['debug'] or level == 'ERROR':
-        print(f"[{level}] {message}", file=sys.stderr)
+        safe_print(f"[{level}] {message}", file=sys.stderr)
 
 
 def make_api_request(endpoint: str, data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -396,7 +397,7 @@ def main():
     global server_process
 
     if len(sys.argv) < 2:
-        print("Usage: python cli_proxy.py <command> [args...]", file=sys.stderr)
+        safe_print("Usage: python cli_proxy.py <command> [args...]", file=sys.stderr)
         sys.exit(1)
 
     command = sys.argv[1]

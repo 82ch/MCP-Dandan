@@ -12,6 +12,7 @@ from datetime import datetime
 
 from state import state, SSEConnection
 from transports.sse_bidirectional import handle_sse_bidirectional, write_chunked
+from utils import safe_print
 
 
 async def handle_sse_connection(request):
@@ -42,7 +43,7 @@ async def handle_sse_connection(request):
             text=json.dumps({"error": "Invalid path format"})
         )
 
-    print(f"[SSE] New connection for {app_name}/{server_name}")
+    safe_print(f"[SSE] New connection for {app_name}/{server_name}")
 
     # Validate Accept header
     accept_header = request.headers.get('Accept', '')
@@ -63,31 +64,31 @@ async def handle_sse_connection(request):
     target_headers = {}
 
     # Debug: print full request URL
-    print(f"[SSE] Full request URL: {request.url}")
-    print(f"[SSE] Query string: {request.url.query_string}")
+    safe_print(f"[SSE] Full request URL: {request.url}")
+    safe_print(f"[SSE] Query string: {request.url.query_string}")
 
     # 1. Check query parameter
     if request.url.query_string:
         # aiohttp provides query as multidict
         if 'target' in request.url.query:
             target_url = request.url.query.get('target')
-            print(f"[SSE] Using target URL from query parameter: {target_url}")
+            safe_print(f"[SSE] Using target URL from query parameter: {target_url}")
 
     # 2. Check header
     if not target_url:
         target_url = request.headers.get('X-MCP-Target-URL')
         if target_url:
-            print(f"[SSE] Using target URL from header: {target_url}")
+            safe_print(f"[SSE] Using target URL from header: {target_url}")
 
     # 3. Check environment variable
     if not target_url:
         target_url = os.getenv('MCP_TARGET_URL')
         if target_url:
-            print(f"[SSE] Using target URL from environment variable: {target_url}")
+            safe_print(f"[SSE] Using target URL from environment variable: {target_url}")
 
     # 4. Require target URL
     if not target_url:
-        print(f"[SSE] Error: No target URL specified for {app_name}/{server_name}")
+        safe_print(f"[SSE] Error: No target URL specified for {app_name}/{server_name}")
         return aiohttp.web.Response(
             status=400,
             text=json.dumps({
@@ -97,7 +98,7 @@ async def handle_sse_connection(request):
             content_type='application/json'
         )
 
-    print(f"[SSE] Final target URL: {target_url}")
+    safe_print(f"[SSE] Final target URL: {target_url}")
 
     # Forward all headers from client to target (except proxy-specific ones)
     skip_headers = {'host', 'content-length', 'connection', 'transfer-encoding', 'accept'}
@@ -106,7 +107,7 @@ async def handle_sse_connection(request):
             target_headers[header_name] = header_value
 
     if target_headers:
-        print(f"[SSE] Forwarding headers: {list(target_headers.keys())}")
+        safe_print(f"[SSE] Forwarding headers: {list(target_headers.keys())}")
 
     # Create SSE response to client with compression disabled
     response = aiohttp.web.StreamResponse(
@@ -135,13 +136,13 @@ async def handle_sse_connection(request):
             writer.buffer_size = 1024 * 1024  # 1MB
         if hasattr(writer, '_chunk_size'):
             writer._chunk_size = 1024 * 1024  # 1MB
-        print(f"[SSE] Payload writer configured: {type(writer).__name__}")
+        safe_print(f"[SSE] Payload writer configured: {type(writer).__name__}")
 
     # Send endpoint event with proxy's message URL
     message_endpoint = f"/{app_name}/{server_name}/message"
     endpoint_event = f"event: endpoint\ndata: {message_endpoint}\n\n"
     await write_chunked(response, endpoint_event)
-    print(f"[SSE] Sent endpoint event: {message_endpoint}")
+    safe_print(f"[SSE] Sent endpoint event: {message_endpoint}")
 
     # Create connection tracking
     connection_id = f"{server_name}-{int(datetime.now().timestamp() * 1000)}"
@@ -162,7 +163,7 @@ async def handle_sse_connection(request):
         is_http_only = not target_url.endswith('/sse')
 
         if is_http_only:
-            print(f"[SSE] Target appears to be HTTP-only, keeping SSE connection open without target SSE")
+            safe_print(f"[SSE] Target appears to be HTTP-only, keeping SSE connection open without target SSE")
             # Keep the connection alive but don't connect to target SSE
             # The client (Cursor) will send POST requests to /message endpoint
             # Just wait indefinitely (client will close when done)
@@ -170,7 +171,7 @@ async def handle_sse_connection(request):
                 while True:
                     await asyncio.sleep(60)
             except asyncio.CancelledError:
-                print(f"[SSE] Client closed SSE connection")
+                safe_print(f"[SSE] Client closed SSE connection")
         else:
             # Traditional SSE mode - connect to target SSE
             # Use bidirectional SSE mode (supports both SSE streaming and message queue)
@@ -183,7 +184,7 @@ async def handle_sse_connection(request):
             )
 
     except Exception as e:
-        print(f"[SSE] Error in SSE connection: {e}")
+        safe_print(f"[SSE] Error in SSE connection: {e}")
         error_event = f"event: error\ndata: {json.dumps({'error': str(e)})}\n\n"
         try:
             await write_chunked(response, error_event)
@@ -193,6 +194,6 @@ async def handle_sse_connection(request):
     finally:
         # Cleanup connection
         await state.remove_sse_connection(connection_id)
-        print(f"[SSE] Connection closed: {connection_id}")
+        safe_print(f"[SSE] Connection closed: {connection_id}")
 
     return response
