@@ -7,6 +7,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 
 const require = createRequire(import.meta.url)
 const Database = require('better-sqlite3') as typeof BetterSqlite3
+const WebSocket = require('ws')
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -15,6 +16,7 @@ const __dirname = path.dirname(__filename)
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 
 let mainWindow: BrowserWindow | null = null
+let wsClient: any = null
 
 // Kill backend server function
 function killBackendServer() {
@@ -79,6 +81,9 @@ app.whenReady().then(async () => {
   if (backendReady) {
     // Initialize database
     initializeDatabase()
+
+    // Connect to WebSocket server for real-time updates
+    connectWebSocket()
   } else {
     console.error('[Electron] Starting app without backend connection - some features may not work')
   }
@@ -102,6 +107,14 @@ app.on('window-all-closed', () => {
 
 // 앱이 완전히 종료될 때 - 백엔드 서버도 종료
 app.on('will-quit', () => {
+  isQuitting = true
+
+  // Close WebSocket connection
+  if (wsClient) {
+    wsClient.close()
+    wsClient = null
+  }
+
   killBackendServer()
 })
 
@@ -133,6 +146,50 @@ async function waitForBackend(): Promise<boolean> {
 
   console.error('[Electron] Backend server failed to start within timeout')
   return false
+}
+
+// WebSocket connection for real-time updates
+let isQuitting = false
+
+function connectWebSocket() {
+  const wsUrl = 'ws://localhost:28173/ws'
+  console.log(`[WebSocket] Connecting to ${wsUrl}...`)
+
+  wsClient = new WebSocket(wsUrl)
+
+  wsClient.on('open', () => {
+    console.log('[WebSocket] Connected to backend server')
+  })
+
+  wsClient.on('message', (data: any) => {
+    try {
+      const message = JSON.parse(data.toString())
+      console.log('[WebSocket] Received:', message.type)
+
+      // Forward WebSocket events to renderer process
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('websocket:update', message)
+      }
+    } catch (error) {
+      console.error('[WebSocket] Error parsing message:', error)
+    }
+  })
+
+  wsClient.on('error', (error: Error) => {
+    console.error('[WebSocket] Connection error:', error)
+  })
+
+  wsClient.on('close', () => {
+    console.log('[WebSocket] Connection closed, attempting to reconnect in 5s...')
+    wsClient = null
+
+    // Attempt to reconnect after 5 seconds
+    setTimeout(() => {
+      if (!wsClient && !isQuitting) {
+        connectWebSocket()
+      }
+    }, 5000)
+  })
 }
 
 function initializeDatabase() {
@@ -264,10 +321,10 @@ function getMcpServersFromDB() {
     })
 
     // Calculate safety status for each server
-    const servers = Array.from(serverMap.values()).map(server => {
-      const tools = server.tools
-      const hasUnchecked = tools.some(t => t.safety === 0)
-      const hasDangerous = tools.some(t => t.safety === 2)
+    const servers = Array.from(serverMap.values()).map((server: any) => {
+      const tools = server.tools as any[]
+      const hasUnchecked = tools.some((t: any) => t.safety === 0)
+      const hasDangerous = tools.some((t: any) => t.safety === 2)
 
       return {
         ...server,

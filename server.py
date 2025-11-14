@@ -32,6 +32,9 @@ from engines.tools_poisoning_engine import ToolsPoisoningEngine
 from engines.command_injection_engine import CommandInjectionEngine
 from engines.file_system_exposure_engine import FileSystemExposureEngine
 
+# WebSocket handler
+from websocket_handler import ws_handler
+
 
 def setup_engines(db: Database) -> list:
     """Initialize and configure detection engines based on config."""
@@ -84,8 +87,11 @@ async def initialize_engine_system():
     else:
         safe_print("\nWarning: No detection engines enabled!")
 
-    # Initialize EventHub
-    event_hub = EventHub(engines, db)
+    # Initialize WebSocket handler
+    await ws_handler.start()
+
+    # Initialize EventHub with WebSocket handler
+    event_hub = EventHub(engines, db, ws_handler)
     await event_hub.start()
 
     # Store in global state
@@ -137,6 +143,9 @@ def setup_routes(app):
     # Analysis status
     app.router.add_get('/analysis/status', handle_analysis_status)
 
+    # WebSocket endpoint
+    app.router.add_get('/ws', ws_handler.handle_websocket)
+
     # STDIO verification API endpoints
     app.router.add_post('/verify/request', handle_verify_request)
     app.router.add_post('/verify/response', handle_verify_response)
@@ -154,6 +163,7 @@ def setup_routes(app):
 
     safe_print(f"[Server] Routes configured:")
     safe_print(f"  GET  /health - Health check")
+    safe_print(f"  GET  /ws - WebSocket endpoint (real-time updates)")
     safe_print(f"  POST /verify/request - STDIO verification API")
     safe_print(f"  POST /verify/response - STDIO verification API")
     safe_print(f"  POST /register-tools - Tool registration")
@@ -234,6 +244,14 @@ async def on_shutdown(app):
         # Clear all connections
         state.sse_connections.clear()
         safe_print(f"[Server] All SSE connections closed")
+
+    # Stop WebSocket handler
+    try:
+        await asyncio.wait_for(ws_handler.stop(), timeout=0.5)
+    except asyncio.TimeoutError:
+        safe_print("[Server] WebSocket handler timeout")
+    except Exception as e:
+        safe_print(f"[Server] WebSocket handler error: {e}")
 
     # Stop EventHub
     if state.event_hub:

@@ -6,22 +6,26 @@ Local MCP server settings to use a proxy.
 
 Usage:
     from config_finder import ClaudeConfigFinder
-from utils import safe_print
 
     finder = ClaudeConfigFinder()
     finder.configure_claude_proxy()
-    
-    # or Just Insert that 
+
+    # or Just Insert that
      ClaudeConfigFinder.ConfigureClaudeProxy()
 """
 
 import json
 import os
+import sys
 import winreg
 import argparse
 from pathlib import Path
 from typing import Optional, Dict, Any
 import logging
+
+# Add parent directory to path to import utils
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from utils import safe_print
 
 # Setup logging
 logging.basicConfig(

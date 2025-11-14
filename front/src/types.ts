@@ -71,3 +71,28 @@ export interface TopServer {
   name: string
   count: number
 }
+
+// Extend Window interface for Electron API
+declare global {
+  interface Window {
+    electronAPI: {
+      ping: () => Promise<string>
+      getAppInfo: () => Promise<{
+        version: string
+        name: string
+        platform: string
+      }>
+      getServers: () => Promise<any[]>
+      getServerMessages: (serverId: number) => Promise<any[]>
+      getEngineResults: () => Promise<any[]>
+      getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
+      onWebSocketUpdate: (callback: (message: any) => void) => () => void
+      platform: string
+      versions: {
+        node: string
+        chrome: string
+        electron: string
+      }
+    }
+  }
+}

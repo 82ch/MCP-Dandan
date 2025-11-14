@@ -12,6 +12,17 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getEngineResults: () => ipcRenderer.invoke('api:engine-results'),
   getEngineResultsByEvent: (rawEventId: number) => ipcRenderer.invoke('api:engine-results:by-event', rawEventId),
 
+  // WebSocket events - subscribe to real-time updates
+  onWebSocketUpdate: (callback: (message: any) => void) => {
+    const subscription = (_event: any, message: any) => callback(message)
+    ipcRenderer.on('websocket:update', subscription)
+
+    // Return unsubscribe function
+    return () => {
+      ipcRenderer.removeListener('websocket:update', subscription)
+    }
+  },
+
   // 필요에 따라 추가 API 노출
   platform: process.platform,
   versions: {
@@ -35,6 +46,7 @@ declare global {
       getServerMessages: (serverId: number) => Promise<any[]>
       getEngineResults: () => Promise<any[]>
       getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
+      onWebSocketUpdate: (callback: (message: any) => void) => () => void
       platform: string
       versions: {
         node: string

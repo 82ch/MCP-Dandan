@@ -19,9 +19,10 @@ class EventHub:
     and routes them to detection engines for analysis.
     """
 
-    def __init__(self, engines: List, db):
+    def __init__(self, engines: List, db, ws_handler=None):
         self.engines = engines
         self.db = db
+        self.ws_handler = ws_handler  # WebSocket handler for real-time updates
         self.running = False
         self.event_id_map = {}  # {event_ts: raw_event_id} - 이벤트와 결과 연결용
         self.background_tasks = set()  # 백그라운드 태스크 추적
@@ -216,6 +217,17 @@ class EventHub:
                             # mcpl에 insert된 tools를 백그라운드에서 분석
                             asyncio.create_task(self._analyze_mcpl_tools(count, event))
 
+                            # Broadcast server update via WebSocket
+                            if self.ws_handler:
+                                asyncio.create_task(self.ws_handler.broadcast_server_update())
+
+                # Broadcast message update for new events
+                mcp_tag = event.get('mcpTag')
+                if self.ws_handler and mcp_tag:
+                    asyncio.create_task(self.ws_handler.broadcast_message_update(
+                        raw_event_id, mcp_tag
+                    ))
+
         except Exception as e:
             safe_print(f'[EventHub] Error saving event: {e}')
 
@@ -248,6 +260,14 @@ class EventHub:
 
                 if engine_result_id:
                     saved_count += 1
+
+                    # Broadcast detection result via WebSocket
+                    if self.ws_handler and raw_event_id:
+                        engine_name = result_data.get('detector', 'unknown')
+                        severity = result_data.get('severity', 'none')
+                        asyncio.create_task(self.ws_handler.broadcast_detection_result(
+                            raw_event_id, engine_name, severity
+                        ))
 
             if saved_count > 0:
                 safe_print(f'[EventHub] Batch saved {saved_count} detection results')

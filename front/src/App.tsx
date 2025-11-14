@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
 import LeftSidebar from './components/LeftSidebar'
 import MiddleTopPanel from './components/MiddleTopPanel'
 import MiddleBottomPanel from './components/MiddleBottomPanel'
@@ -24,20 +24,90 @@ function App() {
   const isDraggingVertical = useRef(false)
   const isDraggingHorizontal = useRef(false)
 
+  // Memoize fetch functions to avoid recreating on every render
+  const fetchServers = useCallback(async () => {
+    try {
+      const data = await window.electronAPI.getServers()
+      setMcpServers(data)
+      setLoading(false)
+    } catch (error) {
+      console.error('Error fetching servers:', error)
+      setLoading(false)
+    }
+  }, [])
+
+  const fetchMessages = useCallback(async (serverId: string | number) => {
+    try {
+      const data = await window.electronAPI.getServerMessages(Number(serverId))
+      setChatMessages(data)
+    } catch (error) {
+      console.error('Error fetching messages:', error)
+      setChatMessages([])
+    }
+  }, [])
+
   // Fetch servers on mount
   useEffect(() => {
     fetchServers()
-  }, [])
+  }, [fetchServers])
 
-  // Auto-refresh servers every 1 second
+  // Subscribe to WebSocket updates for real-time data
   useEffect(() => {
-    const intervalId = setInterval(() => {
-      fetchServers()
-    }, 1000)
+    const unsubscribe = window.electronAPI.onWebSocketUpdate((message: any) => {
+      console.log('[App] WebSocket update received:', message.type)
+
+      switch (message.type) {
+        case 'server_update':
+          // Refresh server list when servers change
+          console.log('[App] Refreshing servers due to server_update')
+          fetchServers()
+          break
+
+        case 'message_update':
+          // Refresh messages if the current server matches
+          console.log('[App] Message update for:', message.data.server_name)
+          if (selectedServer && message.data.server_name === selectedServer.name) {
+            console.log('[App] Refreshing messages for current server')
+            fetchMessages(selectedServer.id)
+          }
+          // Also refresh servers to update indicators
+          fetchServers()
+          break
+
+        case 'detection_result':
+          // Refresh both servers and messages to update malicious scores
+          console.log('[App] Detection result received, refreshing all data')
+          fetchServers()
+          if (selectedServer) {
+            fetchMessages(selectedServer.id)
+          }
+          break
+
+        case 'reload_all':
+          // Full reload of all data
+          console.log('[App] Full reload requested')
+          fetchServers()
+          if (selectedServer) {
+            fetchMessages(selectedServer.id)
+          }
+          break
+
+        case 'connection':
+          console.log('[App] WebSocket connection established')
+          // Fetch initial data on connection
+          fetchServers()
+          break
+
+        default:
+          console.log('[App] Unknown WebSocket message type:', message.type)
+      }
+    })
 
     // Cleanup on unmount
-    return () => clearInterval(intervalId)
-  }, [])
+    return () => {
+      unsubscribe()
+    }
+  }, [selectedServer, fetchServers, fetchMessages])
 
   // Fetch messages when server is selected
   useEffect(() => {
@@ -58,27 +128,6 @@ function App() {
       }
     }
   }, [pendingMessageId, chatMessages])
-
-  const fetchServers = async () => {
-    try {
-      const data = await window.electronAPI.getServers()
-      setMcpServers(data)
-      setLoading(false)
-    } catch (error) {
-      console.error('Error fetching servers:', error)
-      setLoading(false)
-    }
-  }
-
-  const fetchMessages = async (serverId: string | number) => {
-    try {
-      const data = await window.electronAPI.getServerMessages(Number(serverId))
-      setChatMessages(data)
-    } catch (error) {
-      console.error('Error fetching messages:', error)
-      setChatMessages([])
-    }
-  }
 
   const serverInfo = selectedServer ? {
     name: selectedServer.name,
