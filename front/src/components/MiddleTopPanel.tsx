@@ -40,14 +40,37 @@ function MiddleTopPanel({ serverInfo }: MiddleTopPanelProps) {
                 tool.safety === 2 ? 'border-red-500' :    // 위험 (DENY)
                 'border-gray-400'                         // 검사 전 또는 undefined
 
+              // Split description into text and code parts
+              // Look for common patterns: "text # Response Schema ```json..." or "text { type: ..."
+              // Split at "# Response Schema", "# Schema", code blocks, or JSON-like structures
+              const codeBlockMatch = tool.description.match(/([\s\S]*?)(?=#\s*(?:Response\s*)?Schema|```|[{[][\s\S]*type:\s*['"](?:object|string|number))/i);
+              const hasCodeBlock = /#\s*(?:Response\s*)?Schema|```[\s\S]*```|([{[][\s\S]*type:\s*['"](?:object|string|number))/.test(tool.description);
+
+              let textPart = '';
+              let codePart = '';
+
+              if (hasCodeBlock && codeBlockMatch) {
+                textPart = codeBlockMatch[1]?.trim() || '';
+                codePart = tool.description.substring(textPart.length).trim();
+              } else {
+                textPart = tool.description;
+              }
+
               return (
                 <div key={index} className={`border-l-4 ${borderColor} pl-3 md:pl-4 py-2`}>
                   <h4 className="font-mono text-xs md:text-sm font-semibold text-gray-800 mb-1 break-words">
                     {tool.name}
                   </h4>
-                  <p className="text-xs text-gray-600 leading-relaxed break-words">
-                    {tool.description}
-                  </p>
+                  {textPart && (
+                    <p className="text-xs text-gray-600 leading-relaxed break-words mb-2">
+                      {textPart}
+                    </p>
+                  )}
+                  {codePart && (
+                    <pre className="text-xs text-gray-600 bg-gray-50 p-2 rounded overflow-x-auto max-h-60 overflow-y-auto border border-gray-200">
+                      <code className="font-mono">{codePart}</code>
+                    </pre>
+                  )}
                 </div>
               )
             })}
