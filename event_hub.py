@@ -55,9 +55,9 @@ class EventHub:
         # Restore Claude config on shutdown
         import subprocess
         try:
-            subprocess.run(['python', './transports/config_finder.py', '--restore'],
-                         capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=10)
-            safe_print('[EventHub] Claude config restored')
+            subprocess.run(['python', './transports/config_finder.py', '--restore', '--app', 'all'],
+                         capture_output=True, text=True, timeout=10)
+            safe_print('[EventHub] Claude & Cursor config restored')
         except Exception as e:
             safe_print(f'[EventHub] Failed to restore config: {e}')
 
@@ -211,6 +211,8 @@ class EventHub:
 
                     if task == 'RECV' and 'tools' in message.get('result', {}):
                         count = await self.db.insert_mcpl()
+                        print(f'[EventHub] insert_mcpl returned count: {count}')
+
                         if count and count > 0:
                             safe_print(f'[EventHub] Extracted {count} tool(s) to mcpl table')
 
