@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "dev": "concurrently --kill-others \"npm run server\" \"npm run front\" --names \"server,front\" --prefix-colors \"blue,green\"",
-    "server": "D:\\GIT\\mcp-dandan\\.venv\\Scripts\\python.exe server.py",
+    "server": "python server.py",
     "front": "cd front && npm run dev",
     "install-all": "npm install && cd front && npm install",
     "kill-server": "FOR /F \"tokens=5\" %P IN ('netstat -ano ^| findstr :28173 ^| findstr LISTENING') DO taskkill /PID %P /F"
