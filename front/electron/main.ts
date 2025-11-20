@@ -16,7 +16,9 @@ const __dirname = path.dirname(__filename)
 process.env['ELECTRON_DISABLE_SECURITY_WARNINGS'] = 'true'
 
 let mainWindow: BrowserWindow | null = null
+let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
+let pendingBlockingData: any = null
 
 // Kill backend server function
 function killBackendServer() {
@@ -70,6 +72,54 @@ const createWindow = () => {
 
   mainWindow.on('closed', () => {
     mainWindow = null
+  })
+}
+
+// Create blocking modal window
+function createBlockingWindow(blockingData: any) {
+  if (blockingWindow) {
+    blockingWindow.focus()
+    return
+  }
+
+  // Store data for the window to retrieve
+  pendingBlockingData = blockingData
+
+  blockingWindow = new BrowserWindow({
+    width: 800,
+    height: 650,
+    minWidth: 750,
+    minHeight: 500,
+    show: false,
+    frame: false,
+    resizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.cjs'),
+      nodeIntegration: false,
+      contextIsolation: true,
+      sandbox: false,
+    },
+    backgroundColor: '#ffffff',
+  })
+
+  // Load blocking modal page
+  if (process.env.VITE_DEV_SERVER_URL) {
+    blockingWindow.loadURL(`${process.env.VITE_DEV_SERVER_URL}#/blocking`)
+  } else {
+    blockingWindow.loadFile(path.join(__dirname, '../dist/index.html'), {
+      hash: '/blocking'
+    })
+  }
+
+  blockingWindow.once('ready-to-show', () => {
+    blockingWindow?.show()
+  })
+
+  blockingWindow.on('closed', () => {
+    blockingWindow = null
+    pendingBlockingData = null
   })
 }
 
@@ -165,6 +215,13 @@ function connectWebSocket() {
     try {
       const message = JSON.parse(data.toString())
       console.log('[WebSocket] Received:', message.type)
+
+      // Handle blocking request - open separate window
+      if (message.type === 'blocking_request') {
+        console.log('[WebSocket] Opening blocking window')
+        createBlockingWindow(message.data)
+        return
+      }
 
       // Forward WebSocket events to renderer process
       if (mainWindow && !mainWindow.isDestroyed()) {
@@ -565,5 +622,41 @@ ipcMain.handle('get-app-info', () => {
     version: app.getVersion(),
     name: app.getName(),
     platform: process.platform,
+  }
+})
+
+// Handle blocking decision from renderer
+ipcMain.handle('blocking:decision', (_event, requestId: string, decision: 'allow' | 'block') => {
+  console.log(`[IPC] blocking:decision called: ${requestId} -> ${decision}`)
+
+  if (wsClient && wsClient.readyState === WebSocket.OPEN) {
+    const message = {
+      type: 'blocking_decision',
+      request_id: requestId,
+      decision: decision
+    }
+    wsClient.send(JSON.stringify(message))
+    console.log(`[WebSocket] Sent blocking decision: ${requestId} -> ${decision}`)
+  } else {
+    console.error('[WebSocket] Cannot send blocking decision - not connected')
+  }
+
+  // Close blocking window after decision
+  if (blockingWindow && !blockingWindow.isDestroyed()) {
+    blockingWindow.close()
+  }
+})
+
+// Get blocking data for blocking window
+ipcMain.handle('blocking:get-data', () => {
+  console.log(`[IPC] blocking:get-data called`)
+  return pendingBlockingData
+})
+
+// Close blocking window
+ipcMain.handle('blocking:close', () => {
+  console.log(`[IPC] blocking:close called`)
+  if (blockingWindow && !blockingWindow.isDestroyed()) {
+    blockingWindow.close()
   }
 })
