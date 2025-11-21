@@ -425,6 +425,10 @@ class ClaudeConfigFinder:
     def _backup_config(self, config_path: str) -> Optional[str]:
         try:
             backup_path = f"{config_path}.backup"
+            # Only create backup if it doesn't already exist (preserve original)
+            if os.path.exists(backup_path):
+                logger.info(f"[Backup] Backup already exists, skipping: {backup_path}")
+                return backup_path
             with open(config_path, 'r', encoding='utf-8') as original_file:
                 content = original_file.read()
             with open(backup_path, 'w', encoding='utf-8') as backup_file:

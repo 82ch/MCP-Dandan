@@ -4,9 +4,10 @@
   "description": "MCP Security Framework with Desktop UI",
   "private": true,
   "scripts": {
-    "dev": "concurrently --kill-others \"npm run server\" \"npm run front\" --names \"server,front\" --prefix-colors \"blue,green\"",
+    "dev": "concurrently --kill-others --handle-input \"npm run server\" \"npm run front\" --names \"server,front\" --prefix-colors \"blue,green\"",
     "server": "python server.py",
     "front": "cd front && npm run dev",
+    "restore-config": "python ./transports/config_finder.py --restore",
     "install-all": "pip install -r requirements.txt && npm install && cd front && npm install",
     "kill-server": "FOR /F \"tokens=5\" %P IN ('netstat -ano ^| findstr :28173 ^| findstr LISTENING') DO taskkill /PID %P /F"
   },

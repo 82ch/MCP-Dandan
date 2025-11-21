@@ -29,8 +29,77 @@ from transports.stdio_handlers import (
     handle_verify_response,
     handle_register_tools
 )
+from transports.config_finder import ClaudeConfigFinder
 from state import state
 from config import config
+
+# Global flag to track if config has been restored
+_config_restored = False
+
+def restore_original_config():
+    """Restore original config files from backup"""
+    global _config_restored
+    if _config_restored:
+        return
+    _config_restored = True
+
+    safe_print("\n[Config] Restoring original configuration...")
+    try:
+        import subprocess
+        result = subprocess.run(
+            ['python', './transports/config_finder.py', '--restore'],
+            text=True,
+            timeout=10,
+            capture_output=True
+        )
+        if result.returncode == 0:
+            safe_print("[Config] Configuration restored successfully")
+        else:
+            safe_print(f"[Config] Restore warning: {result.stderr}")
+    except Exception as e:
+        safe_print(f"[Config] Failed to restore configuration: {e}")
+
+# Register signal handlers for graceful shutdown with config restoration
+import signal
+
+def signal_handler(signum, frame):
+    """Handle termination signals"""
+    sig_name = signal.Signals(signum).name
+    safe_print(f"\n[Server] Received {sig_name} signal")
+    restore_original_config()
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)   # Ctrl+C
+signal.signal(signal.SIGTERM, signal_handler)  # Process termination
+
+# Windows-specific: handle console close events (X button, shutdown, logoff)
+if sys.platform == 'win32':
+    signal.signal(signal.SIGBREAK, signal_handler)
+
+    # Also use atexit as fallback
+    import atexit
+    atexit.register(restore_original_config)
+
+    # Use win32api for console control handler (handles X button better)
+    try:
+        import win32api
+        import win32con
+
+        def console_ctrl_handler(ctrl_type):
+            """Handle Windows console control events"""
+            if ctrl_type in (win32con.CTRL_CLOSE_EVENT,
+                           win32con.CTRL_SHUTDOWN_EVENT,
+                           win32con.CTRL_LOGOFF_EVENT):
+                safe_print(f"\n[Server] Console control event: {ctrl_type}")
+                restore_original_config()
+                return True  # Handled
+            return False  # Not handled
+
+        win32api.SetConsoleCtrlHandler(console_ctrl_handler, True)
+        safe_print("[Server] Windows console control handler registered")
+    except ImportError:
+        safe_print("[Server] win32api not available, using signal handlers only")
 
 # Engine components
 from database import Database
@@ -245,6 +314,9 @@ async def on_shutdown(app):
     state.running = False
 
     safe_print(f"[Server] Cleanup starting...")
+
+    # Restore original config files
+    restore_original_config()
 
     # Close all SSE connections gracefully
     if state.sse_connections:
