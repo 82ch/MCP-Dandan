@@ -5,181 +5,272 @@ from utils import safe_print
 
 
 class FileSystemExposureEngine(BaseEngine):
+    """
+    YARA Rule 기반 File System Exposure 탐지 엔진
+
+    탐지 기준:
+    1. 시스템 경로 키워드 (Windows/Linux/Mac)
+    2. 위험 확장자
+    3. 경로 깊이
+    4. 민감 키워드
+    """
 
     def __init__(self, db):
         super().__init__(
             db=db,
             name='FileSystemExposureEngine',
             event_types=['MCP'],
-            producers=['local', 'remote']  # local과 remote producer만 검사
+            producers=['local', 'remote']
         )
 
-        # Critical patterns (very dangerous system paths)
-        self.critical_patterns = [
-            # Windows system directories
-            r'C:\\Windows\\System32',
-            r'C:\\Windows\\SysWOW64',
-            r'\\\\Windows\\\\System32',
-            r'\\\\Windows\\\\SysWOW64',
+        # ========== YARA-style Rules ==========
 
-            # Unix/Linux system directories
-            r'/etc/passwd',
-            r'/etc/shadow',
-            r'/etc/sudoers',
-            r'/root/',
-            r'/proc/',
-            r'/sys/',
+        # Rule 1: Critical system paths (highest priority)
+        self.critical_system_paths = {
+            # Windows
+            'windows': [
+                r'C:\\Windows\\System32',
+                r'C:\\Windows\\SysWOW64',
+                r'C:\\Windows\\system\.ini',
+                r'C:\\Windows\\win\.ini',
+                r'C:\\boot\.ini',
+            ],
+            # Linux/Unix
+            'linux': [
+                r'/etc/passwd',
+                r'/etc/shadow',
+                r'/etc/sudoers',
+                r'/etc/hosts',
+                r'/root/',
+                r'/proc/',
+                r'/sys/',
+                r'/boot/',
+                r'/var/log/',
+            ],
+            # Mac
+            'mac': [
+                r'/Library/Preferences/',
+                r'/System/Library/',
+                r'/private/var/',
+                r'/private/etc/',
+            ],
+            # SSH/Credentials (cross-platform)
+            'credentials': [
+                r'\.ssh/id_rsa',
+                r'\.ssh/id_dsa',
+                r'\.ssh/id_ecdsa',
+                r'\.ssh/id_ed25519',
+                r'\.ssh/authorized_keys',
+                r'\.ssh/known_hosts',
+                r'\.aws/credentials',
+                r'\.azure/',
+                r'\.kube/config',
+                r'\.docker/config\.json',
+            ]
+        }
 
-            # Sensitive config files
-            r'\.ssh/id_rsa',
-            r'\.ssh/id_dsa',
-            r'\.ssh/id_ecdsa',
-            r'\.ssh/id_ed25519',
-            r'\.aws/credentials',
-            r'\.azure/credentials',
+        # Rule 2: System directory keywords (score based)
+        self.system_keywords = {
+            'critical': [  # +40 points
+                'system32', 'syswow64', 'etc/passwd', 'etc/shadow',
+                '.ssh/', '.aws/', '.azure/', '.kube/'
+            ],
+            'high': [  # +30 points
+                'windows', 'program files', 'programdata', 'appdata',
+                '/etc/', '/root/', '/proc/', '/sys/', '/boot/',
+                '/var/log/', '/usr/bin/', '/usr/sbin/',
+                'library/preferences', 'system/library'
+            ],
+            'medium': [  # +20 points
+                'users/', 'home/', 'documents/', 'desktop/',
+                '/tmp/', '/var/', '/opt/', '/usr/',
+                'local/', 'roaming/'
+            ]
+        }
+
+        # Rule 3: Dangerous file extensions
+        self.dangerous_extensions = {
+            'critical': [  # +55 points
+                '.pem', '.key', '.crt', '.pfx', '.p12',
+                '.keystore', '.jks', '.der',
+                'id_rsa', 'id_dsa', 'id_ecdsa', 'id_ed25519'
+            ],
+            'high': [  # +35 points
+                '.env', '.htpasswd', '.htaccess',
+                '.bashrc', '.bash_profile', '.zshrc',
+                '.npmrc', '.pypirc', '.netrc',
+                '.gitconfig', '.git-credentials',
+                'credentials', 'secrets'
+            ],
+            'medium': [  # +15 points
+                '.conf', '.config', '.ini', '.cfg',
+                '.yaml', '.yml', '.json', '.xml',
+                '.log', '.bak', '.old', '.backup'
+            ]
+        }
+
+        # Rule 4: Path-related field names to check
+        self.path_field_names = [
+            'path', 'file', 'filepath', 'filename',
+            'dir', 'directory', 'folder',
+            'location', 'source', 'destination', 'target',
+            'url', 'uri', 'endpoint'  # URL도 Path Traversal 검사 대상
         ]
 
-        # High-risk patterns
-        self.high_risk_patterns = [
-            # Absolute paths (Windows)
-            r'[A-Z]:\\',
-            r'\\\\[A-Za-z0-9_-]+\\\\',  # UNC path
-
-            # Absolute paths (Unix/Linux)
-            r'^/',  # Starting from root
-
-            # Directory traversal
-            r'\.\.[/\\]',
-            r'\.\.[/\\]\.\.[/\\]',
-
-            # User home directories
-            r'C:\\Users\\[^\\]+',
-            r'/home/[^/]+',
-            r'~/',
-
-            # Environment variables
-            r'%USERPROFILE%',
-            r'%APPDATA%',
-            r'%LOCALAPPDATA%',
-            r'%TEMP%',
-            r'\$HOME',
-            r'\$USER',
+        # Rule 5: Path Traversal patterns
+        self.path_traversal_patterns = [
+            (r'\.\./', 30, 'Parent directory traversal'),
+            (r'\.\.\\', 30, 'Parent directory traversal (Windows)'),
+            (r'%2e%2e%2f', 35, 'URL encoded traversal'),
+            (r'%2e%2e/', 35, 'URL encoded traversal'),
+            (r'\.\.%2f', 35, 'Mixed encoded traversal'),
+            (r'%252e%252e%252f', 40, 'Double URL encoded traversal'),
+            (r'\.\.%255c', 40, 'Double encoded backslash traversal'),
         ]
 
-        # Medium-risk patterns
-        self.medium_risk_patterns = [
-            # Relative path parent reference
-            r'\.\.',
-
-            # Specific extensions
-            r'\.config$',
-            r'\.conf$',
-            r'\.ini$',
-            r'\.env$',
-
-            # Common sensitive directory names
-            r'[/\\]config[/\\]',
-            r'[/\\]configs[/\\]',
-            r'[/\\]secrets[/\\]',
-            r'[/\\]private[/\\]',
-            r'[/\\]\.git[/\\]',
+        # Compile traversal patterns
+        self.traversal_regex = [
+            (re.compile(p, re.IGNORECASE), score, reason)
+            for p, score, reason in self.path_traversal_patterns
         ]
 
-        # Compile regex patterns
-        self.critical_regex = [re.compile(p, re.IGNORECASE) for p in self.critical_patterns]
-        self.high_risk_regex = [re.compile(p) for p in self.high_risk_patterns]
-        self.medium_risk_regex = [re.compile(p, re.IGNORECASE) for p in self.medium_risk_patterns]
+        # Compile regex
+        self._compile_patterns()
 
-        # Sensitive path keywords
-        self.sensitive_keywords = [
-            'password', 'secret', 'token', 'key', 'credential',
-            'private', 'config', 'auth', 'ssl', 'cert'
-        ]
+    def _compile_patterns(self):
+        """Compile all regex patterns"""
+        # Critical paths
+        self.critical_path_regex = {}
+        for category, patterns in self.critical_system_paths.items():
+            self.critical_path_regex[category] = [
+                re.compile(p, re.IGNORECASE) for p in patterns
+            ]
 
     def process(self, data: Any) -> Any:
-        safe_print(f"[FileSystemExposureEngine] Input data: {data}")
+        safe_print(f"[FileSystemExposureEngine] Processing event")
 
-        # Extract paths to analyze
-        paths = self._extract_paths(data)
+        # Extract paths from specific fields only
+        paths = self._extract_paths_from_fields(data)
 
         if not paths:
             safe_print(f"[FileSystemExposureEngine] No paths to analyze, skipping\n")
             return None
 
-        safe_print(f"[FileSystemExposureEngine] Extracted paths: {paths}")
+        safe_print(f"[FileSystemExposureEngine] Extracted {len(paths)} paths: {paths}")
 
         findings = []
-        severity = 'none'
+        total_score = 0
 
-        # Check each path
         for path in paths:
-            # Critical pattern check (maps to 'high' severity)
-            for pattern in self.critical_regex:
-                matches = pattern.finditer(path)
-                for match in matches:
-                    findings.append({
-                        'category': 'critical',
-                        'pattern': pattern.pattern,
-                        'matched_text': match.group(0),
-                        'full_path': path,
-                        'reason': self._get_reason(pattern.pattern, 'critical')
+            path_score = 0
+            path_findings = []
+
+            # Check 1: Critical system paths
+            critical_match = self._check_critical_paths(path)
+            if critical_match:
+                path_score += 50
+                path_findings.append({
+                    'rule': 'critical_system_path',
+                    'category': critical_match['category'],
+                    'matched': critical_match['matched'],
+                    'score': 50
+                })
+
+            # Check 2: System keywords
+            keyword_score, keyword_matches = self._check_system_keywords(path)
+            if keyword_score > 0:
+                path_score += keyword_score
+                for match in keyword_matches:
+                    path_findings.append({
+                        'rule': 'system_keyword',
+                        'keyword': match['keyword'],
+                        'severity': match['severity'],
+                        'score': match['score']
                     })
-                    if severity not in ['high']:
-                        severity = 'high'
 
-            # High-risk pattern check (maps to 'high' severity)
-            if severity not in ['high']:
-                for pattern in self.high_risk_regex:
-                    matches = pattern.finditer(path)
-                    for match in matches:
-                        findings.append({
-                            'category': 'high',
-                            'pattern': pattern.pattern,
-                            'matched_text': match.group(0),
-                            'full_path': path,
-                            'reason': self._get_reason(pattern.pattern, 'high')
-                        })
-                        if severity not in ['high']:
-                            severity = 'high'
+            # Check 3: Dangerous extensions
+            ext_score, ext_match = self._check_dangerous_extensions(path)
+            if ext_score > 0:
+                path_score += ext_score
+                path_findings.append({
+                    'rule': 'dangerous_extension',
+                    'extension': ext_match['extension'],
+                    'severity': ext_match['severity'],
+                    'score': ext_score
+                })
 
-            # Medium-risk pattern check (maps to 'medium' severity)
-            if severity == 'none':
-                for pattern in self.medium_risk_regex:
-                    matches = pattern.finditer(path)
-                    for match in matches:
-                        findings.append({
-                            'category': 'medium',
-                            'pattern': pattern.pattern,
-                            'matched_text': match.group(0),
-                            'full_path': path,
-                            'reason': self._get_reason(pattern.pattern, 'medium')
-                        })
-                        if severity != 'medium':
-                            severity = 'medium'
+            # Check 4: Path depth bonus
+            depth_score = self._calculate_depth_score(path)
+            if depth_score > 0:
+                path_score += depth_score
+                path_findings.append({
+                    'rule': 'path_depth',
+                    'depth': path.count('/') + path.count('\\'),
+                    'score': depth_score
+                })
 
-            # Sensitive keyword check (maps to 'high' severity)
-            keyword_found = self._check_sensitive_keywords(path)
-            if keyword_found:
-                for keyword in keyword_found:
+            # Check 5: Path Traversal patterns
+            traversal_score, traversal_match = self._check_path_traversal(path)
+            if traversal_score > 0:
+                path_score += traversal_score
+                path_findings.append({
+                    'rule': 'path_traversal',
+                    'pattern': traversal_match['pattern'],
+                    'reason': traversal_match['reason'],
+                    'score': traversal_score
+                })
+
+            # Add findings if score > 0
+            if path_score > 0:
+                # Convert to UI-compatible format
+                for detail in path_findings:
+                    # Determine category based on score
+                    if detail.get('score', 0) >= 35:
+                        category = 'critical'
+                    elif detail.get('score', 0) >= 25:
+                        category = 'high'
+                    else:
+                        category = 'medium'
+
+                    # Build reason string
+                    rule = detail.get('rule', '')
+                    if rule == 'critical_system_path':
+                        reason = f"Critical system path detected: {detail.get('matched', '')}"
+                    elif rule == 'system_keyword':
+                        reason = f"System keyword '{detail.get('keyword', '')}' in path"
+                    elif rule == 'dangerous_extension':
+                        reason = f"Dangerous extension '{detail.get('extension', '')}' detected"
+                    elif rule == 'path_depth':
+                        reason = f"Deep path access (depth: {detail.get('depth', 0)})"
+                    elif rule == 'path_traversal':
+                        reason = detail.get('reason', 'Path traversal detected')
+                    else:
+                        reason = f"File system exposure: {rule}"
+
                     findings.append({
-                        'category': 'high' if severity == 'none' else severity,
-                        'pattern': f'sensitive_keyword:{keyword}',
-                        'matched_text': keyword,
+                        'category': category,
+                        'pattern': detail.get('pattern', detail.get('keyword', '')),
+                        'matched_text': path,
                         'full_path': path,
-                        'reason': f'Sensitive keyword in path: {keyword}'
+                        'reason': reason
                     })
-                if severity == 'none':
-                    severity = 'high'
 
-        # severity가 'none'인 경우 (탐지되지 않음) None 반환
-        if severity == 'none':
-            safe_print(f"[FileSystemExposureEngine] No issues found, 탐지되지 않음\n")
+                total_score = max(total_score, path_score)
+
+        # No findings
+        if not findings:
+            safe_print(f"[FileSystemExposureEngine] No issues found\n")
             return None
 
-        # Calculate score based on severity and findings count
-        score = self._calculate_score(severity, len(findings))
+        # Determine severity based on score
+        if total_score >= 70:
+            severity = 'high'
+        elif total_score >= 40:
+            severity = 'medium'
+        else:
+            severity = 'low'
 
-        # Return result (탐지된 경우만 반환)
+        # Build result
         references = []
         if 'ts' in data:
             references.append(f"id-{data['ts']}")
@@ -189,168 +280,153 @@ class FileSystemExposureEngine(BaseEngine):
             'result': {
                 'detector': 'FileSystemExposure',
                 'severity': severity,
-                'evaluation': score,
+                'evaluation': min(total_score, 100),
                 'findings': findings,
                 'event_type': data.get('eventType', 'Unknown'),
-                'exposed_paths': paths,
+                'producer': data.get('producer', 'unknown'),
                 'original_event': data
             }
         }
 
-        safe_print(f"[FileSystemExposureEngine] WARNING - File System Exposure detected! severity={severity}, score={score}")
-        safe_print(f"[FileSystemExposureEngine] Detection result: {len(findings)} findings\n")
+        safe_print(f"[FileSystemExposureEngine] Detection: severity={severity}, score={min(total_score, 100)}")
+        safe_print(f"[FileSystemExposureEngine] {len(findings)} paths flagged\n")
 
         return result
 
-    def _calculate_score(self, severity: str, findings_count: int) -> int:
+    def _extract_paths_from_fields(self, data: dict) -> list[str]:
         """
-        Calculate risk score based on severity and number of findings
-        Score range: 0-100
-        """
-        # Base score by severity
-        base_scores = {
-            'high': 80,
-            'medium': 50,
-            'low': 20,
-            'none': 0
-        }
-
-        base_score = base_scores.get(severity, 0)
-
-        # Add points for multiple findings (max +20 points)
-        findings_bonus = min(findings_count * 4, 20)
-
-        total_score = min(base_score + findings_bonus, 100)
-
-        return total_score
-
-    def _extract_paths(self, data: dict) -> list[str]:
-        """
-        Extract file paths from event data
+        Extract paths only from specific field names
+        (path, file, directory, etc.)
         """
         paths = []
         producer = data.get('producer', '')
 
-        # local 또는 remote producer만 처리
-        if producer in ['local', 'remote']:
-            if 'data' in data and isinstance(data['data'], dict):
-                mcp_data = data['data']
+        if producer not in ['local', 'remote']:
+            return paths
 
-                if 'message' in mcp_data and isinstance(mcp_data['message'], dict):
-                    message = mcp_data['message']
+        if 'data' not in data or not isinstance(data['data'], dict):
+            return paths
 
-                    # Extract from params.arguments
-                    if 'params' in message and isinstance(message['params'], dict):
-                        params = message['params']
-                        if 'arguments' in params and isinstance(params['arguments'], dict):
-                            self._extract_paths_recursive(params['arguments'], paths)
+        mcp_data = data['data']
+        if 'message' not in mcp_data or not isinstance(mcp_data['message'], dict):
+            return paths
 
-                    # Extract from result
-                    if 'result' in message and isinstance(message['result'], dict):
-                        result = message['result']
-                        if 'content' in result and isinstance(result['content'], list):
-                            for item in result['content']:
-                                if isinstance(item, dict) and 'text' in item:
-                                    text_paths = self._find_paths_in_text(str(item['text']))
-                                    paths.extend(text_paths)
-                        if 'structuredContent' in result:
-                            self._extract_paths_recursive(result['structuredContent'], paths)
+        message = mcp_data['message']
 
-        return list(set(paths))  # Remove duplicates
+        # Only check params.arguments (request) - not all text
+        if 'params' in message and isinstance(message['params'], dict):
+            params = message['params']
+            if 'arguments' in params and isinstance(params['arguments'], dict):
+                arguments = params['arguments']
+                self._extract_from_dict(arguments, paths)
 
-    def _extract_paths_recursive(self, obj: Any, paths: list):
+        return list(set(paths))
+
+    def _extract_from_dict(self, obj: dict, paths: list, depth: int = 0):
+        """
+        Extract values only from path-related field names
+        """
+        if depth > 5:  # Prevent deep recursion
+            return
+
         if isinstance(obj, dict):
             for key, value in obj.items():
-                if any(k in key.lower() for k in ['path', 'file', 'dir', 'directory', 'location', 'uri']):
-                    if isinstance(value, str):
+                key_lower = key.lower()
+                # Only extract from path-related fields
+                if any(field in key_lower for field in self.path_field_names):
+                    if isinstance(value, str) and len(value) > 1:
                         paths.append(value)
-                    elif isinstance(value, (list, dict)):
-                        self._extract_paths_recursive(value, paths)
-                else:
-                    self._extract_paths_recursive(value, paths)
-        elif isinstance(obj, list):
-            for item in obj:
-                self._extract_paths_recursive(item, paths)
-        elif isinstance(obj, str):
-            paths.extend(self._find_paths_in_text(obj))
+                    elif isinstance(value, list):
+                        for item in value:
+                            if isinstance(item, str) and len(item) > 1:
+                                paths.append(item)
+                # Recurse into nested objects
+                if isinstance(value, dict):
+                    self._extract_from_dict(value, paths, depth + 1)
+                elif isinstance(value, list):
+                    for item in value:
+                        if isinstance(item, dict):
+                            self._extract_from_dict(item, paths, depth + 1)
 
-    def _find_paths_in_text(self, text: str) -> list[str]:
-        paths = []
+    def _check_critical_paths(self, path: str) -> dict | None:
+        """Check against critical system paths"""
+        for category, patterns in self.critical_path_regex.items():
+            for pattern in patterns:
+                match = pattern.search(path)
+                if match:
+                    return {
+                        'category': category,
+                        'matched': match.group(0)
+                    }
+        return None
 
-        windows_pattern = r'(?:[A-Z]:\\|\\\\)[^\s<>"|?*\n]+'
-        for match in re.finditer(windows_pattern, text):
-            paths.append(match.group(0))
+    def _check_system_keywords(self, path: str) -> tuple[int, list]:
+        """Check for system directory keywords"""
+        path_lower = path.lower()
+        total_score = 0
+        matches = []
 
-        unix_pattern = r'(?:^|[\s"\'`])([/~][^\s<>"|?*\n]+)'
-        for match in re.finditer(unix_pattern, text, re.MULTILINE):
-            paths.append(match.group(1))
+        scores = {'critical': 40, 'high': 30, 'medium': 20}
 
-        relative_pattern = r'\.{1,2}/[^\s<>"|?*\n]+'
-        for match in re.finditer(relative_pattern, text):
-            paths.append(match.group(0))
+        for severity, keywords in self.system_keywords.items():
+            for keyword in keywords:
+                if keyword in path_lower:
+                    score = scores[severity]
+                    total_score += score
+                    matches.append({
+                        'keyword': keyword,
+                        'severity': severity,
+                        'score': score
+                    })
+                    break  # Only count one match per severity level
 
-        return paths
+        return total_score, matches
 
-    def _check_sensitive_keywords(self, text: str) -> list[str]:
-        found = []
-        text_lower = text.lower()
-        for keyword in self.sensitive_keywords:
-            if keyword in text_lower:
-                found.append(keyword)
-        return found
+    def _check_dangerous_extensions(self, path: str) -> tuple[int, dict]:
+        """Check for dangerous file extensions"""
+        path_lower = path.lower()
 
-    def _get_reason(self, pattern: str, category: str) -> str:
-        reasons = {
-            # Critical
-            r'C:\\Windows\\System32': 'Windows System32 directory exposure',
-            r'C:\\Windows\\SysWOW64': 'Windows SysWOW64 directory exposure',
-            r'\\\\Windows\\\\System32': 'Windows System32 directory exposure',
-            r'\\\\Windows\\\\SysWOW64': 'Windows SysWOW64 directory exposure',
-            r'/etc/passwd': 'Unix password file exposure',
-            r'/etc/shadow': 'Unix shadow file exposure',
-            r'/etc/sudoers': 'Sudoers file exposure',
-            r'/root/': 'Root directory exposure',
-            r'/proc/': 'Process information exposure',
-            r'/sys/': 'System information exposure',
-            r'\.ssh/id_rsa': 'SSH private key exposure',
-            r'\.ssh/id_dsa': 'SSH private key exposure',
-            r'\.ssh/id_ecdsa': 'SSH private key exposure',
-            r'\.ssh/id_ed25519': 'SSH private key exposure',
-            r'\.aws/credentials': 'AWS credentials exposure',
-            r'\.azure/credentials': 'Azure credentials exposure',
+        scores = {'critical': 55, 'high': 35, 'medium': 15}
 
-            # High-risk
-            r'[A-Z]:\\': 'Absolute Windows path exposure',
-            r'\\\\[A-Za-z0-9_-]+\\\\': 'UNC path exposure',
-            r'^/': 'Absolute Unix path exposure',
-            r'\.\.[/\\]': 'Directory traversal detected',
-            r'\.\.[/\\]\.\.[/\\]': 'Multiple directory traversal detected',
-            r'C:\\Users\\[^\\]+': 'User directory exposure',
-            r'/home/[^/]+': 'Home directory exposure',
-            r'~/': 'Home directory reference',
-            r'%USERPROFILE%': 'User profile environment variable',
-            r'%APPDATA%': 'AppData environment variable',
-            r'%LOCALAPPDATA%': 'Local AppData environment variable',
-            r'%TEMP%': 'Temp directory environment variable',
-            r'\$HOME': 'HOME environment variable',
-            r'\$USER': 'USER environment variable',
+        # First check: actual extension (endswith) - highest priority
+        for severity, extensions in self.dangerous_extensions.items():
+            for ext in extensions:
+                if path_lower.endswith(ext):
+                    return scores[severity], {
+                        'extension': ext,
+                        'severity': severity
+                    }
 
-            # Medium-risk
-            r'\.\.': 'Relative path parent reference',
-            r'\.config$': 'Config file exposure',
-            r'\.conf$': 'Configuration file exposure',
-            r'\.ini$': 'INI file exposure',
-            r'\.env$': 'Environment file exposure',
-            r'[/\\]config[/\\]': 'Config directory in path',
-            r'[/\\]configs[/\\]': 'Configs directory in path',
-            r'[/\\]secrets[/\\]': 'Secrets directory in path',
-            r'[/\\]private[/\\]': 'Private directory in path',
-            r'[/\\]\.git[/\\]': 'Git repository directory exposure',
-        }
+        # Second check: extension appears anywhere in path (lower priority)
+        for severity, extensions in self.dangerous_extensions.items():
+            for ext in extensions:
+                if ext in path_lower:
+                    return scores[severity], {
+                        'extension': ext,
+                        'severity': severity
+                    }
 
-        pattern_lower = pattern.lower()
-        for key, reason in reasons.items():
-            if key.lower() == pattern_lower:
-                return reason
+        return 0, {}
 
-        return f'{category.capitalize()} file system exposure pattern detected'
+    def _calculate_depth_score(self, path: str) -> int:
+        """
+        Calculate score based on path depth
+        Deeper paths = higher score (more specific targeting)
+        """
+        # Count separators
+        depth = path.count('/') + path.count('\\')
+
+        # Score: 2 points per level after 3
+        if depth > 3:
+            return min((depth - 3) * 2, 10)  # Max 10 points
+        return 0
+
+    def _check_path_traversal(self, path: str) -> tuple[int, dict]:
+        """Check for path traversal patterns"""
+        for pattern, score, reason in self.traversal_regex:
+            if pattern.search(path):
+                return score, {
+                    'pattern': pattern.pattern,
+                    'reason': reason
+                }
+        return 0, {}
