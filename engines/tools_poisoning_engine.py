@@ -35,8 +35,8 @@ class ToolsPoisoningEngine(BaseEngine):
         
         Reply in a JSON list with the following format:
         [
-          {"function_name": "my_func", "is_malicious": 0, "reason": null},
-          {"function_name": "my_malicious_func", "is_malicious": 1, "reason": "..."}
+          {"function_name": "my_func", "is_malicious": 0, "reason": null, "score": 0~100},
+          {"function_name": "my_malicious_func", "is_malicious": 1, "reason": "...", "score": 0~100}
         ]
         """
         
@@ -218,7 +218,7 @@ class ToolsPoisoningEngine(BaseEngine):
                 await asyncio.sleep(0)  # Allow cancellation check
 
                 # LLM으로 분석
-                verdict, confidence, reason = await self._analyze_with_llm(tool_name, tool_description)
+                verdict, confidence, reason, llm_score = await self._analyze_with_llm(tool_name, tool_description)
 
                 # 분석 상태 업데이트 (thread-safe)
                 from state import state
@@ -236,8 +236,15 @@ class ToolsPoisoningEngine(BaseEngine):
                 if verdict == 'DENY':
                     # 악성으로 판정된 경우에만 결과 생성
                     detection_time = datetime.now().isoformat()
-                    severity = 'high'
-                    score = 85 + int(confidence * 0.15)  # 85-100 범위
+
+                    # LLM이 반환한 score를 사용하여 severity 결정
+                    score = int(llm_score)
+                    if score >= 85:
+                        severity = 'high'
+                    elif score >= 60:
+                        severity = 'medium'
+                    else:
+                        severity = 'low'
 
                     finding = {
                         'tool_name': tool_name,
@@ -293,9 +300,10 @@ class ToolsPoisoningEngine(BaseEngine):
             safe_print(f"[ToolsPoisoningEngine] Error extracting tools info: {e}")
             return []
 
-    async def _analyze_with_llm(self, tool_name: str, tool_description: str) -> tuple[str, float, str]:
+    async def _analyze_with_llm(self, tool_name: str, tool_description: str) -> tuple[str, float, str, float]:
         """
         Mistral LLM을 사용하여 tool description 분석
+        Returns: (verdict, confidence, reason, score)
         """
         import asyncio
         import random
@@ -373,7 +381,17 @@ class ToolsPoisoningEngine(BaseEngine):
                                 if key.lower() == 'reason':
                                     reason = result[key]
                                     break
-                            
+
+                            # score 추출 (LLM이 반환한 점수 사용)
+                            score = 85.0  # 기본값
+                            for key in result:
+                                if key.lower() == 'score':
+                                    try:
+                                        score = float(result[key])
+                                    except (ValueError, TypeError):
+                                        score = 85.0
+                                    break
+
                             # function_name 추출 (로깅용)
                             function_name = tool_name
                             for key in result:
@@ -381,21 +399,32 @@ class ToolsPoisoningEngine(BaseEngine):
                                     function_name = result[key]
                                     break
 
-                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{function_name}", "is_malicious": 1, "score": {confidence}, "reason": "{reason}"')
+                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{function_name}", "is_malicious": 1, "score": {score}, "reason": "{reason}"')
 
-                            return verdict, confidence, reason if reason else 'Malicious tool detected'
+                            return verdict, confidence, reason if reason else 'Malicious tool detected', score
                         else:
                             verdict = 'ALLOW'
                             confidence = 10.0
-                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
 
-                            return verdict, confidence, None
+                            # score 추출
+                            score = 10.0
+                            for key in result:
+                                if key.lower() == 'score':
+                                    try:
+                                        score = float(result[key])
+                                    except (ValueError, TypeError):
+                                        score = 10.0
+                                    break
+
+                            safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {score}')
+
+                            return verdict, confidence, None, score
                     else:
                         # JSON 형식이지만 예상과 다른 경우
                         safe_print(f"[ToolsPoisoningEngine] Unexpected JSON structure: {parsed}")
                         verdict = 'ALLOW'
                         confidence = 50.0
-                        return verdict, confidence, None
+                        return verdict, confidence, None, 50.0
 
                 except (json.JSONDecodeError, KeyError, IndexError) as e:
                     # JSON 파싱 실패 - 기존 방식으로 fallback
@@ -412,16 +441,16 @@ class ToolsPoisoningEngine(BaseEngine):
                                 safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
                         except:
                              safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 1, "score": {confidence}, "reason": "Detected via text analysis"')
-                        return verdict, confidence, 'Detected via text analysis'
+                        return verdict, confidence, 'Detected via text analysis', 85.0
                     elif 'ALLOW' in llm_response_upper or 'IS_MALICIOUS": 0' in llm_response_upper:
                         verdict = 'ALLOW'
                         confidence = 10.0
                         safe_print(f'[ToolsPoisoningEngine] "function_name": "{tool_name}", "is_malicious": 0, "score": {confidence}')
-                        return verdict, confidence, None
+                        return verdict, confidence, None, 10.0
                     else:
                         verdict = 'ALLOW'
                         confidence = 20.0
-                        return verdict, confidence, None
+                        return verdict, confidence, None, 20.0
 
             except Exception as e:
                 error_msg = str(e)
@@ -435,12 +464,12 @@ class ToolsPoisoningEngine(BaseEngine):
                         continue
                     else:
                         safe_print(f"[ToolsPoisoningEngine] Rate limit exceeded after {max_retries} attempts: {e}")
-                        return 'ALLOW', 0.0, None
+                        return 'ALLOW', 0.0, None, 0.0
                 else:
                     safe_print(f"[ToolsPoisoningEngine] Error in LLM analysis: {e}")
-                    return 'ALLOW', 0.0, None
+                    return 'ALLOW', 0.0, None, 0.0
 
-        return 'ALLOW', 0.0, None
+        return 'ALLOW', 0.0, None, 0.0
 
     def _calculate_severity(self, malicious_count: int, total_count: int) -> str:
         """
