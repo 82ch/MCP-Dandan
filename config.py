@@ -46,6 +46,9 @@ class Config:
     def get_file_system_exposure_enabled(self) -> bool:
         return self.config.getboolean('Engine', 'file_system_exposure_enabled', fallback=True)
 
+    def get_data_exfiltration_enabled(self) -> bool:
+        return self.config.getboolean('Engine', 'data_exfiltration_enabled', fallback=True)
+
     # ========== Observer Settings ==========
 
     def get_target_url(self, app_name: str, server_name: str) -> Optional[str]:
