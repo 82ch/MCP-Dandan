@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Shield, FileWarning, Database, LucideIcon } from 'lucide-react'
+import { AlertTriangle, Shield, FileWarning, Database, UserX, LucideIcon } from 'lucide-react'
 import type { MCPServer, DetectedEvent, ThreatStats, TimelineData, TopServer } from '../types'
 
 interface ThreatDefinition {
@@ -35,6 +35,14 @@ const threatDefinitions: ThreatDefinition[] = [
     color: 'text-yellow-600',
     bgColor: 'bg-yellow-50',
     borderColor: 'border-yellow-200'
+  },
+  {
+    name: 'PII Filter',
+    description: 'Personally Identifiable Information (PII) detected in MCP tool requests.',
+    icon: UserX,
+    color: 'text-blue-600',
+    bgColor: 'bg-blue-50',
+    borderColor: 'border-blue-200'
   },
   {
     name: 'Data Exfiltration',
@@ -108,6 +116,9 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
           } else if (name.includes('filesystemexposure')) {
             threatType = 'Filesystem Exposure'
             console.log('Matched: Filesystem Exposure')
+          } else if (name.includes('pii') || name.includes('filter')) {
+            threatType = 'PII Filter'
+            console.log('Matched: PII Filter')
           } else if (name.includes('data') || name.includes('exfiltration')) {
             threatType = 'Data Exfiltration'
             console.log('Matched: Data Exfiltration')

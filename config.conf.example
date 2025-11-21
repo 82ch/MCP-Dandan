@@ -3,7 +3,6 @@
 
 [Engine]
 # Detection engines to enable
-sensitive_file_enabled = True
 tools_poisoning_enabled = True
 command_injection_enabled = True
 file_system_exposure_enabled = True
