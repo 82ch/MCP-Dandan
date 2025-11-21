@@ -7,8 +7,11 @@ Integrates with EventHub to send events to detection engines.
 from typing import Dict, Any, Optional
 import json
 import time
-from state import state
+import asyncio
+import uuid
+from state import state, BlockingRequest
 from utils import safe_print
+from websocket_handler import ws_handler
 
 
 class VerificationResult:
@@ -24,7 +27,8 @@ async def verify_tool_call(
     tool_args: Dict[str, Any],
     server_info: Dict[str, Any],
     user_intent: str = "",
-    skip_logging: bool = False
+    skip_logging: bool = False,
+    producer: str = "local"
 ) -> VerificationResult:
     """
     Verify a tool call against security policies.
@@ -52,7 +56,7 @@ async def verify_tool_call(
     if not skip_logging and state.event_hub:
         event = {
             'ts': int(time.time() * 1000),
-            'producer': 'local',  # STDIO
+            'producer': producer,
             'pid': None,
             'pname': app_name,
             'eventType': 'MCP',
@@ -77,18 +81,124 @@ async def verify_tool_call(
         except Exception as e:
             safe_print(f"[Verification] Error sending event to EventHub: {e}")
 
-    # Basic blocking checks
-    dangerous_patterns = ["rm -rf", "/etc/", "format", "del /f"]
-    args_str = json.dumps(tool_args).lower()
+    # Run real-time engine analysis for blocking decision
+    if state.event_hub:
+        try:
+            # Create event for analysis
+            analysis_event = {
+                'ts': int(time.time() * 1000),
+                'producer': producer,
+                'pid': None,
+                'pname': app_name,
+                'eventType': 'MCP',
+                'mcpTag': server_name,
+                'data': {
+                    'task': 'SEND',
+                    'message': {
+                        'jsonrpc': '2.0',
+                        'method': 'tools/call',
+                        'params': {
+                            'name': tool_name,
+                            'arguments': {**tool_args, 'user_intent': user_intent} if user_intent else tool_args
+                        }
+                    },
+                    'mcpTag': server_name
+                }
+            }
 
-    for pattern in dangerous_patterns:
-        if pattern in args_str:
-            return VerificationResult(
-                allowed=False,
-                reason=f"Potentially dangerous operation detected: {pattern}"
-            )
+            # Run engines synchronously and check for high severity
+            detection_results = await _run_realtime_analysis(analysis_event)
+
+            if detection_results:
+                # Found high severity detection - ask user
+                high_severity_results = [r for r in detection_results if r.get('severity') == 'high']
+
+                if high_severity_results:
+                    # Create blocking request and wait for user decision
+                    request_id = str(uuid.uuid4())
+                    future = asyncio.get_event_loop().create_future()
+
+                    blocking_request = BlockingRequest(
+                        request_id=request_id,
+                        event_data=analysis_event,
+                        detection_results=high_severity_results,
+                        engine_name=high_severity_results[0].get('detector', 'Unknown'),
+                        severity='high',
+                        server_name=server_name,
+                        tool_name=tool_name,
+                        future=future
+                    )
+
+                    await state.add_blocking_request(blocking_request)
+
+                    # Broadcast to frontend
+                    await ws_handler.broadcast_blocking_request(
+                        request_id=request_id,
+                        event_data=analysis_event,
+                        detection_results=high_severity_results,
+                        engine_name=blocking_request.engine_name,
+                        severity='high',
+                        server_name=server_name,
+                        tool_name=tool_name
+                    )
+
+                    # Wait for user decision (with timeout)
+                    try:
+                        allowed = await asyncio.wait_for(future, timeout=60.0)
+                        if not allowed:
+                            return VerificationResult(
+                                allowed=False,
+                                reason=f"Blocked by user: {blocking_request.engine_name} detected high severity threat"
+                            )
+                    except asyncio.TimeoutError:
+                        await state.remove_blocking_request(request_id)
+                        return VerificationResult(
+                            allowed=False,
+                            reason="Blocked: User decision timeout (60s)"
+                        )
+
+        except Exception as e:
+            safe_print(f"[Verification] Error in real-time analysis: {e}")
 
     return VerificationResult(allowed=True)
+
+
+async def _run_realtime_analysis(event: Dict[str, Any]) -> list:
+    """
+    Run real-time engine analysis for blocking decision.
+
+    Args:
+        event: Event to analyze
+
+    Returns:
+        List of detection results with high severity
+    """
+    if not state.event_hub:
+        return []
+
+    results = []
+
+    # Run CommandInjection and FileSystemExposure engines (not ToolsPoisoning)
+    for engine in state.event_hub.engines:
+        if engine.name == 'ToolsPoisoningEngine':
+            continue  # Skip - this is for tool descriptions only
+
+        if not engine.should_process(event):
+            continue
+
+        try:
+            result = await engine.handle_event(event)
+            if result:
+                result_data = result.get('result', {})
+                severity = result_data.get('severity', 'none')
+
+                if severity in ['high', 'medium']:
+                    results.append(result_data)
+
+        except Exception as e:
+            safe_print(f"[Verification] Engine {engine.name} error: {e}")
+
+    return results
 
 
 async def verify_tool_response(

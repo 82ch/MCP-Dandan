@@ -1,6 +1,6 @@
 // Electron API 타입 정의
 
-export interface ElectronAPI {
+interface ElectronAPI {
   ping: () => Promise<string>
   getAppInfo: () => Promise<{
     version: string
@@ -10,6 +10,11 @@ export interface ElectronAPI {
   getServers: () => Promise<any[]>
   getServerMessages: (serverId: number) => Promise<any[]>
   getEngineResults: () => Promise<any[]>
+  getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
+  onWebSocketUpdate: (callback: (message: any) => void) => () => void
+  sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') => Promise<void>
+  getBlockingData: () => Promise<any>
+  closeBlockingWindow: () => Promise<void>
   platform: string
   versions: {
     node: string
@@ -18,10 +23,6 @@ export interface ElectronAPI {
   }
 }
 
-declare global {
-  interface Window {
-    electronAPI: ElectronAPI
-  }
+interface Window {
+  electronAPI: ElectronAPI
 }
-
-export {}

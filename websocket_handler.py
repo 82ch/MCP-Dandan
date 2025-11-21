@@ -70,16 +70,20 @@ class WebSocketHandler:
         })
 
         try:
-            # Listen for messages from client (optional - can be used for ping/pong)
+            # Listen for messages from client
             async for msg in ws:
                 if msg.type == WSMsgType.TEXT:
-                    # Echo back or handle client messages if needed
                     data = json.loads(msg.data)
-                    if data.get('type') == 'ping':
+                    msg_type = data.get('type')
+
+                    if msg_type == 'ping':
                         await self.send_to_client(ws, {
                             'type': 'pong',
                             'timestamp': data.get('timestamp')
                         })
+                    elif msg_type == 'blocking_decision':
+                        # Handle user's blocking decision
+                        await self._handle_blocking_decision(data)
                 elif msg.type == WSMsgType.ERROR:
                     safe_print(f'[WebSocket] Client {client_id} error: {ws.exception()}')
                 elif msg.type == WSMsgType.CLOSE:
@@ -188,6 +192,62 @@ class WebSocketHandler:
             'action': 'reload_all'
         })
         safe_print('[WebSocket] Broadcasted reload_all')
+
+    async def broadcast_blocking_request(self, request_id: str, event_data: dict,
+                                         detection_results: list, engine_name: str,
+                                         severity: str, server_name: str, tool_name: str):
+        """
+        Notify clients that a blocking decision is needed.
+
+        Args:
+            request_id: Unique ID for this blocking request
+            event_data: Original event data
+            detection_results: List of detection findings
+            engine_name: Name of detection engine
+            severity: Severity level
+            server_name: Server name
+            tool_name: Tool name being called
+        """
+        await self.broadcast('blocking_request', {
+            'request_id': request_id,
+            'event_data': event_data,
+            'detection_results': detection_results,
+            'engine_name': engine_name,
+            'severity': severity,
+            'server_name': server_name,
+            'tool_name': tool_name,
+            'action': 'show_blocking_modal'
+        })
+        safe_print(f'[WebSocket] Broadcasted blocking_request: {request_id} ({engine_name}: {severity})')
+
+    async def _handle_blocking_decision(self, data: dict):
+        """
+        Handle user's blocking decision from frontend.
+
+        Args:
+            data: Decision data with request_id and decision (allow/block)
+        """
+        from state import state
+
+        request_id = data.get('request_id')
+        decision = data.get('decision')  # 'allow' or 'block'
+
+        if not request_id or not decision:
+            safe_print(f'[WebSocket] Invalid blocking decision: {data}')
+            return
+
+        blocking_request = await state.get_blocking_request(request_id)
+        if not blocking_request:
+            safe_print(f'[WebSocket] Blocking request not found: {request_id}')
+            return
+
+        # Resolve the future with user's decision
+        if blocking_request.future and not blocking_request.future.done():
+            blocking_request.future.set_result(decision == 'allow')
+            safe_print(f'[WebSocket] Blocking decision received: {request_id} -> {decision}')
+
+        # Clean up
+        await state.remove_blocking_request(request_id)
 
 
 # Global singleton instance

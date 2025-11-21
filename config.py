@@ -46,6 +46,9 @@ class Config:
     def get_pii_filter_enabled(self) -> bool:
         return self.config.getboolean('Engine', 'pii_filter_engine_enabled', fallback=True)
 
+    def get_data_exfiltration_enabled(self) -> bool:
+        return self.config.getboolean('Engine', 'data_exfiltration_enabled', fallback=True)
+
     # ========== Observer Settings ==========
 
     def get_target_url(self, app_name: str, server_name: str) -> Optional[str]:

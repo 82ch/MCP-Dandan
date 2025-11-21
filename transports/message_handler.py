@@ -137,7 +137,8 @@ async def handle_message_endpoint(request):
                 tool_args=tool_args,
                 server_info=server_info,
                 user_intent="",  # HTTP+SSE doesn't have user_intent
-                skip_logging=True  # Skip logging since we already logged above
+                skip_logging=True,
+                producer='remote'
             )
 
             if not verification.allowed:
