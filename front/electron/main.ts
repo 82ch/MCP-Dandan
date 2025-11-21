@@ -20,6 +20,25 @@ let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
 let pendingBlockingData: any = null
 
+// Restore config files before killing server
+function restoreConfigFiles() {
+  try {
+    console.log('[Electron] Restoring original config files...')
+    // Get the project root (mcp-dandan directory)
+    const projectRoot = path.join(__dirname, '..', '..')
+    const configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+
+    execSync(`python "${configFinderPath}" --restore`, {
+      cwd: projectRoot,
+      stdio: 'pipe',
+      timeout: 10000
+    })
+    console.log('[Electron] Config files restored successfully')
+  } catch (error) {
+    console.log('[Electron] Failed to restore config files:', error)
+  }
+}
+
 // Kill backend server function
 function killBackendServer() {
   try {
@@ -164,6 +183,9 @@ app.on('will-quit', () => {
     wsClient.close()
     wsClient = null
   }
+
+  // Restore config files BEFORE killing server
+  restoreConfigFiles()
 
   killBackendServer()
 })

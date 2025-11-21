@@ -512,6 +512,14 @@ def main():
         if server_init_response.get('result', {}).get('serverInfo', {}).get('version'):
             state.server_version = server_init_response['result']['serverInfo']['version']
 
+        # Step 1.5: Send initialized notification to complete initialization
+        log('INFO', "Sending initialized notification to server")
+        initialized_msg = {
+            "jsonrpc": "2.0",
+            "method": "notifications/initialized"
+        }
+        write_jsonrpc_message(process.stdin, initialized_msg)
+
         # Step 2: Send tools/list to server
         log('INFO', "Requesting tools/list from server")
         tools_list_msg = {
