@@ -92,7 +92,8 @@ async def handle_http_only_message(request):
             tool_args=tool_args_clean,
             server_info=server_info,
             user_intent=user_intent,
-            skip_logging=True
+            skip_logging=True,
+            producer='remote'
         )
 
         if not verification.allowed:

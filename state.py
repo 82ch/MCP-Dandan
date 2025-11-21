@@ -56,6 +56,20 @@ class AnalysisStatus:
     status: str = "analyzing"  # "analyzing", "completed", "error"
 
 
+@dataclass
+class BlockingRequest:
+    """Represents a blocking request awaiting user decision."""
+    request_id: str
+    event_data: Dict[str, Any]
+    detection_results: list  # List of detection findings
+    engine_name: str
+    severity: str
+    server_name: str
+    tool_name: str
+    created_at: datetime = field(default_factory=datetime.now)
+    future: Any = None  # asyncio.Future for waiting on user decision
+
+
 class GlobalState:
     """Global state for the proxy server."""
 
@@ -75,6 +89,9 @@ class GlobalState:
         # Analysis status tracking: "server_name" -> AnalysisStatus
         self.analysis_status: Dict[str, AnalysisStatus] = {}
 
+        # Blocking requests: request_id -> BlockingRequest
+        self.blocking_requests: Dict[str, 'BlockingRequest'] = {}
+
         # Settings
         self.scan_mode: str = "REQUEST_RESPONSE"
         self.running: bool = False
@@ -84,6 +101,23 @@ class GlobalState:
 
         # EventHub instance (initialized on startup)
         self.event_hub: Optional[Any] = None
+
+    async def add_blocking_request(self, blocking_request: 'BlockingRequest'):
+        """Add a blocking request awaiting user decision."""
+        async with self._lock:
+            self.blocking_requests[blocking_request.request_id] = blocking_request
+            safe_print(f"[State] Added blocking request: {blocking_request.request_id}")
+
+    async def get_blocking_request(self, request_id: str) -> Optional['BlockingRequest']:
+        """Get a blocking request by ID."""
+        async with self._lock:
+            return self.blocking_requests.get(request_id)
+
+    async def remove_blocking_request(self, request_id: str):
+        """Remove a blocking request after decision."""
+        async with self._lock:
+            self.blocking_requests.pop(request_id, None)
+            safe_print(f"[State] Removed blocking request: {request_id}")
 
     def get_call_key(self, request_id: Any, server_name: str, app_name: str) -> str:
         """Generate unique key for tracking tool calls."""

@@ -23,6 +23,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     }
   },
 
+  // Blocking decision - send user's decision back to server
+  sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') =>
+    ipcRenderer.invoke('blocking:decision', requestId, decision),
+
+  // Blocking window APIs
+  getBlockingData: () => ipcRenderer.invoke('blocking:get-data'),
+  closeBlockingWindow: () => ipcRenderer.invoke('blocking:close'),
+
   // 필요에 따라 추가 API 노출
   platform: process.platform,
   versions: {
@@ -47,6 +55,9 @@ declare global {
       getEngineResults: () => Promise<any[]>
       getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
       onWebSocketUpdate: (callback: (message: any) => void) => () => void
+      sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') => Promise<void>
+      getBlockingData: () => Promise<any>
+      closeBlockingWindow: () => Promise<void>
       platform: string
       versions: {
         node: string
