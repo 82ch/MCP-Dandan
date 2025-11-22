@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // Blocking window APIs
   getBlockingData: () => ipcRenderer.invoke('blocking:get-data'),
   closeBlockingWindow: () => ipcRenderer.invoke('blocking:close'),
+  resizeBlockingWindow: (width: number, height: number) => ipcRenderer.invoke('blocking:resize', width, height),
 
   // 필요에 따라 추가 API 노출
   platform: process.platform,
@@ -58,6 +59,7 @@ declare global {
       sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') => Promise<void>
       getBlockingData: () => Promise<any>
       closeBlockingWindow: () => Promise<void>
+      resizeBlockingWindow: (width: number, height: number) => Promise<void>
       platform: string
       versions: {
         node: string

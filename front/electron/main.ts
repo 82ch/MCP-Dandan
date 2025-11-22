@@ -110,10 +110,10 @@ function createBlockingWindow(blockingData: any) {
   pendingBlockingData = blockingData
 
   blockingWindow = new BrowserWindow({
-    width: 800,
-    height: 650,
-    minWidth: 750,
-    minHeight: 500,
+    width: 400,
+    height: 350,
+    minWidth: 350,
+    minHeight: 300,
     show: false,
     frame: false,
     resizable: true,
@@ -685,5 +685,14 @@ ipcMain.handle('blocking:close', () => {
   console.log(`[IPC] blocking:close called`)
   if (blockingWindow && !blockingWindow.isDestroyed()) {
     blockingWindow.close()
+  }
+})
+
+// Resize blocking window
+ipcMain.handle('blocking:resize', (_event, width: number, height: number) => {
+  console.log(`[IPC] blocking:resize called: ${width}x${height}`)
+  if (blockingWindow && !blockingWindow.isDestroyed()) {
+    blockingWindow.setSize(width, height)
+    blockingWindow.center()
   }
 })

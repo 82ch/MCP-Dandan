@@ -15,6 +15,7 @@ interface ElectronAPI {
   sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') => Promise<void>
   getBlockingData: () => Promise<any>
   closeBlockingWindow: () => Promise<void>
+  resizeBlockingWindow: (width: number, height: number) => Promise<void>
   platform: string
   versions: {
     node: string
