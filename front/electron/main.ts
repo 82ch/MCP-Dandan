@@ -110,10 +110,10 @@ function createBlockingWindow(blockingData: any) {
   pendingBlockingData = blockingData
 
   blockingWindow = new BrowserWindow({
-    width: 800,
-    height: 650,
-    minWidth: 750,
-    minHeight: 500,
+    width: 400,
+    height: 350,
+    minWidth: 350,
+    minHeight: 300,
     show: false,
     frame: false,
     resizable: true,
