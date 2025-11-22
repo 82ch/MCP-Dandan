@@ -9,6 +9,15 @@ import asyncio
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from utils import safe_print
+import sys
+from pathlib import Path
+
+# 현재 실행 중인 파이썬 인터프리터 (mac / linux / windows 모두 공통)
+PYTHON_CMD = sys.executable
+
+# event_hub.py 기준으로 transports/config_finder.py 절대 경로
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_FINDER_PATH = BASE_DIR / "transports" / "config_finder.py"
 
 
 class EventHub:
@@ -52,11 +61,16 @@ class EventHub:
 
             self.background_tasks.clear()
 
-        # Restore Claude config on shutdown
+        # Restore Claude & Cursor config on shutdown
         import subprocess
         try:
-            subprocess.run(['python', './transports/config_finder.py', '--restore', '--app', 'all'],
-                         capture_output=True, text=True, timeout=10)
+            # sys.executable + 절대 경로로 플랫폼 독립적으로 실행
+            subprocess.run(
+                [PYTHON_CMD, str(CONFIG_FINDER_PATH), '--restore', '--app', 'all'],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
             safe_print('[EventHub] Claude & Cursor config restored')
         except Exception as e:
             safe_print(f'[EventHub] Failed to restore config: {e}')
@@ -175,7 +189,10 @@ class EventHub:
         try:
             safe_print(f'[EventHub] _run_tools_poisoning_analysis STARTED')
             result = await self._process_with_engine(engine, event)
-            safe_print(f'[EventHub] _run_tools_poisoning_analysis COMPLETED (result: {len(result) if isinstance(result, list) else "None" if result is None else "1"})')
+            safe_print(
+                f'[EventHub] _run_tools_poisoning_analysis COMPLETED '
+                f'(result: {len(result) if isinstance(result, list) else "None" if result is None else "1"})'
+            )
 
             if result:
                 # 결과 저장
@@ -302,7 +319,10 @@ class EventHub:
             if engine_result_id:
                 detector = result_data.get('detector')
                 severity = result_data.get('severity')
-                safe_print(f'[EventHub] Saved detection result (id={engine_result_id}, detector={detector}, severity={severity}, server={server_name})')
+                safe_print(
+                    f'[EventHub] Saved detection result (id={engine_result_id}, '
+                    f'detector={detector}, severity={severity}, server={server_name})'
+                )
 
         except Exception as e:
             safe_print(f'[EventHub] Error saving result: {e}')

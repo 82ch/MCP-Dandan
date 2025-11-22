@@ -10,6 +10,15 @@ import sys
 import asyncio
 from aiohttp import web
 from utils import safe_print
+from pathlib import Path
+
+# 현재 서버를 실행 중인 파이썬 인터프리터 경로 (cross-platform)
+PYTHON_CMD = sys.executable
+
+# config_finder.py의 절대 경로
+BASE_DIR = Path(__file__).resolve().parent
+CONFIG_FINDER_PATH = BASE_DIR / "transports" / "config_finder.py"
+
 
 # Force UTF-8 encoding for stdin/stdout to handle Unicode properly
 # This prevents encoding issues on Windows (cp949) and other systems
@@ -47,7 +56,7 @@ def restore_original_config():
     try:
         import subprocess
         result = subprocess.run(
-            ['python', './transports/config_finder.py', '--restore'],
+            [PYTHON_CMD, str(CONFIG_FINDER_PATH), '--restore'],
             text=True,
             timeout=10,
             capture_output=True
@@ -277,8 +286,12 @@ async def on_startup(app):
     # Configure Claude Desktop config on startup
     import subprocess
     try:
-        result = subprocess.run(['python', './transports/config_finder.py'],
-                             text=True, timeout=30)
+        result = subprocess.run(
+            [PYTHON_CMD, str(CONFIG_FINDER_PATH)],
+            text=True,
+            timeout=30,
+            capture_output=True   # stderr 보려고 이거 넣는 것도 추천
+        )
         if result.returncode == 0:
             safe_print("\n[Config] Claude Desktop configured successfully")
         else:
