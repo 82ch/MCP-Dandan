@@ -1,9 +1,50 @@
 {
+  "_comment": "Example configurations for different operating systems",
+
+  "_windows_example": {
+    "filesystem": {
+      "command": "python",
+      "args": [
+        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
+        "C:\\Program Files\\nodejs\\npx.cmd",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "C:\\"
+      ]
+    }
+  },
+
+  "_macos_example": {
+    "filesystem": {
+      "command": "python3",
+      "args": [
+        "/Users/username/mcp-dandan/cli_proxy.py",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/Users/username"
+      ]
+    }
+  },
+
+  "_linux_example": {
+    "filesystem": {
+      "command": "python3",
+      "args": [
+        "/home/username/mcp-dandan/cli_proxy.py",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-filesystem",
+        "/home/username"
+      ]
+    }
+  },
+
   "mcpServers": {
     "filesystem": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\82ch-observer\\cli_proxy.py",
+        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
         "C:\\Program Files\\nodejs\\npx.cmd",
         "-y",
         "@modelcontextprotocol/server-filesystem",
@@ -18,7 +59,7 @@
     "weather": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\82ch-observer\\cli_proxy.py",
+        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
         "C:\\paths\\to\\python-env\\uv.exe",
         "--directory",
         "C:\\paths\\to\\quickstart-resources\\weather-server-python",

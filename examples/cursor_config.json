@@ -1,4 +1,42 @@
 {
+  "_comment": "Example configurations for different operating systems",
+
+  "_windows_example": {
+    "github": {
+      "command": "python",
+      "args": [
+        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
+        "C:\\Program Files\\nodejs\\npx.cmd",
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    }
+  },
+
+  "_macos_example": {
+    "github": {
+      "command": "python3",
+      "args": [
+        "/Users/username/mcp-dandan/cli_proxy.py",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    }
+  },
+
+  "_linux_example": {
+    "github": {
+      "command": "python3",
+      "args": [
+        "/home/username/mcp-dandan/cli_proxy.py",
+        "npx",
+        "-y",
+        "@modelcontextprotocol/server-github"
+      ]
+    }
+  },
+
   "mcpServers": {
     "gmail-hbg780-45": {
       "url": "http://127.0.0.1:8282/Cursor/gmail-hbg780-45?target=https://mcp.composio.dev/partner/composio/gmail/mcp?customerId=INPUT_YOUR_ID&agent=cursor",
@@ -10,7 +48,7 @@
     "github": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\82ch-observer\\cli_proxy.py",
+        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
         "C:\\Program Files\\nodejs\\npx.cmd",
         "-y",
         "@modelcontextprotocol/server-github"
