@@ -66,6 +66,7 @@ const createWindow = () => {
     height: 800,
     minWidth: 800,
     minHeight: 600,
+    icon: path.join(__dirname, '..', 'icons', 'dandan.png'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -74,7 +75,11 @@ const createWindow = () => {
     },
     backgroundColor: '#f3f4f6',
     show: false,
+    autoHideMenuBar: true,
   })
+
+  // Remove menu bar
+  mainWindow.setMenuBarVisibility(false)
 
   // 개발 모드와 프로덕션 모드 구분
   if (process.env.VITE_DEV_SERVER_URL) {

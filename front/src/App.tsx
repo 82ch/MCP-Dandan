@@ -113,8 +113,11 @@ function App() {
   useEffect(() => {
     if (selectedServer) {
       fetchMessages(selectedServer.id)
+      // Reset selected message when server changes
+      setSelectedMessage(null)
     } else {
       setChatMessages([])
+      setSelectedMessage(null)
     }
   }, [selectedServer])
 
