@@ -236,6 +236,88 @@ async def handle_analysis_status(request):
     )
 
 
+async def handle_get_tools_safety(request):
+    """
+    Get safety status for tools of a specific server.
+
+    Request body:
+        {
+            "mcp_tag": "server_name",
+            "filter_dangerous": true  // optional, default true
+        }
+
+    Response:
+        {
+            "tools": {
+                "tool_name1": 1,  // safety value (0-3)
+                "tool_name2": 3,
+                ...
+            },
+            "dangerous_tools": ["tool_name2"],  // safety=3 tools
+            "filter_enabled": true
+        }
+    """
+    import json
+
+    try:
+        data = await request.json()
+        mcp_tag = data.get('mcp_tag')
+
+        if not mcp_tag:
+            return web.Response(
+                status=400,
+                text=json.dumps({"error": "mcp_tag is required"}),
+                content_type='application/json'
+            )
+
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        # Get all tools safety status for the server
+        cursor = await db.conn.execute(
+            """
+            SELECT tool, safety
+            FROM mcpl
+            WHERE mcpTag = ?
+            """,
+            (mcp_tag,)
+        )
+        rows = await cursor.fetchall()
+
+        tools_safety = {}
+        dangerous_tools = []
+
+        for row in rows:
+            tool_name, safety = row
+            tools_safety[tool_name] = safety if safety is not None else 0
+            if safety == 3:  # 조치필요
+                dangerous_tools.append(tool_name)
+
+        filter_enabled = config.get_dangerous_tool_filter_enabled()
+
+        return web.Response(
+            text=json.dumps({
+                "tools": tools_safety,
+                "dangerous_tools": dangerous_tools,
+                "filter_enabled": filter_enabled
+            }),
+            content_type='application/json'
+        )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_get_tools_safety: {e}")
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
 def setup_routes(app):
     """Setup application routes."""
 
@@ -253,6 +335,9 @@ def setup_routes(app):
     app.router.add_post('/verify/response', handle_verify_response)
     app.router.add_post('/register-tools', handle_register_tools)
 
+    # Tools safety API endpoint
+    app.router.add_post('/tools/safety', handle_get_tools_safety)
+
     # Unified auto-detect endpoint
     # Format: /{appName}/{serverName} (GET or POST)
     # Automatically detects SSE vs HTTP-only based on request
@@ -269,6 +354,7 @@ def setup_routes(app):
     safe_print(f"  POST /verify/request - STDIO verification API")
     safe_print(f"  POST /verify/response - STDIO verification API")
     safe_print(f"  POST /register-tools - Tool registration")
+    safe_print(f"  POST /tools/safety - Tools safety status")
     safe_print(f"  *    /{{app}}/{{server}} - Unified MCP endpoint (auto-detect)")
     safe_print(f"  POST /{{app}}/{{server}}/message - SSE message endpoint")
 

@@ -34,12 +34,12 @@ function MiddleTopPanel({ serverInfo }: MiddleTopPanelProps) {
           <div className="space-y-3 md:space-y-4">
             {serverInfo.tools.map((tool, index) => {
               // Determine border color based on safety status
-              // 0: 검사 전 (회색), 1: 안전 (파랑), 2: 조치권장 (주황), 3: 조치필요 (빨강)
+              // 0: 검사 전 (회색), 1: 안전 (초록), 2: 조치권장 (노랑), 3: 조치필요 (빨강)
               const borderColor =
-                tool.safety === 1 ? 'border-blue-400' :   // 안전 (score=0)
-                tool.safety === 2 ? 'border-orange-400' : // 조치권장 (score 1-79)
-                tool.safety === 3 ? 'border-red-500' :    // 조치필요 (score>=80)
-                'border-gray-400'                         // 검사 전 또는 undefined
+                tool.safety === 1 ? 'border-green-500' :  // 안전 - 초록
+                tool.safety === 2 ? 'border-yellow-400' : // 조치권장 - 노랑
+                tool.safety === 3 ? 'border-red-500' :    // 조치필요 - 빨강
+                'border-gray-400'                         // 검사 전 또는 undefined - 회색
 
               // Split description into text and code parts
               // Look for common patterns: "text # Response Schema ```json..." or "text { type: ..."

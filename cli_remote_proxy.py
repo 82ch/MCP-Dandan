@@ -81,6 +81,31 @@ async def verify_response_via_http(session: aiohttp.ClientSession, message: Dict
         return {'blocked': False, 'reason': None, 'modified': False}
 
 
+async def get_dangerous_tools_async(session: aiohttp.ClientSession,
+                                     server_name: str,
+                                     observer_host: str,
+                                     observer_port: int) -> tuple[set, bool]:
+    """
+    Get list of dangerous tools (safety=3) from the server.
+
+    Returns:
+        Tuple of (set of dangerous tool names, filter_enabled flag)
+    """
+    try:
+        async with session.post(
+            f'http://{observer_host}:{observer_port}/tools/safety',
+            json={'mcp_tag': server_name},
+            timeout=aiohttp.ClientTimeout(total=5)
+        ) as resp:
+            result = await resp.json()
+            dangerous_tools = set(result.get('dangerous_tools', []))
+            filter_enabled = result.get('filter_enabled', True)
+            return dangerous_tools, filter_enabled
+    except Exception as e:
+        log('ERROR', f"Failed to get dangerous tools: {e}")
+        return set(), True
+
+
 async def handle_sse_connection():
     """
     Main entry point for remote SSE connections via STDIO.
@@ -273,9 +298,25 @@ async def handle_sse_connection():
                                                         if result.get('tools'):
                                                             log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
 
+                                                            # Get dangerous tools for filtering
+                                                            dangerous_tools, filter_enabled = await get_dangerous_tools_async(
+                                                                session, server_name, observer_host, observer_port
+                                                            )
+                                                            if dangerous_tools and filter_enabled:
+                                                                log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
+
                                                             # Modify tools to add user_intent parameter
                                                             modified_tools = []
+                                                            filtered_count = 0
                                                             for tool in result.get('tools', []):
+                                                                tool_name_check = tool.get('name', '')
+
+                                                                # Filter out dangerous tools (safety=3)
+                                                                if filter_enabled and tool_name_check in dangerous_tools:
+                                                                    log('INFO', f"Filtering out dangerous tool: {tool_name_check}")
+                                                                    filtered_count += 1
+                                                                    continue
+
                                                                 modified_tool = tool.copy()
 
                                                                 # Ensure inputSchema exists
@@ -301,6 +342,9 @@ async def handle_sse_connection():
                                                                     modified_tool['inputSchema']['required'] = required + ['user_intent']
 
                                                                 modified_tools.append(modified_tool)
+
+                                                            if filtered_count > 0:
+                                                                log('INFO', f"Filtered {filtered_count} dangerous tools from response")
 
                                                             # Update parsed data with modified tools
                                                             parsed['result']['tools'] = modified_tools
@@ -590,8 +634,25 @@ async def handle_sse_connection():
                                                                     result = response_data.get('result', {})
                                                                     if result.get('tools'):
                                                                         log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
+
+                                                                        # Get dangerous tools for filtering
+                                                                        dangerous_tools, filter_enabled = await get_dangerous_tools_async(
+                                                                            session, server_name, observer_host, observer_port
+                                                                        )
+                                                                        if dangerous_tools and filter_enabled:
+                                                                            log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
+
                                                                         modified_tools = []
+                                                                        filtered_count = 0
                                                                         for tool in result.get('tools', []):
+                                                                            tool_name_check = tool.get('name', '')
+
+                                                                            # Filter out dangerous tools (safety=3)
+                                                                            if filter_enabled and tool_name_check in dangerous_tools:
+                                                                                log('INFO', f"Filtering out dangerous tool: {tool_name_check}")
+                                                                                filtered_count += 1
+                                                                                continue
+
                                                                             modified_tool = tool.copy()
                                                                             if 'inputSchema' not in modified_tool:
                                                                                 modified_tool['inputSchema'] = {'type': 'object', 'properties': {}, 'required': []}
@@ -605,6 +666,10 @@ async def handle_sse_connection():
                                                                             if 'user_intent' not in required:
                                                                                 modified_tool['inputSchema']['required'] = required + ['user_intent']
                                                                             modified_tools.append(modified_tool)
+
+                                                                        if filtered_count > 0:
+                                                                            log('INFO', f"Filtered {filtered_count} dangerous tools from response")
+
                                                                         response_data['result']['tools'] = modified_tools
 
                                                                 # Send response to client
@@ -655,8 +720,24 @@ async def handle_sse_connection():
                                                 if result.get('tools'):
                                                     log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
 
+                                                    # Get dangerous tools for filtering
+                                                    dangerous_tools, filter_enabled = await get_dangerous_tools_async(
+                                                        session, server_name, observer_host, observer_port
+                                                    )
+                                                    if dangerous_tools and filter_enabled:
+                                                        log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
+
                                                     modified_tools = []
+                                                    filtered_count = 0
                                                     for tool in result.get('tools', []):
+                                                        tool_name_check = tool.get('name', '')
+
+                                                        # Filter out dangerous tools (safety=3)
+                                                        if filter_enabled and tool_name_check in dangerous_tools:
+                                                            log('INFO', f"Filtering out dangerous tool: {tool_name_check}")
+                                                            filtered_count += 1
+                                                            continue
+
                                                         modified_tool = tool.copy()
 
                                                         # Ensure inputSchema exists
@@ -682,6 +763,9 @@ async def handle_sse_connection():
                                                             modified_tool['inputSchema']['required'] = required + ['user_intent']
 
                                                         modified_tools.append(modified_tool)
+
+                                                    if filtered_count > 0:
+                                                        log('INFO', f"Filtered {filtered_count} dangerous tools from response")
 
                                                     # Update response data with modified tools
                                                     response_data['result']['tools'] = modified_tools
