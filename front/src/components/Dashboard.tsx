@@ -238,13 +238,13 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
   }
 
   return (
-    <div className="h-full overflow-auto bg-gray-50 p-6">
+    <div id="dashboard-container" className="h-full overflow-auto bg-gray-50 p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
       {/* Top Section: Charts */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
         {/* Top Affected Servers */}
-        <div className="bg-white rounded-lg shadow p-4">
+        <div className="bg-white rounded-lg shadow p-4" data-tutorial="top-servers">
           <h2 className="text-base font-semibold text-gray-800 mb-3">Top Affected Servers</h2>
           {topServers.length === 0 ? (
             <p className="text-gray-500 text-center py-3 text-sm">No detections found</p>
@@ -354,7 +354,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
         </div>
 
         {/* Threats */}
-        <div className="bg-white rounded-lg shadow p-6">
+        <div className="bg-white rounded-lg shadow p-6" data-tutorial="threats-panel">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Threats</h2>
           <div className="grid grid-cols-1 gap-3">
             {threatDefinitions.map((threat) => {
@@ -385,7 +385,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
       </div>
 
       {/* Detected Events Table */}
-      <div className="bg-white rounded-lg shadow">
+      <div className="bg-white rounded-lg shadow" data-tutorial="detected-table">
         <div className="p-6 border-b border-gray-200">
           <h2 className="text-lg font-semibold text-gray-800">Detected</h2>
         </div>

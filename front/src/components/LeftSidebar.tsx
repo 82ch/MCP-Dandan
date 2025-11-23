@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight, MessageSquare, Settings, LayoutDashboard, ChevronDown, Clock, AlertTriangle } from 'lucide-react'
+import { ChevronLeft, ChevronRight, MessageSquare, Settings, LayoutDashboard, ChevronDown, Clock, AlertTriangle, HelpCircle } from 'lucide-react'
 import { useState } from 'react'
 import type { MCPServer } from '../types'
 
@@ -8,9 +8,10 @@ interface LeftSidebarProps {
   servers: MCPServer[]
   selectedServer: MCPServer | null
   setSelectedServer: (server: MCPServer | null) => void
+  onStartTutorial?: () => void
 }
 
-function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedServer }: LeftSidebarProps) {
+function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedServer, onStartTutorial }: LeftSidebarProps) {
   const [isServersExpanded, setIsServersExpanded] = useState<boolean>(true)
 
   return (
@@ -33,6 +34,7 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
         <div className="p-4 border-b border-gray-200 mt-12">
           <button
             onClick={() => setSelectedServer(null)}
+            data-tutorial="dashboard-btn"
             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
               selectedServer === null ? 'bg-blue-50 text-blue-600 font-bold' : 'text-gray-700 hover:bg-gray-100 font-bold'
             }`}
@@ -58,7 +60,7 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
         </button>
 
         {/* Server List with Spacer */}
-        <div className="flex-1 overflow-y-auto transition-all duration-300">
+        <div className="flex-1 overflow-y-auto transition-all duration-300" data-tutorial="server-list">
           {isServersExpanded && (
             <>
               {servers.map((server) => (
@@ -105,7 +107,15 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200">
+        <div className="p-4 border-t border-gray-200 space-y-1">
+          <button
+            onClick={onStartTutorial}
+            data-tutorial="settings-btn"
+            className="w-full flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <HelpCircle size={20} />
+            <span className="text-sm">Tutorial</span>
+          </button>
           <button className="w-full flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
             <Settings size={20} />
             <span className="text-sm">Settings</span>

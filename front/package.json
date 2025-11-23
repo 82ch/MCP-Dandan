@@ -22,6 +22,7 @@
     "lucide-react": "^0.552.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "react-joyride": "^2.9.3",
     "sql.js": "^1.13.0",
     "ws": "^8.18.0"
   },

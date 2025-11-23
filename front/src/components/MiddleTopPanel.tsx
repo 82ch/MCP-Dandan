@@ -64,7 +64,7 @@ function MiddleTopPanel({ serverInfo, onToolSafetyUpdate }: MiddleTopPanelProps)
         </div>
 
         {/* Tools List */}
-        <div>
+        <div data-tutorial="tools-list">
           <h3 className="text-xs md:text-sm font-semibold text-gray-500 mb-3">Available Tools</h3>
           <div className="space-y-3 md:space-y-4">
             {serverInfo.tools.map((tool, index) => {

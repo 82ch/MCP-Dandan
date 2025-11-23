@@ -4,6 +4,9 @@ import MiddleTopPanel from './components/MiddleTopPanel'
 import MiddleBottomPanel from './components/MiddleBottomPanel'
 import RightChatPanel from './components/RightChatPanel'
 import Dashboard from './components/Dashboard'
+import TutorialProvider, { TutorialType } from './components/Tutorial/TutorialProvider'
+import { TUTORIAL_STORAGE_KEY, TUTORIAL_SERVER_VIEW_KEY } from './components/Tutorial/tutorialSteps.tsx'
+import { mockServers, mockChatMessages } from './components/Tutorial/mockData'
 import type { MCPServer, ChatMessage } from './types'
 
 function App() {
@@ -16,6 +19,11 @@ function App() {
   const [mcpServers, setMcpServers] = useState<MCPServer[]>([])
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [loading, setLoading] = useState<boolean>(true)
+
+  // Tutorial state
+  const [runTutorial, setRunTutorial] = useState<boolean>(false)
+  const [tutorialType, setTutorialType] = useState<TutorialType>('dashboard')
+  const [isTutorialMode, setIsTutorialMode] = useState<boolean>(false)
 
   // Resizable states
   const [middleTopHeight, setMiddleTopHeight] = useState(50) // percentage
@@ -50,6 +58,33 @@ function App() {
   useEffect(() => {
     fetchServers()
   }, [fetchServers])
+
+  // Start tutorial on first visit
+  useEffect(() => {
+    const tutorialCompleted = localStorage.getItem(TUTORIAL_STORAGE_KEY)
+    if (!tutorialCompleted && !loading) {
+      // Delay to ensure DOM is ready
+      const timer = setTimeout(() => {
+        setTutorialType('dashboard')
+        setRunTutorial(true)
+      }, 500)
+      return () => clearTimeout(timer)
+    }
+  }, [loading])
+
+  // Start server view tutorial when first selecting a server
+  useEffect(() => {
+    if (selectedServer && !isTutorialMode) {
+      const serverTutorialCompleted = localStorage.getItem(TUTORIAL_SERVER_VIEW_KEY)
+      if (!serverTutorialCompleted) {
+        const timer = setTimeout(() => {
+          setTutorialType('server')
+          setRunTutorial(true)
+        }, 500)
+        return () => clearTimeout(timer)
+      }
+    }
+  }, [selectedServer, isTutorialMode])
 
   // Subscribe to WebSocket updates for real-time data
   useEffect(() => {
@@ -112,14 +147,22 @@ function App() {
   // Fetch messages when server is selected
   useEffect(() => {
     if (selectedServer) {
-      fetchMessages(selectedServer.id)
-      // Reset selected message when server changes
-      setSelectedMessage(null)
+      // 튜토리얼 모드에서는 가상 데이터 사용
+      if (isTutorialMode) {
+        setChatMessages(mockChatMessages)
+        setSelectedMessage(mockChatMessages[0])
+      } else {
+        fetchMessages(selectedServer.id)
+      }
+      // Reset selected message when server changes (튜토리얼 모드가 아닐 때만)
+      if (!isTutorialMode) {
+        setSelectedMessage(null)
+      }
     } else {
       setChatMessages([])
       setSelectedMessage(null)
     }
-  }, [selectedServer])
+  }, [selectedServer, isTutorialMode])
 
   // Auto-select message when pendingMessageId is set and messages are loaded
   useEffect(() => {
@@ -194,19 +237,87 @@ function App() {
     )
   }
 
+  const handleTutorialComplete = () => {
+    setRunTutorial(false)
+
+    // Dashboard 튜토리얼 완료 후 MCP Server 튜토리얼로 자동 연결
+    if (isTutorialMode && tutorialType === 'dashboard') {
+      // 첫 번째 mock 서버 선택
+      const firstServer = mockServers[0]
+      setSelectedServer(firstServer)
+      setChatMessages(mockChatMessages)
+      setSelectedMessage(mockChatMessages[0])
+
+      // DOM 업데이트 후 Server 튜토리얼 시작
+      setTimeout(() => {
+        setTutorialType('server')
+        setRunTutorial(true)
+      }, 300)
+      return
+    }
+
+    // Server 튜토리얼 완료 또는 일반 모드 종료 시 정리
+    if (isTutorialMode) {
+      setIsTutorialMode(false)
+      setSelectedServer(null)
+      setChatMessages([])
+      setSelectedMessage(null)
+    }
+  }
+
+  const handleStartTutorial = () => {
+    // 먼저 실행 중인 튜토리얼 중지
+    setRunTutorial(false)
+
+    // 튜토리얼 시작 시 가상 데이터 모드 활성화
+    setIsTutorialMode(true)
+    localStorage.removeItem(TUTORIAL_STORAGE_KEY)
+    localStorage.removeItem(TUTORIAL_SERVER_VIEW_KEY)
+    setSelectedServer(null)
+    setTutorialType('dashboard')
+
+    // 모든 스크롤 리셋
+    window.scrollTo(0, 0)
+
+    // 1단계: 상태 업데이트 후 DOM 안정화 대기
+    requestAnimationFrame(() => {
+      // 2단계: Dashboard 스크롤 리셋
+      const dashboardContainer = document.getElementById('dashboard-container')
+      if (dashboardContainer) {
+        dashboardContainer.scrollTop = 0
+      }
+
+      // 3단계: DOM이 완전히 렌더링된 후 튜토리얼 시작
+      requestAnimationFrame(() => {
+        setRunTutorial(true)
+      })
+    })
+  }
+
+  // 튜토리얼 모드에서 사용할 서버 목록
+  const displayServers = isTutorialMode ? mockServers : mcpServers
+
   return (
     <div
       className="flex h-screen bg-gray-100"
       onMouseMove={handleHorizontalMouseMove}
       onMouseUp={handleHorizontalMouseUp}
     >
+      {/* Tutorial */}
+      <TutorialProvider
+        run={runTutorial}
+        type={tutorialType}
+        onComplete={handleTutorialComplete}
+      />
+
       {/* Left Sidebar */}
       <LeftSidebar
         isOpen={isLeftSidebarOpen}
         setIsOpen={setIsLeftSidebarOpen}
-        servers={mcpServers}
+        servers={displayServers}
         selectedServer={selectedServer}
         setSelectedServer={setSelectedServer}
+        onStartTutorial={handleStartTutorial}
       />
 
       {/* Main Content Area */}
@@ -215,7 +326,7 @@ function App() {
         <div className="flex-1">
           <Dashboard
             setSelectedServer={setSelectedServer}
-            servers={mcpServers}
+            servers={displayServers}
             setSelectedMessageId={setPendingMessageId}
           />
         </div>
@@ -232,6 +343,7 @@ function App() {
             <div
               className="border-b border-gray-300 relative min-h-0"
               style={{ height: `${middleTopHeight}%` }}
+              data-tutorial="server-info"
             >
               <MiddleTopPanel serverInfo={serverInfo} />
 
@@ -243,7 +355,11 @@ function App() {
             </div>
 
             {/* Middle Bottom Panel */}
-            <div className="min-h-0" style={{ height: `${100 - middleTopHeight}%` }}>
+            <div
+              className="min-h-0"
+              style={{ height: `${100 - middleTopHeight}%` }}
+              data-tutorial="message-detail"
+            >
               <MiddleBottomPanel selectedMessage={selectedMessage} />
             </div>
           </div>
@@ -258,6 +374,7 @@ function App() {
           <div
             className="border-l border-gray-300 -shrink-0"
             style={{ width: `${rightPanelWidth}px`, minWidth: '300px', maxWidth: '60vw' }}
+            data-tutorial="chat-panel"
           >
             <RightChatPanel
               messages={chatMessages}
