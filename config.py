@@ -49,6 +49,13 @@ class Config:
     def get_data_exfiltration_enabled(self) -> bool:
         return self.config.getboolean('Engine', 'data_exfiltration_enabled', fallback=True)
 
+    def get_dangerous_tool_filter_enabled(self) -> bool:
+        """
+        위험 도구 필터링 활성화 여부.
+        safety=3 (조치필요) 인 도구를 tools/list 응답에서 제외할지 결정.
+        """
+        return self.config.getboolean('Engine', 'dangerous_tool_filter_enabled', fallback=True)
+
     # ========== Observer Settings ==========
 
     def get_target_url(self, app_name: str, server_name: str) -> Optional[str]:

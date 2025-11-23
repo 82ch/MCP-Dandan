@@ -3,7 +3,7 @@
 export interface MCPTool {
   name: string
   description: string
-  safety?: number  // 0: 검사 전, 1: 안전(ALLOW), 2: 위험(DENY)
+  safety?: number  // 0: 검사 전, 1: 안전(score<40), 2: 조치권장(score 40-79), 3: 조치필요(score>=80)
 }
 
 export interface MCPServer {
@@ -14,7 +14,8 @@ export interface MCPServer {
   appName?: string
   tools: MCPTool[]
   isChecking?: boolean  // 검사 중인 도구가 있는가
-  hasDanger?: boolean   // 위험한 도구가 있는가
+  hasDanger?: boolean   // 조치필요 도구가 있는가 (safety=3)
+  hasWarning?: boolean  // 조치권장 도구가 있는가 (safety=2)
 }
 
 export interface ChatMessage {
@@ -87,6 +88,7 @@ declare global {
       getEngineResults: () => Promise<any[]>
       getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
       onWebSocketUpdate: (callback: (message: any) => void) => () => void
+      updateToolSafety: (mcpTag: string, toolName: string, safety: number) => Promise<boolean>
       platform: string
       versions: {
         node: string

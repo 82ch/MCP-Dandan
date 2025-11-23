@@ -1,3 +1,5 @@
+""" config_finder """
+
 """
 Claude Desktop & Cursor MCP Config Finder and Modifier
 
@@ -307,13 +309,72 @@ class ClaudeConfigFinder:
 
         return env
 
-    def modify_mcp_servers_config(self, config_path: str, app_name: str = 'Claude') -> bool:
-        """Modify Claude Desktop MCP servers config"""
-        # backup orginal config
-        self._backup_config(config_path)
+    def _save_remote_servers(self, config_path: str, remote_servers: Dict[str, Any]) -> Optional[str]:
+        """Save remote servers to a separate file for Claude Desktop."""
+        if not remote_servers:
+            return None
+
+        # Create remote config file path
+        config_dir = os.path.dirname(config_path)
+        remote_path = os.path.join(config_dir, 'claude_desktop_remote.json')
 
         try:
-            # Read config
+            remote_config = {'mcpServers': remote_servers}
+            with open(remote_path, 'w', encoding='utf-8') as f:
+                json.dump(remote_config, f, indent=2, ensure_ascii=False)
+            logger.info(f"[Remote] Saved {len(remote_servers)} remote server(s) to: {remote_path}")
+            return remote_path
+        except Exception as e:
+            logger.error(f"[Error] Failed to save remote servers: {e}")
+            return None
+
+    def _delete_remote_servers_file(self, config_path: str) -> bool:
+        """Delete the remote servers file."""
+        config_dir = os.path.dirname(config_path)
+        remote_path = os.path.join(config_dir, 'claude_desktop_remote.json')
+
+        if os.path.exists(remote_path):
+            try:
+                os.remove(remote_path)
+                logger.info(f"[Remote] Deleted remote servers file: {remote_path}")
+                return True
+            except Exception as e:
+                logger.error(f"[Error] Failed to delete remote servers file: {e}")
+                return False
+        return True
+
+    def _load_remote_servers_from_backup(self, config_path: str) -> Dict[str, Any]:
+        """Load remote servers from claude_desktop_remote.json backup."""
+        config_dir = os.path.dirname(config_path)
+        remote_path = os.path.join(config_dir, 'claude_desktop_remote.json')
+
+        if not os.path.exists(remote_path):
+            return {}
+
+        try:
+            with open(remote_path, 'r', encoding='utf-8') as f:
+                remote_config = json.load(f)
+            servers = remote_config.get('mcpServers', {})
+            if servers:
+                logger.info(f"[Remote] Loaded {len(servers)} remote server(s) from backup: {remote_path}")
+            return servers
+        except Exception as e:
+            logger.error(f"[Error] Failed to load remote servers from backup: {e}")
+            return {}
+
+    def modify_mcp_servers_config(self, config_path: str, app_name: str = 'Claude') -> bool:
+        """Modify Claude Desktop MCP servers config"""
+        # First, restore from .backup to get clean state (for re-runs)
+        backup_path = f"{config_path}.backup"
+        if os.path.exists(backup_path):
+            logger.info(f"[Restore] Restoring from backup before applying proxy...")
+            self._restore_config(backup_path, config_path)
+        else:
+            # First run - create backup
+            self._backup_config(config_path)
+
+        try:
+            # Read config (now restored to original state)
             with open(config_path, 'r', encoding='utf-8') as f:
                 config = json.load(f)
 
@@ -328,9 +389,72 @@ class ClaudeConfigFinder:
 
             modified_count = 0
 
+            # For Claude: Extract and save remote servers separately
+            remote_servers = {}
+
+            # Load existing remote servers from claude_desktop_remote.json (for re-runs after disable)
+            backup_remote_servers = self._load_remote_servers_from_backup(config_path)
+
+            # Add remote servers from backup that are not in current config
+            for server_name, server_config in backup_remote_servers.items():
+                if server_name not in mcp_servers:
+                    mcp_servers[server_name] = server_config.copy()
+                    logger.info(f"[Remote] Restored '{server_name}' from remote backup")
+
             # Process each MCP server
-            for server_name, server_config in mcp_servers.items():
+            for server_name, server_config in list(mcp_servers.items()):
                 if not isinstance(server_config, dict):
+                    continue
+
+                # Handle remote servers (with url) - similar to Cursor handling
+                if 'url' in server_config:
+                    current_url = server_config['url']
+
+                    # Skip localhost/127.0.0.1 URLs (these were old Observer endpoints)
+                    if 'localhost' in current_url.lower() or '127.0.0.1' in current_url:
+                        logger.info(f"[Skip] '{server_name}' - localhost URL detected (old Observer endpoint), removing...")
+                        # Remove this server entirely as it's deprecated
+                        del mcp_servers[server_name]
+                        continue
+
+                    # Skip if already using cli_proxy.py for remote
+                    if 'command' in server_config and server_config['command'] == self.python_cmd:
+                        if 'args' in server_config and isinstance(server_config['args'], list):
+                            if len(server_config['args']) > 0 and 'cli_proxy.py' in str(server_config['args'][0]):
+                                logger.info(f"[Skip] '{server_name}' already uses cli_proxy.py for remote connection")
+                                continue
+
+                    # Save original remote server config to separate file
+                    remote_servers[server_name] = server_config.copy()
+
+                    # Convert url-based remote server to cli_remote_proxy.py with MCP_TARGET_URL
+                    del server_config['url']
+
+                    # Build new config for cli_remote_proxy.py
+                    server_config['command'] = self.python_cmd
+                    # Use cli_remote_proxy.py for remote servers
+                    remote_proxy_path = os.path.join(os.path.dirname(self.proxy_path), 'cli_remote_proxy.py')
+                    server_config['args'] = [remote_proxy_path]
+
+                    # Add environment variables for remote connection
+                    existing_env = server_config.get('env', {})
+                    new_env = self._modified_env(server_name, existing_env, app_name)
+                    new_env['MCP_TARGET_URL'] = current_url
+
+                    # Transfer all headers to environment variables
+                    headers = remote_servers[server_name].get('headers', {})
+                    if headers:
+                        # Store headers as JSON string for cli_remote_proxy.py to parse
+                        new_env['MCP_TARGET_HEADERS'] = json.dumps(headers)
+
+                    server_config['env'] = new_env
+
+                    # Remove headers field if exists
+                    if 'headers' in server_config:
+                        del server_config['headers']
+
+                    logger.info(f"[Modified] '{server_name}' - Converted remote URL to cli_remote_proxy.py with MCP_TARGET_URL={current_url}")
+                    modified_count += 1
                     continue
 
                 if 'command' not in server_config:
@@ -365,6 +489,10 @@ class ClaudeConfigFinder:
 
                 logger.info(f"[Modified] '{server_name}' - command: {self.python_cmd}, args: [cli_proxy.py, {current_command}, ...], env: MCP_OBSERVER_*")
                 modified_count += 1
+
+            # Save remote servers to separate file (Claude only)
+            if remote_servers:
+                self._save_remote_servers(config_path, remote_servers)
 
             # Save modified config
             if modified_count > 0:
@@ -418,17 +546,47 @@ class ClaudeConfigFinder:
                 if 'url' in server_config:
                     current_url = server_config['url']
 
-                    # Skip if already proxied
-                    if 'localhost:8282' in current_url or '127.0.0.1:8282' in current_url:
-                        logger.info(f"[Skip] '{server_name}' already uses proxy URL")
+                    # Skip localhost/127.0.0.1 URLs (these were old Observer endpoints)
+                    if 'localhost' in current_url.lower() or '127.0.0.1' in current_url:
+                        logger.info(f"[Skip] '{server_name}' - localhost URL detected (old Observer endpoint), removing...")
+                        # Remove this server entirely as it's deprecated
                         continue
 
-                    # Build proxy URL: http://localhost:8282/Cursor/{server_name}?target={original_url}
-                    from urllib.parse import quote
-                    proxy_url = f"http://localhost:8282/Cursor/{server_name}?target={quote(current_url, safe='')}"
-                    server_config['url'] = proxy_url
+                    # Skip if already using cli_proxy.py for remote
+                    if 'command' in server_config and server_config['command'] == self.python_cmd:
+                        if 'args' in server_config and isinstance(server_config['args'], list):
+                            if len(server_config['args']) > 0 and 'cli_proxy.py' in str(server_config['args'][0]):
+                                logger.info(f"[Skip] '{server_name}' already uses cli_proxy.py for remote connection")
+                                continue
 
-                    logger.info(f"[Modified] '{server_name}' - url: {proxy_url}")
+                    # Convert url-based remote server to cli_proxy.py with MCP_TARGET_URL
+                    # Remove url field and create command/args/env structure
+                    del server_config['url']
+
+                    # Build new config for cli_proxy.py
+                    server_config['command'] = self.python_cmd
+                    server_config['args'] = [self.proxy_path]
+
+                    # Add environment variables for remote connection
+                    existing_env = server_config.get('env', {})
+                    existing_headers = server_config.get('headers', {})
+
+                    # Build env with MCP_TARGET_URL and other required variables
+                    new_env = self._modified_env(server_name, existing_env, 'Cursor')
+                    new_env['MCP_TARGET_URL'] = current_url
+
+                    # If there were custom headers, add them to env
+                    if existing_headers:
+                        new_env['MCP_TARGET_HEADERS'] = json.dumps(existing_headers)
+                        logger.debug(f"[Info] Original headers for '{server_name}': {existing_headers}")
+
+                    server_config['env'] = new_env
+
+                    # Remove headers field since we're now using cli_proxy.py
+                    if 'headers' in server_config:
+                        del server_config['headers']
+
+                    logger.info(f"[Modified] '{server_name}' - Converted remote URL to cli_proxy.py with MCP_TARGET_URL={current_url}")
                     modified_count += 1
                     continue
 
@@ -512,6 +670,122 @@ class ClaudeConfigFinder:
         except Exception as e:
             logger.error(f"[Error] Failed to restore config: {e}")
             return False
+
+    def disable_proxy(self, config_path: str, app_name: str = 'Claude') -> bool:
+        """
+        Disable 82ch proxy:
+        - For Claude: Remove cli_proxy.py from local servers, delete remote servers
+        - For Cursor: Restore from backup file
+        """
+        # For Cursor, simply restore from backup
+        if app_name == 'Cursor':
+            backup_path = f"{config_path}.backup"
+            if os.path.exists(backup_path):
+                return self._restore_config(backup_path, config_path)
+            else:
+                logger.warning(f"[Warning] Cursor backup file not found: {backup_path}")
+                return False
+
+        # For Claude, process config to remove proxy
+        # Note: Keep claude_desktop_remote.json for next startup
+        try:
+            # Read config
+            with open(config_path, 'r', encoding='utf-8') as f:
+                config = json.load(f)
+
+            if 'mcpServers' not in config:
+                logger.warning("[Warning] No 'mcpServers' section found in config")
+                return False
+
+            mcp_servers = config['mcpServers']
+            if not isinstance(mcp_servers, dict):
+                logger.warning("[Warning] 'mcpServers' is not an object")
+                return False
+
+            modified_count = 0
+            removed_servers = []
+
+            # Process each MCP server
+            for server_name in list(mcp_servers.keys()):  # Use list() to allow deletion during iteration
+                server_config = mcp_servers[server_name]
+
+                if not isinstance(server_config, dict):
+                    continue
+
+                # Check if this is a remote server (has MCP_TARGET_URL in env)
+                env = server_config.get('env', {})
+                is_remote = 'MCP_TARGET_URL' in env
+
+                if is_remote:
+                    # Delete remote servers for Claude (Claude Desktop doesn't support URL-based servers natively)
+                    del mcp_servers[server_name]
+                    logger.info(f"[Removed] '{server_name}' - Remote server deleted (Claude Desktop doesn't support URL-based servers)")
+                    removed_servers.append(server_name)
+                    modified_count += 1
+                    continue
+
+                # Check if this is using cli_proxy.py
+                if 'args' not in server_config or not isinstance(server_config['args'], list):
+                    continue
+
+                args = server_config['args']
+                if len(args) == 0 or 'cli_proxy.py' not in str(args[0]):
+                    continue
+
+                # This is a local server using cli_proxy.py - restore it
+                # args format: [cli_proxy.py, original_command, ...original_args]
+                if len(args) < 2:
+                    logger.warning(f"[Warning] '{server_name}' has invalid args format, skipping")
+                    continue
+
+                # Extract original command and args
+                original_command = args[1]  # Second arg is original command
+                original_args = args[2:]     # Rest are original args
+
+                # Restore original configuration
+                server_config['command'] = original_command
+                if original_args:
+                    server_config['args'] = original_args
+                else:
+                    # Remove args if there were none originally
+                    if 'args' in server_config:
+                        del server_config['args']
+
+                # Remove MCP Observer environment variables
+                if 'env' in server_config:
+                    env = server_config['env']
+                    # Remove only MCP_OBSERVER_* and MCP_DEBUG variables
+                    keys_to_remove = [k for k in env.keys() if k.startswith('MCP_OBSERVER_') or k == 'MCP_DEBUG' or k == 'MCP_PROXY_PORT' or k == 'MCP_PROXY_HOST']
+                    for key in keys_to_remove:
+                        del env[key]
+
+                    # If env is now empty, remove it entirely
+                    if not env:
+                        del server_config['env']
+
+                logger.info(f"[Restored] '{server_name}' - Removed cli_proxy.py, restored to: {original_command}")
+                modified_count += 1
+
+            # Save modified config
+            if modified_count > 0:
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
+
+                logger.info(f"\n[Success] Disabled proxy for {modified_count} server(s)")
+                if removed_servers:
+                    logger.info(f"[Success] Removed {len(removed_servers)} remote server(s): {', '.join(removed_servers)}")
+                logger.info(f"[Success] Config saved to: {config_path}")
+                return True
+            else:
+                logger.info("[INFO] No servers needed proxy disabling")
+                return True
+
+        except json.JSONDecodeError as e:
+            logger.error(f"[Error] Failed to parse JSON: {e}")
+            return False
+        except Exception as e:
+            logger.error(f"[Error] Failed to disable proxy: {e}")
+            return False
     
 def main():
     """Only Ganzi"""
@@ -523,6 +797,11 @@ def main():
         '--restore',
         action='store_true',
         help='Restore config from backup file'
+    )
+    parser.add_argument(
+        '--disable',
+        action='store_true',
+        help='Disable 82ch proxy (remove cli_proxy.py from local servers, delete remote servers)'
     )
     parser.add_argument(
         '--app',
@@ -581,8 +860,36 @@ def main():
             safe_print("\n[Done] Configuration restored successfully!")
         else:
             safe_print("\n[Failed] Restore failed.")
+    elif args.disable:
+        # Disable mode
+        success = True
+
+        if args.app in ['claude', 'all']:
+            config_path = finder.find_claude_config()
+            if config_path:
+                logger.info(f"[Disable] Found Claude config at: {config_path}")
+                if not finder.disable_proxy(config_path, app_name='Claude'):
+                    success = False
+            else:
+                logger.warning("[Warning] Claude config not found")
+
+        if args.app in ['cursor', 'all']:
+            cursor_path = finder.find_cursor_config()
+            if cursor_path:
+                logger.info(f"[Disable] Found Cursor config at: {cursor_path}")
+                if not finder.disable_proxy(cursor_path, app_name='Cursor'):
+                    success = False
+            else:
+                logger.warning("[Warning] Cursor config not found")
+
+        if success:
+            safe_print("\n[Done] Proxy disabled successfully!")
+            safe_print("[Info] Local servers restored to original state")
+            safe_print("[Info] Remote servers removed (not supported without 82ch)")
+        else:
+            safe_print("\n[Failed] Disable failed.")
     else:
-        # Normal configuration mode
+        # Normal configuration mode (enable proxy)
         success = False
 
         if args.app in ['claude', 'all']:

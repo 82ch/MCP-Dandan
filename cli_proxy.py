@@ -67,6 +67,30 @@ def make_api_request(endpoint: str, data: Dict[str, Any]) -> Optional[Dict[str, 
         return None
 
 
+def get_dangerous_tools() -> tuple[set, bool]:
+    """
+    Get list of dangerous tools (safety=3) from the server.
+
+    Returns:
+        Tuple of (set of dangerous tool names, filter_enabled flag)
+    """
+    try:
+        result = make_api_request('/tools/safety', {
+            'mcp_tag': CONFIG['server_name']
+        })
+
+        if result:
+            dangerous_tools = set(result.get('dangerous_tools', []))
+            filter_enabled = result.get('filter_enabled', True)
+            return dangerous_tools, filter_enabled
+
+        return set(), True
+
+    except Exception as e:
+        log('ERROR', f"Failed to get dangerous tools: {e}")
+        return set(), True
+
+
 class MCPState:
     """State tracking for MCP protocol."""
 
@@ -126,9 +150,23 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     except Exception as e:
                         log('ERROR', f"Exception verifying tools/list request: {e}")
 
+                    # Get dangerous tools for filtering
+                    dangerous_tools, filter_enabled = get_dangerous_tools()
+                    if dangerous_tools and filter_enabled:
+                        log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
+
                     # Modify tools to add user_intent parameter (same as process_response)
                     modified_tools = []
+                    filtered_count = 0
                     for tool in state.server_tools:
+                        tool_name = tool.get('name', '')
+
+                        # Filter out dangerous tools (safety=3)
+                        if filter_enabled and tool_name in dangerous_tools:
+                            log('INFO', f"Filtering out dangerous tool: {tool_name}")
+                            filtered_count += 1
+                            continue
+
                         modified_tool = tool.copy()
 
                         # Ensure inputSchema exists
@@ -158,6 +196,9 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                             modified_tool['description'] = f"🔒{modified_tool['description']}"
 
                         modified_tools.append(modified_tool)
+
+                    if filtered_count > 0:
+                        log('INFO', f"Filtered {filtered_count} dangerous tools from response")
 
                     # Create response message
                     response_msg = {
@@ -298,9 +339,23 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
                 tools = message['result']['tools']
                 log('INFO', f"Discovered {len(tools)} tools")
 
+                # Get dangerous tools for filtering
+                dangerous_tools, filter_enabled = get_dangerous_tools()
+                if dangerous_tools and filter_enabled:
+                    log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
+
                 # Modify tools to add user_intent parameter
                 modified_tools = []
+                filtered_count = 0
                 for tool in tools:
+                    tool_name = tool.get('name', '')
+
+                    # Filter out dangerous tools (safety=3)
+                    if filter_enabled and tool_name in dangerous_tools:
+                        log('INFO', f"Filtering out dangerous tool: {tool_name}")
+                        filtered_count += 1
+                        continue
+
                     modified_tool = tool.copy()
 
                     # Ensure inputSchema exists
@@ -330,6 +385,9 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
                         modified_tool['description'] = f"🔒{modified_tool['description']}"
 
                     modified_tools.append(modified_tool)
+
+                if filtered_count > 0:
+                    log('INFO', f"Filtered {filtered_count} dangerous tools from response")
 
                 message['result']['tools'] = modified_tools
 
@@ -403,14 +461,40 @@ def main():
     """Main entry point."""
     global server_process
 
+    # Check if MCP_TARGET_URL is set (remote mode) - check BEFORE argv check
+    target_url = os.getenv('MCP_TARGET_URL')
+    if target_url:
+        log('INFO', f"Remote mode detected: {target_url}")
+        log('INFO', "Delegating to cli_remote_proxy.py")
+
+        # Import and run remote proxy
+        try:
+            import asyncio
+            from cli_remote_proxy import handle_sse_connection
+            asyncio.run(handle_sse_connection())
+            return
+        except ImportError as e:
+            log('ERROR', f"Failed to import cli_remote_proxy: {e}")
+            sys.exit(1)
+        except Exception as e:
+            log('ERROR', f"Remote proxy error: {e}")
+            sys.exit(1)
+
+    # Local STDIO mode - check argv
     if len(sys.argv) < 2:
         safe_print("Usage: python cli_proxy.py <command> [args...]", file=sys.stderr)
+        safe_print("", file=sys.stderr)
+        safe_print("For local STDIO server:", file=sys.stderr)
+        safe_print("  python cli_proxy.py npx -y @modelcontextprotocol/server-everything", file=sys.stderr)
+        safe_print("", file=sys.stderr)
+        safe_print("For remote SSE server:", file=sys.stderr)
+        safe_print("  MCP_TARGET_URL=http://example.com/sse python cli_proxy.py", file=sys.stderr)
         sys.exit(1)
 
     command = sys.argv[1]
     args = sys.argv[2:]
 
-    log('INFO', f"Starting STDIO proxy for: {command} {' '.join(args)}")
+    log('INFO', f"Local mode: {command} {' '.join(args)}")
     log('INFO', f"App: {CONFIG['app_name']}, Server: {CONFIG['server_name']}")
 
     # Start target server process

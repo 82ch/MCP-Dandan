@@ -87,9 +87,13 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
                       {server.isChecking && (
                         <Clock size={14} className="text-gray-500 animate-spin" />
                       )}
-                      {/* 위험 아이콘 (!표시) */}
+                      {/* 조치필요 아이콘 (빨강) */}
                       {server.hasDanger && (
                         <AlertTriangle size={14} className="text-red-500" />
+                      )}
+                      {/* 조치권장 아이콘 (주황) */}
+                      {server.hasWarning && !server.hasDanger && (
+                        <AlertTriangle size={14} className="text-orange-400" />
                       )}
                     </div>
                     {server.appName && (

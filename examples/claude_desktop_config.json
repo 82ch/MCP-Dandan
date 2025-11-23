@@ -1,75 +1,59 @@
 {
-  "_comment": "Example configurations for different operating systems",
-
-  "_windows_example": {
-    "filesystem": {
-      "command": "python",
-      "args": [
-        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
-        "C:\\Program Files\\nodejs\\npx.cmd",
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "C:\\"
-      ]
-    }
-  },
-
-  "_macos_example": {
-    "filesystem": {
-      "command": "python3",
-      "args": [
-        "/Users/username/mcp-dandan/cli_proxy.py",
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/Users/username"
-      ]
-    }
-  },
-
-  "_linux_example": {
-    "filesystem": {
-      "command": "python3",
-      "args": [
-        "/home/username/mcp-dandan/cli_proxy.py",
-        "npx",
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "/home/username"
-      ]
-    }
-  },
-
   "mcpServers": {
-    "filesystem": {
+    "gmail-composio": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
-        "C:\\Program Files\\nodejs\\npx.cmd",
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "C:\\"
+        "C:\\Paths\\to\\82ch\\cli_proxy.py"
       ],
       "env": {
         "MCP_OBSERVER_APP_NAME": "Claude",
-        "MCP_OBSERVER_SERVER_NAME": "filesystem",
-        "MCP_DEBUG": "true"
+        "MCP_OBSERVER_SERVER_NAME": "gmail-composio",
+        "MCP_PROXY_PORT": "8282",
+        "MCP_DEBUG": "true",
+        "MCP_TARGET_URL": "https://mcp.composio.dev/partner/composio/gmail/mcp?customerId=YOUR_CUSTOMER_ID"
       }
     },
-    "weather": {
+    "github": {
       "command": "python",
       "args": [
-        "C:\\paths\\to\\mcp-dandan\\cli_proxy.py",
-        "C:\\paths\\to\\python-env\\uv.exe",
-        "--directory",
-        "C:\\paths\\to\\quickstart-resources\\weather-server-python",
-        "run",
-        "weather.py"
+        "C:\\Paths\\to\\82ch\\cli_proxy.py",
+        "C:\\Program Files\\nodejs\\npx.cmd",
+        "-y",
+        "@modelcontextprotocol/server-github"
       ],
       "env": {
         "MCP_OBSERVER_APP_NAME": "Claude",
-        "MCP_OBSERVER_SERVER_NAME": "weather",
-        "MCP_DEBUG": "true"
+        "MCP_OBSERVER_SERVER_NAME": "github",
+        "MCP_PROXY_PORT": "8282",
+        "MCP_DEBUG": "true",
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "YOUR_ACCESS_TOKEN"
+      }
+    },
+    "coingecko": {
+      "command": "python",
+      "args": [
+        "C:\\Paths\\to\\82ch\\cli_proxy.py"
+      ],
+      "env": {
+        "MCP_OBSERVER_APP_NAME": "Claude",
+        "MCP_OBSERVER_SERVER_NAME": "coingecko",
+        "MCP_PROXY_PORT": "8282",
+        "MCP_DEBUG": "true",
+        "MCP_TARGET_URL": "https://mcp.api.coingecko.com/sse"
+      }
+    },
+    "context7": {
+      "command": "python",
+      "args": [
+        "C:\\Paths\\to\\82ch\\cli_proxy.py"
+      ],
+      "env": {
+        "MCP_OBSERVER_APP_NAME": "Claude",
+        "MCP_OBSERVER_SERVER_NAME": "context7",
+        "MCP_PROXY_PORT": "8282",
+        "MCP_DEBUG": "true",
+        "MCP_TARGET_URL": "https://mcp.context7.com/mcp",
+        "API_ACCESS_TOKEN": "YOUR_API_ACCESS_TOKEN"
       }
     }
   }

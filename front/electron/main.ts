@@ -22,22 +22,26 @@ let wsClient: any = null
 let pendingBlockingData: any = null
 let isRestarting = false
 
-// Restore config files before killing server
+// Disable 82ch proxy and restore config files
 function restoreConfigFiles() {
   try {
-    console.log('[Electron] Restoring original config files...')
-    // Get the project root (mcp-dandan directory)
+    console.log('[Electron] Disabling 82ch proxy and restoring config files...')
+    // Get the project root (82ch directory)
     const projectRoot = path.join(__dirname, '..', '..')
     const configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
 
     // Use python3 on macOS/Linux, python on Windows
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
-    execSync(`${pythonCmd} "${configFinderPath}" --restore`, {
+
+    // Use --disable to remove proxy from local servers and delete remote servers
+    execSync(`${pythonCmd} "${configFinderPath}" --disable --app all`, {
       cwd: projectRoot,
       stdio: 'pipe',
       timeout: 10000
     })
     console.log('[Electron] Config files restored successfully')
+    console.log('[Electron] - Local servers: proxy removed')
+    console.log('[Electron] - Remote servers: deleted')
   } catch (error) {
     console.log('[Electron] Failed to restore config files:', error)
   }
@@ -409,7 +413,7 @@ function getMcpServersFromDB() {
         server.tools.push({
           name: row.tool,
           description: row.tool_description || '',
-          safety: row.safety || 0  // 0: 검사 전, 1: 안전, 2: 위험
+          safety: row.safety || 0  // 0: 검사 전, 1: 안전, 2: 조치권장, 3: 조치필요
         })
       }
     })
@@ -418,12 +422,14 @@ function getMcpServersFromDB() {
     const servers = Array.from(serverMap.values()).map((server: any) => {
       const tools = server.tools as any[]
       const hasUnchecked = tools.some((t: any) => t.safety === 0)
-      const hasDangerous = tools.some((t: any) => t.safety === 2)
+      const hasActionRequired = tools.some((t: any) => t.safety === 3)  // 조치필요
+      const hasActionRecommended = tools.some((t: any) => t.safety === 2)  // 조치권장
 
       return {
         ...server,
         isChecking: hasUnchecked,  // 검사 중인 도구가 있는가
-        hasDanger: hasDangerous     // 위험한 도구가 있는가
+        hasDanger: hasActionRequired,  // 조치필요 도구가 있는가
+        hasWarning: hasActionRecommended  // 조치권장 도구가 있는가
       }
     })
 
