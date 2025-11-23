@@ -110,7 +110,17 @@ async def handle_sse_connection():
         'Accept': 'text/event-stream'
     }
 
-    if api_token:
+    # Check for custom headers from MCP_TARGET_HEADERS (JSON format)
+    custom_headers_str = os.getenv('MCP_TARGET_HEADERS', '')
+    if custom_headers_str:
+        try:
+            custom_headers = json.loads(custom_headers_str)
+            target_headers.update(custom_headers)
+            log('INFO', f"Added custom headers from MCP_TARGET_HEADERS: {list(custom_headers.keys())}")
+        except json.JSONDecodeError as e:
+            log('ERROR', f"Failed to parse MCP_TARGET_HEADERS as JSON: {e}")
+            sys.exit(1)
+    elif api_token:
         target_headers['Authorization'] = f'Bearer {api_token}'
         log('INFO', "Using API token for authentication")
 
@@ -403,13 +413,13 @@ async def handle_sse_connection():
                             # For POST-SSE mode: establish connection with first message
                             if uses_post_sse and target_response is None:
                                 log('INFO', f"Establishing POST-SSE connection with initialize message")
+                                # Use target_headers for POST-SSE connection
+                                post_headers = target_headers.copy()
+                                post_headers['Accept'] = 'application/json, text/event-stream'
+
                                 target_response = await session.post(
                                     target_url,
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'Accept': 'application/json, text/event-stream',
-                                        **({'Authorization': f'Bearer {api_token}'} if api_token else {})
-                                    },
+                                    headers=post_headers,
                                     json=message,  # Send the initialize message
                                     timeout=aiohttp.ClientTimeout(total=None, connect=30)
                                 ).__aenter__()
@@ -467,15 +477,15 @@ async def handle_sse_connection():
                                     message_url = target_message_endpoint
 
                                 try:
+                                    # Use target_headers for notification
+                                    notif_headers = target_headers.copy()
+                                    notif_headers['Accept'] = 'application/json, text/event-stream'
+
                                     # Fire and forget - don't wait for response
                                     asyncio.create_task(session.post(
                                         message_url,
                                         json=message,
-                                        headers={
-                                            'Content-Type': 'application/json',
-                                            'Accept': 'application/json, text/event-stream',
-                                            **({'Authorization': f'Bearer {api_token}'} if api_token else {})
-                                        },
+                                        headers=notif_headers,
                                         timeout=aiohttp.ClientTimeout(total=10)
                                     ))
                                     log('INFO', f"Notification sent (fire-and-forget): {method}")
@@ -516,15 +526,15 @@ async def handle_sse_connection():
 
                             log('INFO', f"Sending {message.get('method', 'message')} to: {message_url}")
 
+                            # Use target_headers for message POST
+                            msg_headers = target_headers.copy()
+                            msg_headers['Accept'] = 'application/json, text/event-stream'
+
                             try:
                                 async with session.post(
                                     message_url,
                                     json=message,
-                                    headers={
-                                        'Content-Type': 'application/json',
-                                        'Accept': 'application/json, text/event-stream',
-                                        **({'Authorization': f'Bearer {api_token}'} if api_token else {})
-                                    },
+                                    headers=msg_headers,
                                     timeout=aiohttp.ClientTimeout(total=30)
                                 ) as msg_response:
                                     if msg_response.status == 200:
