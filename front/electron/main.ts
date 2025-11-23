@@ -3,6 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { execSync } from 'child_process'
+import fs from 'fs'
 import type BetterSqlite3 from 'better-sqlite3'
 
 const require = createRequire(import.meta.url)
@@ -19,6 +20,7 @@ let mainWindow: BrowserWindow | null = null
 let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
 let pendingBlockingData: any = null
+let isRestarting = false
 
 // Restore config files before killing server
 function restoreConfigFiles() {
@@ -189,6 +191,12 @@ app.on('will-quit', () => {
   if (wsClient) {
     wsClient.close()
     wsClient = null
+  }
+
+  // Skip cleanup if restarting
+  if (isRestarting) {
+    console.log('[Electron] Restarting - skipping server cleanup')
+    return
   }
 
   // Restore config files BEFORE killing server
@@ -697,4 +705,129 @@ ipcMain.handle('blocking:resize', (_event, width: number, height: number) => {
     blockingWindow.setSize(width, height)
     blockingWindow.center()
   }
+})
+
+// Config file path
+function getConfigPath() {
+  const projectRoot = path.join(__dirname, '..', '..')
+  return path.join(projectRoot, 'config.conf')
+}
+
+// Parse config.conf file
+function parseConfig(content: string) {
+  const config: any = {
+    Engine: {
+      sensitive_file_enabled: true,
+      tools_poisoning_enabled: true,
+      command_injection_enabled: true,
+      file_system_exposure_enabled: true
+    },
+    Log: {
+      log_dir: './logs',
+      max_log_file_size_mb: 100,
+      max_log_files: 5
+    }
+  }
+
+  let currentSection = ''
+  const lines = content.split('\n')
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Skip comments and empty lines
+    if (trimmed.startsWith('#') || trimmed === '') continue
+
+    // Section header
+    const sectionMatch = trimmed.match(/^\[(\w+)\]$/)
+    if (sectionMatch) {
+      currentSection = sectionMatch[1]
+      continue
+    }
+
+    // Key-value pair
+    const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/)
+    if (kvMatch && currentSection) {
+      const key = kvMatch[1]
+      let value: any = kvMatch[2].trim()
+
+      // Parse boolean values
+      if (value === 'True' || value === 'true') {
+        value = true
+      } else if (value === 'False' || value === 'false') {
+        value = false
+      } else if (!isNaN(Number(value))) {
+        value = Number(value)
+      }
+
+      if (config[currentSection]) {
+        config[currentSection][key] = value
+      }
+    }
+  }
+
+  return config
+}
+
+// Generate config.conf content
+function generateConfig(config: any) {
+  const lines: string[] = [
+    '# 82ch Unified Configuration',
+    '# Observer + Engine integrated mode',
+    '',
+    '[Engine]',
+    '# Detection engines to enable',
+    `sensitive_file_enabled = ${config.Engine.sensitive_file_enabled ? 'True' : 'False'}`,
+    `tools_poisoning_enabled = ${config.Engine.tools_poisoning_enabled ? 'True' : 'False'}`,
+    `command_injection_enabled = ${config.Engine.command_injection_enabled ? 'True' : 'False'}`,
+    `file_system_exposure_enabled = ${config.Engine.file_system_exposure_enabled ? 'True' : 'False'}`,
+    '',
+    '[Log]',
+    '# Log directory (currently not used, but reserved for future)',
+    `log_dir = ${config.Log.log_dir}`,
+    '',
+    '# Log file rotation settings',
+    `max_log_file_size_mb = ${config.Log.max_log_file_size_mb}`,
+    `max_log_files = ${config.Log.max_log_files}`
+  ]
+
+  return lines.join('\n')
+}
+
+// Get config
+ipcMain.handle('config:get', () => {
+  console.log(`[IPC] config:get called`)
+  try {
+    const configPath = getConfigPath()
+    const content = fs.readFileSync(configPath, 'utf-8')
+    const config = parseConfig(content)
+    console.log(`[IPC] config:get returning config`)
+    return config
+  } catch (error) {
+    console.error('[IPC] Error reading config:', error)
+    throw error
+  }
+})
+
+// Save config
+ipcMain.handle('config:save', (_event, config: any) => {
+  console.log(`[IPC] config:save called`)
+  try {
+    const configPath = getConfigPath()
+    const content = generateConfig(config)
+    fs.writeFileSync(configPath, content, 'utf-8')
+    console.log(`[IPC] config:save completed`)
+    return true
+  } catch (error) {
+    console.error('[IPC] Error saving config:', error)
+    throw error
+  }
+})
+
+// Restart app
+ipcMain.handle('app:restart', () => {
+  console.log(`[IPC] app:restart called`)
+  isRestarting = true
+  app.relaunch()
+  app.exit(0)
 })
