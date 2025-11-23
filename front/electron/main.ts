@@ -824,6 +824,52 @@ ipcMain.handle('config:save', (_event, config: any) => {
   }
 })
 
+// Get .env file path
+function getEnvPath() {
+  const projectRoot = path.join(__dirname, '..', '..')
+  return path.join(projectRoot, '.env')
+}
+
+// Get env variables
+ipcMain.handle('env:get', () => {
+  console.log(`[IPC] env:get called`)
+  try {
+    const envPath = getEnvPath()
+    if (!fs.existsSync(envPath)) {
+      return { MISTRAL_API_KEY: '' }
+    }
+    const content = fs.readFileSync(envPath, 'utf-8')
+    const env: any = {}
+    const lines = content.split('\n')
+    for (const line of lines) {
+      const match = line.match(/^([^=]+)=(.*)$/)
+      if (match) {
+        env[match[1].trim()] = match[2].trim()
+      }
+    }
+    console.log(`[IPC] env:get returning env`)
+    return env
+  } catch (error) {
+    console.error('[IPC] Error reading env:', error)
+    throw error
+  }
+})
+
+// Save env variables
+ipcMain.handle('env:save', (_event, env: any) => {
+  console.log(`[IPC] env:save called`)
+  try {
+    const envPath = getEnvPath()
+    const lines = Object.entries(env).map(([key, value]) => `${key}=${value}`)
+    fs.writeFileSync(envPath, lines.join('\n'), 'utf-8')
+    console.log(`[IPC] env:save completed`)
+    return true
+  } catch (error) {
+    console.error('[IPC] Error saving env:', error)
+    throw error
+  }
+})
+
 // Restart app
 ipcMain.handle('app:restart', () => {
   console.log(`[IPC] app:restart called`)

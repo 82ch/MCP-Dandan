@@ -22,6 +22,7 @@ interface ConfigData {
 
 function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [config, setConfig] = useState<ConfigData | null>(null)
+  const [apiKey, setApiKey] = useState<string>('')
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -36,8 +37,12 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setLoading(true)
     setError(null)
     try {
-      const data = await window.electronAPI.getConfig()
-      setConfig(data)
+      const [configData, envData] = await Promise.all([
+        window.electronAPI.getConfig(),
+        window.electronAPI.getEnv()
+      ])
+      setConfig(configData)
+      setApiKey(envData.MISTRAL_API_KEY || '')
     } catch (err) {
       setError('Failed to load configuration')
       console.error('Error loading config:', err)
@@ -52,7 +57,10 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     setSaving(true)
     setError(null)
     try {
-      await window.electronAPI.saveConfig(config)
+      await Promise.all([
+        window.electronAPI.saveConfig(config),
+        window.electronAPI.saveEnv({ MISTRAL_API_KEY: apiKey })
+      ])
       onClose()
       alert('Please restart the program for the changes to take effect.')
     } catch (err) {
@@ -182,6 +190,23 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       type="number"
                       value={config.Log.max_log_files}
                       onChange={(e) => handleLogChange('max_log_files', parseInt(e.target.value) || 0)}
+                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* API Key Section */}
+              <div>
+                <h3 className="text-sm font-medium text-gray-700 mb-3">API Keys</h3>
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-sm text-gray-600 mb-1">Mistral API Key</label>
+                    <input
+                      type="password"
+                      value={apiKey}
+                      onChange={(e) => setApiKey(e.target.value)}
+                      placeholder="Enter your Mistral API key"
                       className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                   </div>

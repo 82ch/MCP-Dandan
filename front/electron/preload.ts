@@ -36,6 +36,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getConfig: () => ipcRenderer.invoke('config:get'),
   saveConfig: (config: any) => ipcRenderer.invoke('config:save', config),
 
+  // Env APIs
+  getEnv: () => ipcRenderer.invoke('env:get'),
+  saveEnv: (env: any) => ipcRenderer.invoke('env:save', env),
+
   // App control
   restartApp: () => ipcRenderer.invoke('app:restart'),
 
@@ -69,6 +73,8 @@ declare global {
       resizeBlockingWindow: (width: number, height: number) => Promise<void>
       getConfig: () => Promise<any>
       saveConfig: (config: any) => Promise<boolean>
+      getEnv: () => Promise<any>
+      saveEnv: (env: any) => Promise<boolean>
       restartApp: () => Promise<void>
       platform: string
       versions: {
