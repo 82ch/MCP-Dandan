@@ -8,15 +8,11 @@ interface SettingsModalProps {
 
 interface ConfigData {
   Engine: {
-    sensitive_file_enabled: boolean
-    tools_poisoning_enabled: boolean
-    command_injection_enabled: boolean
-    file_system_exposure_enabled: boolean
-  }
-  Log: {
-    log_dir: string
-    max_log_file_size_mb: number
-    max_log_files: number
+    tools_poisoning_engine: boolean
+    command_injection_engine: boolean
+    data_exfiltration_engine: boolean
+    file_system_exposure_engine: boolean
+    pii_filter_engine: boolean
   }
 }
 
@@ -82,17 +78,6 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     })
   }
 
-  const handleLogChange = (key: keyof ConfigData['Log'], value: string | number) => {
-    if (!config) return
-    setConfig({
-      ...config,
-      Log: {
-        ...config.Log,
-        [key]: value
-      }
-    })
-  }
-
   if (!isOpen) return null
 
   return (
@@ -124,75 +109,50 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                 <h3 className="text-sm font-medium text-gray-700 mb-3">Detection Engines</h3>
                 <div className="space-y-3">
                   <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Sensitive File Detection</span>
+                    <span className="text-sm text-gray-600">Tools Poisoning Engine</span>
                     <input
                       type="checkbox"
-                      checked={config.Engine.sensitive_file_enabled}
-                      onChange={() => handleEngineToggle('sensitive_file_enabled')}
+                      checked={config.Engine.tools_poisoning_engine}
+                      onChange={() => handleEngineToggle('tools_poisoning_engine')}
                       className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
                   </label>
                   <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Tools Poisoning Detection</span>
+                    <span className="text-sm text-gray-600">Command Injection Engine</span>
                     <input
                       type="checkbox"
-                      checked={config.Engine.tools_poisoning_enabled}
-                      onChange={() => handleEngineToggle('tools_poisoning_enabled')}
+                      checked={config.Engine.command_injection_engine}
+                      onChange={() => handleEngineToggle('command_injection_engine')}
                       className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
                   </label>
                   <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Command Injection Detection</span>
+                    <span className="text-sm text-gray-600">Data Exfiltration Engine</span>
                     <input
                       type="checkbox"
-                      checked={config.Engine.command_injection_enabled}
-                      onChange={() => handleEngineToggle('command_injection_enabled')}
+                      checked={config.Engine.data_exfiltration_engine}
+                      onChange={() => handleEngineToggle('data_exfiltration_engine')}
                       className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
                   </label>
                   <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">File System Exposure Detection</span>
+                    <span className="text-sm text-gray-600">File System Exposure Engine</span>
                     <input
                       type="checkbox"
-                      checked={config.Engine.file_system_exposure_enabled}
-                      onChange={() => handleEngineToggle('file_system_exposure_enabled')}
+                      checked={config.Engine.file_system_exposure_engine}
+                      onChange={() => handleEngineToggle('file_system_exposure_engine')}
                       className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
                   </label>
-                </div>
-              </div>
-
-              {/* Log Section */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Log Settings</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Log Directory</label>
+                  <label className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">PII Filter Engine</span>
                     <input
-                      type="text"
-                      value={config.Log.log_dir}
-                      onChange={(e) => handleLogChange('log_dir', e.target.value)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      type="checkbox"
+                      checked={config.Engine.pii_filter_engine}
+                      onChange={() => handleEngineToggle('pii_filter_engine')}
+                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
                     />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Max Log File Size (MB)</label>
-                    <input
-                      type="number"
-                      value={config.Log.max_log_file_size_mb}
-                      onChange={(e) => handleLogChange('max_log_file_size_mb', parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Max Log Files</label>
-                    <input
-                      type="number"
-                      value={config.Log.max_log_files}
-                      onChange={(e) => handleLogChange('max_log_files', parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
-                  </div>
+                  </label>
                 </div>
               </div>
 

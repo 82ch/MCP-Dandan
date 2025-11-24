@@ -723,15 +723,11 @@ function getConfigPath() {
 function parseConfig(content: string) {
   const config: any = {
     Engine: {
-      sensitive_file_enabled: true,
-      tools_poisoning_enabled: true,
-      command_injection_enabled: true,
-      file_system_exposure_enabled: true
-    },
-    Log: {
-      log_dir: './logs',
-      max_log_file_size_mb: 100,
-      max_log_files: 5
+      tools_poisoning_engine: true,
+      command_injection_engine: true,
+      data_exfiltration_engine: true,
+      file_system_exposure_engine: true,
+      pii_filter_engine: true
     }
   }
 
@@ -783,18 +779,11 @@ function generateConfig(config: any) {
     '',
     '[Engine]',
     '# Detection engines to enable',
-    `sensitive_file_enabled = ${config.Engine.sensitive_file_enabled ? 'True' : 'False'}`,
-    `tools_poisoning_enabled = ${config.Engine.tools_poisoning_enabled ? 'True' : 'False'}`,
-    `command_injection_enabled = ${config.Engine.command_injection_enabled ? 'True' : 'False'}`,
-    `file_system_exposure_enabled = ${config.Engine.file_system_exposure_enabled ? 'True' : 'False'}`,
-    '',
-    '[Log]',
-    '# Log directory (currently not used, but reserved for future)',
-    `log_dir = ${config.Log.log_dir}`,
-    '',
-    '# Log file rotation settings',
-    `max_log_file_size_mb = ${config.Log.max_log_file_size_mb}`,
-    `max_log_files = ${config.Log.max_log_files}`
+    `tools_poisoning_engine = ${config.Engine.tools_poisoning_engine ? 'True' : 'False'}`,
+    `command_injection_engine = ${config.Engine.command_injection_engine ? 'True' : 'False'}`,
+    `data_exfiltration_engine = ${config.Engine.data_exfiltration_engine ? 'True' : 'False'}`,
+    `file_system_exposure_engine = ${config.Engine.file_system_exposure_engine ? 'True' : 'False'}`,
+    `pii_filter_engine = ${config.Engine.pii_filter_engine ? 'True' : 'False'}`
   ]
 
   return lines.join('\n')
@@ -805,6 +794,24 @@ ipcMain.handle('config:get', () => {
   console.log(`[IPC] config:get called`)
   try {
     const configPath = getConfigPath()
+
+    // Create default config if not exists
+    if (!fs.existsSync(configPath)) {
+      console.log(`[IPC] config.conf not found, creating default`)
+      const defaultConfig = {
+        Engine: {
+          tools_poisoning_engine: true,
+          command_injection_engine: true,
+          data_exfiltration_engine: true,
+          file_system_exposure_engine: true,
+          pii_filter_engine: true
+        }
+      }
+      const content = generateConfig(defaultConfig)
+      fs.writeFileSync(configPath, content, 'utf-8')
+      return defaultConfig
+    }
+
     const content = fs.readFileSync(configPath, 'utf-8')
     const config = parseConfig(content)
     console.log(`[IPC] config:get returning config`)
