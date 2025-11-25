@@ -197,24 +197,34 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
         }
       })
 
-      // Process timeline data (group by date)
+      // Process timeline data (group by minute)
       const timelineMap: Record<string, number> = {}
       engineResults.forEach((result: any) => {
-        // Extract date from timestamp (e.g., "2025-11-07 04:01:18" -> "2025-11-07")
-        let date
+        // Extract timestamp down to the minute (e.g., "2025-11-07 04:01:18" -> "2025-11-07 04:01")
+        let minuteTimestamp
         if (result.created_at) {
-          date = result.created_at.split(' ')[0]
+          // Format: "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM"
+          const parts = result.created_at.split(' ')
+          if (parts.length === 2) {
+            const timeParts = parts[1].split(':')
+            minuteTimestamp = `${parts[0]} ${timeParts[0]}:${timeParts[1]}`
+          }
         } else if (result.ts) {
           const d = new Date(result.ts)
-          date = d.toISOString().split('T')[0]
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          const hours = String(d.getHours()).padStart(2, '0')
+          const minutes = String(d.getMinutes()).padStart(2, '0')
+          minuteTimestamp = `${year}-${month}-${day} ${hours}:${minutes}`
         }
 
-        if (date) {
-          timelineMap[date] = (timelineMap[date] || 0) + 1
+        if (minuteTimestamp) {
+          timelineMap[minuteTimestamp] = (timelineMap[minuteTimestamp] || 0) + 1
         }
       })
 
-      // Convert to array and sort by date
+      // Convert to array and sort by timestamp
       const timeline = Object.entries(timelineMap)
         .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
         .map(([date, count]) => ({ date, count: count as number }))
@@ -241,30 +251,204 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
     <div className="h-full overflow-auto bg-gray-50 p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
-      {/* Top Section: Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Top Affected Servers */}
+      {/* Detected Events Table - Full Width */}
+      <div className="bg-white rounded-lg shadow mb-6">
+        <div className="p-6 border-b border-gray-200">
+          <h2 className="text-lg font-semibold text-gray-800">Detected Threats</h2>
+        </div>
+        <div className="overflow-x-auto max-h-96 overflow-y-auto">
+          <table className="w-full">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Server Name
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Threat Type
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Severity Level
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Description
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Last seen
+                </th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
+                  Go to
+                </th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-200">
+              {detectedEvents.map((event, index) => (
+                <tr key={index} className="hover:bg-gray-50">
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                    {event.serverName}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+                    {event.threatType}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-700">{event.severity}</span>
+                      <span className={`w-2 h-2 rounded-full ${event.severityColor}`}></span>
+                    </div>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
+                    {event.description}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    {event.lastSeen}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-sm">
+                    <button
+                      onClick={() => handleGoToServer(event.serverName, event.rawEventId)}
+                      className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
+                    >
+                      {event.serverName}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+              {detectedEvents.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
+                    No security events detected
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Bottom Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Threat Categories */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Threat Categories</h2>
+          <div className="grid grid-cols-1 gap-3">
+            {threatDefinitions.map((threat) => {
+              const Icon = threat.icon
+              const stats = threatStats[threat.name] || { detections: 0, affectedServers: 0 }
+
+              return (
+                <div
+                  key={threat.name}
+                  className={`border rounded-lg p-4 ${threat.bgColor} ${threat.borderColor}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon className={`${threat.color} shrink-0`} size={20} />
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-semibold ${threat.color} text-sm`}>{threat.name}</h3>
+                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{threat.description}</p>
+                      <div className="flex flex-col gap-1 mt-2 text-xs text-gray-700">
+                        <span className="font-bold">Detections: {stats.detections}</span>
+                        <span className="font-bold">Affected Servers: {stats.affectedServers}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Top Affected Servers and Time-Series View */}
         <div className="bg-white rounded-lg shadow p-4">
           <h2 className="text-base font-semibold text-gray-800 mb-3">Top Affected Servers</h2>
           {topServers.length === 0 ? (
             <p className="text-gray-500 text-center py-3 text-sm">No detections found</p>
           ) : (
-            <div className="flex items-end justify-around gap-3 h-64">
-              {topServers.map((server, index) => {
-                const maxCount = topServers[0]?.count || 1
-                const barHeightPx = Math.max(20, (server.count / maxCount) * 240)
+            <div className="h-64 flex items-center justify-center">
+              <svg width="280" height="280" viewBox="0 0 280 280">
+                {(() => {
+                  const total = topServers.reduce((sum, s) => sum + s.count, 0)
+                  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+                  const centerX = 140
+                  const centerY = 140
+                  const radius = 100
+                  let currentAngle = -90 // Start from top
 
-                return (
-                  <div key={index} className="flex flex-col items-center gap-1 flex-1 h-full justify-end">
-                    <div className="text-xs text-gray-600 font-medium">{server.count}</div>
-                    <div
-                      className="w-full rounded-t transition-all duration-300"
-                      style={{ height: `${barHeightPx}px`, backgroundColor: '#D4EDFA' }}
-                    />
-                    <div className="text-xs text-gray-700 text-center wrap-words w-full mt-1">{server.name}</div>
-                  </div>
-                )
-              })}
+                  return (
+                    <>
+                      {topServers.map((server, index) => {
+                        const percentage = (server.count / total) * 100
+                        const angle = (server.count / total) * 360
+                        const startAngle = currentAngle
+                        const endAngle = currentAngle + angle
+
+                        // Convert to radians
+                        const startRad = (startAngle * Math.PI) / 180
+                        const endRad = (endAngle * Math.PI) / 180
+
+                        // Calculate arc points
+                        const x1 = centerX + radius * Math.cos(startRad)
+                        const y1 = centerY + radius * Math.sin(startRad)
+                        const x2 = centerX + radius * Math.cos(endRad)
+                        const y2 = centerY + radius * Math.sin(endRad)
+
+                        const largeArcFlag = angle > 180 ? 1 : 0
+
+                        const pathData = [
+                          `M ${centerX} ${centerY}`,
+                          `L ${x1} ${y1}`,
+                          `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                          'Z'
+                        ].join(' ')
+
+                        currentAngle = endAngle
+
+                        return (
+                          <path
+                            key={index}
+                            d={pathData}
+                            fill={colors[index % colors.length]}
+                            opacity="0.9"
+                            stroke="white"
+                            strokeWidth="2"
+                          />
+                        )
+                      })}
+                      {/* Center circle for donut effect */}
+                      <circle cx={centerX} cy={centerY} r="60" fill="white" />
+                      {/* Center text */}
+                      <text x={centerX} y={centerY - 5} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#374151">
+                        {total}
+                      </text>
+                      <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize="12" fill="#6B7280">
+                        Total
+                      </text>
+                    </>
+                  )
+                })()}
+              </svg>
+              {/* Legend */}
+              <div className="ml-6 flex flex-col gap-2">
+                {topServers.map((server, index) => {
+                  const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+                  const total = topServers.reduce((sum, s) => sum + s.count, 0)
+                  const percentage = ((server.count / total) * 100).toFixed(1)
+
+                  return (
+                    <div key={index} className="flex items-center gap-2">
+                      <div
+                        className="w-3 h-3 rounded-sm"
+                        style={{ backgroundColor: colors[index % colors.length] }}
+                      />
+                      <div className="text-xs">
+                        <div className="font-medium text-gray-700 truncate max-w-[120px]" title={server.name}>
+                          {server.name}
+                        </div>
+                        <div className="text-gray-500">
+                          {server.count} ({percentage}%)
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
             </div>
           )}
 
@@ -336,13 +520,18 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
                     if (timelineData.length === 0) return null
                     const first = timelineData[0]
                     const last = timelineData[timelineData.length - 1]
+                    // Extract time portion (HH:MM) from "YYYY-MM-DD HH:MM"
+                    const formatTime = (timestamp: string) => {
+                      const parts = timestamp.split(' ')
+                      return parts.length === 2 ? parts[1] : timestamp
+                    }
                     return (
                       <>
                         <text x="40" y="153" textAnchor="start" fontSize="9" fill="#9CA3AF">
-                          {first.date.slice(5)}
+                          {formatTime(first.date)}
                         </text>
                         <text x="780" y="153" textAnchor="end" fontSize="9" fill="#9CA3AF">
-                          {last.date.slice(5)}
+                          {formatTime(last.date)}
                         </text>
                       </>
                     )
@@ -351,108 +540,6 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
               </div>
             )}
           </div>
-        </div>
-
-        {/* Threats */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Threats</h2>
-          <div className="grid grid-cols-1 gap-3">
-            {threatDefinitions.map((threat) => {
-              const Icon = threat.icon
-              const stats = threatStats[threat.name] || { detections: 0, affectedServers: 0 }
-
-              return (
-                <div
-                  key={threat.name}
-                  className={`border rounded-lg p-4 ${threat.bgColor} ${threat.borderColor}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Icon className={`${threat.color} shrink-0`} size={20} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className={`font-semibold ${threat.color} text-sm`}>{threat.name}</h3>
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{threat.description}</p>
-                      <div className="flex flex-col gap-1 mt-2 text-xs text-gray-700">
-                        <span className="font-bold">Detections: {stats.detections}</span>
-                        <span className="font-bold">Affected Servers: {stats.affectedServers}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Detected Events Table */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800">Detected</h2>
-        </div>
-        <div className="overflow-x-auto max-h-96 overflow-y-auto">
-          <table className="w-full">
-            <thead className="bg-gray-50 border-b border-gray-200">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Server Name
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Threat Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Severity Level
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Description
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Last seen
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-700 uppercase tracking-wider">
-                  Go to
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {detectedEvents.map((event, index) => (
-                <tr key={index} className="hover:bg-gray-50">
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                    {event.serverName}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                    {event.threatType}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm text-gray-700">{event.severity}</span>
-                      <span className={`w-2 h-2 rounded-full ${event.severityColor}`}></span>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4 text-sm text-gray-700 max-w-xs truncate">
-                    {event.description}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {event.lastSeen}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm">
-                    <button
-                      onClick={() => handleGoToServer(event.serverName, event.rawEventId)}
-                      className="px-3 py-1 bg-gray-100 text-gray-700 rounded hover:bg-gray-200 transition-colors"
-                    >
-                      {event.serverName}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {detectedEvents.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-8 text-center text-gray-500">
-                    No security events detected
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
       </div>
     </div>
