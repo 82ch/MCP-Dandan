@@ -31,8 +31,6 @@ if sys.stdout.encoding != 'utf-8':
 sys.stdout.reconfigure(line_buffering=True)
 sys.stderr.reconfigure(line_buffering=True)
 
-from transports.auto_handler import handle_auto_detect
-from transports.message_handler import handle_message_endpoint
 from transports.stdio_handlers import (
     handle_verify_request,
     handle_verify_response,
@@ -406,16 +404,6 @@ def setup_routes(app):
     app.router.add_post('/tools/safety', handle_get_tools_safety)
     app.router.add_post('/tools/safety/update', handle_update_tool_safety)
 
-    # Unified auto-detect endpoint
-    # Format: /{appName}/{serverName} (GET or POST)
-    # Automatically detects SSE vs HTTP-only based on request
-    app.router.add_route('*', '/{app}/{server}', handle_auto_detect)
-
-    # Message endpoint for SSE mode
-    # Format: /{appName}/{serverName}/message (POST)
-    # Used when SSE connection sends 'endpoint' event
-    app.router.add_post('/{app}/{server}/message', handle_message_endpoint)
-
     safe_print(f"[Server] Routes configured:")
     safe_print(f"  GET  /health - Health check")
     safe_print(f"  GET  /ws - WebSocket endpoint (real-time updates)")
@@ -424,8 +412,6 @@ def setup_routes(app):
     safe_print(f"  POST /register-tools - Tool registration")
     safe_print(f"  POST /tools/safety - Tools safety status")
     safe_print(f"  POST /tools/safety/update - Update tool safety manually")
-    safe_print(f"  *    /{{app}}/{{server}} - Unified MCP endpoint (auto-detect)")
-    safe_print(f"  POST /{{app}}/{{server}}/message - SSE message endpoint")
 
 
 async def on_startup(app):
