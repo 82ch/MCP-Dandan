@@ -162,8 +162,22 @@ async def handle_sse_connection():
     tasks = []
 
     try:
-        # Use default secure SSL settings
-        async with aiohttp.ClientSession() as session:
+        # Configure SSL context with proper certificate verification
+        # On some systems (especially macOS with python.org installer),
+        # we need to explicitly use certifi's certificate bundle
+        ssl_context = None
+        try:
+            import certifi
+            import ssl
+            ssl_context = ssl.create_default_context(cafile=certifi.where())
+            log('INFO', f"Using certifi certificate bundle: {certifi.where()}")
+        except ImportError:
+            log('INFO', "Using system default SSL certificates")
+        except Exception as e:
+            log('WARNING', f"Could not configure certifi, using system defaults: {e}")
+
+        connector = aiohttp.TCPConnector(ssl=ssl_context) if ssl_context else aiohttp.TCPConnector()
+        async with aiohttp.ClientSession(connector=connector) as session:
             # Try GET first to detect server type
             log('INFO', f"Probing server type at {target_url}...")
 

@@ -4,6 +4,9 @@ aiohttp>=3.9.0
 # HTTP client library
 requests>=2.31.0
 
+# SSL certificate bundle (required for proper HTTPS verification)
+certifi>=2024.0.0
+
 # Async file I/O
 aiofiles>=23.0.0
 

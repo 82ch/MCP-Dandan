@@ -17,13 +17,31 @@
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Configure (optional)
+# 2. (macOS only) Install SSL certificates
+# Required if using python.org installer
+python3 install_certificates.py
+
+# 3. Configure (optional)
 cp config.conf.example config.conf
 # Edit config.conf to enable/disable engines
 
-# 3. Run the integrated server
+# 4. Run the integrated server
 python server.py
 ```
+
+### SSL Certificate Setup
+
+**macOS users**: If you installed Python from python.org, you may need to install SSL certificates:
+
+```bash
+# Option 1: Use our installer script
+python3 install_certificates.py
+
+# Option 2: Run Python's installer
+open "/Applications/Python 3.XX/Install Certificates.command"
+```
+
+**Linux/Windows users**: SSL certificates should work out of the box. If you encounter SSL errors, the proxy will automatically fall back to using certifi's certificate bundle.
 
 Server will start on `http://127.0.0.1:8282`
 

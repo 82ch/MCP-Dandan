@@ -8,7 +8,7 @@
     "server": "node -e \"const {spawn}=require('child_process');spawn(process.platform==='win32'?'python':'python3',['server.py'],{stdio:'inherit',shell:true})\"",
     "front": "cd front && npm run dev",
     "restore-config": "node -e \"const {spawn}=require('child_process');spawn(process.platform==='win32'?'python':'python3',['./transports/config_finder.py','--restore'],{stdio:'inherit',shell:true})\"",
-    "install-all": "pip install -r requirements.txt && npm install && cd front && npm install",
+    "install-all": "pip install -r requirements.txt && python3 install_certificates.py || true && npm install && cd front && npm install",
     "kill-server:win": "FOR /F \"tokens=5\" %P IN ('netstat -ano ^| findstr :8282 ^| findstr LISTENING') DO taskkill /PID %P /F",
     "kill-server:unix": "lsof -ti:8282 | xargs kill -9 2>/dev/null || true",
     "kill-server": "node -e \"const {execSync}=require('child_process');try{execSync(process.platform==='win32'?'FOR /F \\\"tokens=5\\\" %P IN (\\'netstat -ano ^| findstr :8282 ^| findstr LISTENING\\') DO taskkill /PID %P /F':'lsof -ti:8282 | xargs kill -9',{stdio:'inherit',shell:true})}catch(e){}\""
