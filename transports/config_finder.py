@@ -427,14 +427,13 @@ class ClaudeConfigFinder:
                     # Save original remote server config to separate file
                     remote_servers[server_name] = server_config.copy()
 
-                    # Convert url-based remote server to cli_remote_proxy.py with MCP_TARGET_URL
+                    # Convert url-based remote server to cli_proxy.py with MCP_TARGET_URL
+                    # cli_proxy.py will auto-detect remote mode and delegate to cli_remote_proxy.py
                     del server_config['url']
 
-                    # Build new config for cli_remote_proxy.py
+                    # Build new config for cli_proxy.py (unified entry point)
                     server_config['command'] = self.python_cmd
-                    # Use cli_remote_proxy.py for remote servers
-                    remote_proxy_path = os.path.join(os.path.dirname(self.proxy_path), 'cli_remote_proxy.py')
-                    server_config['args'] = [remote_proxy_path]
+                    server_config['args'] = [self.proxy_path]
 
                     # Add environment variables for remote connection
                     existing_env = server_config.get('env', {})
@@ -453,7 +452,7 @@ class ClaudeConfigFinder:
                     if 'headers' in server_config:
                         del server_config['headers']
 
-                    logger.info(f"[Modified] '{server_name}' - Converted remote URL to cli_remote_proxy.py with MCP_TARGET_URL={current_url}")
+                    logger.info(f"[Modified] '{server_name}' - Converted remote URL to cli_proxy.py with MCP_TARGET_URL={current_url}")
                     modified_count += 1
                     continue
 
