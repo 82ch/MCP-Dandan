@@ -162,14 +162,8 @@ async def handle_sse_connection():
     tasks = []
 
     try:
-        # Create SSL context that doesn't verify certificates
-        import ssl
-        ssl_context = ssl.create_default_context()
-        ssl_context.check_hostname = False
-        ssl_context.verify_mode = ssl.CERT_NONE
-
-        connector = aiohttp.TCPConnector(ssl=ssl_context)
-        async with aiohttp.ClientSession(connector=connector) as session:
+        # Use default secure SSL settings
+        async with aiohttp.ClientSession() as session:
             # Try GET first to detect server type
             log('INFO', f"Probing server type at {target_url}...")
 
