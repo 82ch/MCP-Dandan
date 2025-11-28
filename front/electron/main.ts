@@ -3,6 +3,7 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
 import { execSync } from 'child_process'
+import fs from 'fs'
 import type BetterSqlite3 from 'better-sqlite3'
 
 const require = createRequire(import.meta.url)
@@ -19,6 +20,7 @@ let mainWindow: BrowserWindow | null = null
 let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
 let pendingBlockingData: any = null
+let isRestarting = false
 
 // Disable 82ch proxy and restore config files
 function restoreConfigFiles() {
@@ -178,11 +180,9 @@ app.whenReady().then(async () => {
   })
 })
 
-// 모든 윈도우가 닫히면 앱 종료 (macOS 제외)
+// 모든 윈도우가 닫히면 앱 종료 (macOS 포함)
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
-  }
+  app.quit()
 })
 
 // 앱이 완전히 종료될 때 - 백엔드 서버도 종료
@@ -193,6 +193,12 @@ app.on('will-quit', () => {
   if (wsClient) {
     wsClient.close()
     wsClient = null
+  }
+
+  // Skip cleanup if restarting
+  if (isRestarting) {
+    console.log('[Electron] Restarting - skipping server cleanup')
+    return
   }
 
   // Restore config files BEFORE killing server
@@ -705,26 +711,180 @@ ipcMain.handle('blocking:resize', (_event, width: number, height: number) => {
   }
 })
 
-// Update tool safety manually
-ipcMain.handle('api:tool:update-safety', async (_event, mcpTag: string, toolName: string, safety: number) => {
-  console.log(`[IPC] api:tool:update-safety called: ${mcpTag}/${toolName} -> ${safety}`)
+// Config file path
+function getConfigPath() {
+  const projectRoot = path.join(__dirname, '..', '..')
+  return path.join(projectRoot, 'config.conf')
+}
 
-  try {
-    const response = await fetch('http://127.0.0.1:8282/tools/safety/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        mcp_tag: mcpTag,
-        tool_name: toolName,
-        safety: safety
-      })
-    })
-
-    const result = await response.json()
-    console.log(`[IPC] Safety update result:`, result)
-    return result.success === true
-  } catch (error) {
-    console.error(`[IPC] Failed to update tool safety:`, error)
-    return false
+// Parse config.conf file
+function parseConfig(content: string) {
+  const config: any = {
+    Engine: {
+      tools_poisoning_engine: true,
+      command_injection_engine: true,
+      data_exfiltration_engine: true,
+      file_system_exposure_engine: true,
+      pii_leak_engine: true
+    }
   }
+
+  let currentSection = ''
+  const lines = content.split('\n')
+
+  for (const line of lines) {
+    const trimmed = line.trim()
+
+    // Skip comments and empty lines
+    if (trimmed.startsWith('#') || trimmed === '') continue
+
+    // Section header
+    const sectionMatch = trimmed.match(/^\[(\w+)\]$/)
+    if (sectionMatch) {
+      currentSection = sectionMatch[1]
+      continue
+    }
+
+    // Key-value pair
+    const kvMatch = trimmed.match(/^(\w+)\s*=\s*(.+)$/)
+    if (kvMatch && currentSection) {
+      const key = kvMatch[1]
+      let value: any = kvMatch[2].trim()
+
+      // Parse boolean values
+      if (value === 'True' || value === 'true') {
+        value = true
+      } else if (value === 'False' || value === 'false') {
+        value = false
+      } else if (!isNaN(Number(value))) {
+        value = Number(value)
+      }
+
+      if (config[currentSection]) {
+        config[currentSection][key] = value
+      }
+    }
+  }
+
+  return config
+}
+
+// Generate config.conf content
+function generateConfig(config: any) {
+  const lines: string[] = [
+    '# 82ch Unified Configuration',
+    '# Observer + Engine integrated mode',
+    '',
+    '[Engine]',
+    '# Detection engines to enable',
+    `tools_poisoning_engine = ${config.Engine.tools_poisoning_engine ? 'True' : 'False'}`,
+    `command_injection_engine = ${config.Engine.command_injection_engine ? 'True' : 'False'}`,
+    `data_exfiltration_engine = ${config.Engine.data_exfiltration_engine ? 'True' : 'False'}`,
+    `file_system_exposure_engine = ${config.Engine.file_system_exposure_engine ? 'True' : 'False'}`,
+    `pii_leak_engine = ${config.Engine.pii_leak_engine ? 'True' : 'False'}`
+  ]
+
+  return lines.join('\n')
+}
+
+// Get config
+ipcMain.handle('config:get', () => {
+  console.log(`[IPC] config:get called`)
+  try {
+    const configPath = getConfigPath()
+
+    // Create default config if not exists
+    if (!fs.existsSync(configPath)) {
+      console.log(`[IPC] config.conf not found, creating default`)
+      const defaultConfig = {
+        Engine: {
+          tools_poisoning_engine: true,
+          command_injection_engine: true,
+          data_exfiltration_engine: true,
+          file_system_exposure_engine: true,
+          pii_leak_engine: true
+        }
+      }
+      const content = generateConfig(defaultConfig)
+      fs.writeFileSync(configPath, content, 'utf-8')
+      return defaultConfig
+    }
+
+    const content = fs.readFileSync(configPath, 'utf-8')
+    const config = parseConfig(content)
+    console.log(`[IPC] config:get returning config`)
+    return config
+  } catch (error) {
+    console.error('[IPC] Error reading config:', error)
+    throw error
+  }
+})
+
+// Save config
+ipcMain.handle('config:save', (_event, config: any) => {
+  console.log(`[IPC] config:save called`)
+  try {
+    const configPath = getConfigPath()
+    const content = generateConfig(config)
+    fs.writeFileSync(configPath, content, 'utf-8')
+    console.log(`[IPC] config:save completed`)
+    return true
+  } catch (error) {
+    console.error('[IPC] Error saving config:', error)
+    throw error
+  }
+})
+
+// Get .env file path
+function getEnvPath() {
+  const projectRoot = path.join(__dirname, '..', '..')
+  return path.join(projectRoot, '.env')
+}
+
+// Get env variables
+ipcMain.handle('env:get', () => {
+  console.log(`[IPC] env:get called`)
+  try {
+    const envPath = getEnvPath()
+    if (!fs.existsSync(envPath)) {
+      return { MISTRAL_API_KEY: '' }
+    }
+    const content = fs.readFileSync(envPath, 'utf-8')
+    const env: any = {}
+    const lines = content.split('\n')
+    for (const line of lines) {
+      const match = line.match(/^([^=]+)=(.*)$/)
+      if (match) {
+        env[match[1].trim()] = match[2].trim()
+      }
+    }
+    console.log(`[IPC] env:get returning env`)
+    return env
+  } catch (error) {
+    console.error('[IPC] Error reading env:', error)
+    throw error
+  }
+})
+
+// Save env variables
+ipcMain.handle('env:save', (_event, env: any) => {
+  console.log(`[IPC] env:save called`)
+  try {
+    const envPath = getEnvPath()
+    const lines = Object.entries(env).map(([key, value]) => `${key}=${value}`)
+    fs.writeFileSync(envPath, lines.join('\n'), 'utf-8')
+    console.log(`[IPC] env:save completed`)
+    return true
+  } catch (error) {
+    console.error('[IPC] Error saving env:', error)
+    throw error
+  }
+})
+
+// Restart app
+ipcMain.handle('app:restart', () => {
+  console.log(`[IPC] app:restart called`)
+  isRestarting = true
+  app.relaunch()
+  app.exit(0)
 })

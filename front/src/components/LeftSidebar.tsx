@@ -1,6 +1,7 @@
 import { ChevronLeft, ChevronRight, MessageSquare, Settings, LayoutDashboard, ChevronDown, Clock, AlertTriangle, HelpCircle } from 'lucide-react'
 import { useState } from 'react'
 import type { MCPServer } from '../types'
+import SettingsModal from './SettingsModal'
 
 interface LeftSidebarProps {
   isOpen: boolean
@@ -13,6 +14,7 @@ interface LeftSidebarProps {
 
 function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedServer, onStartTutorial }: LeftSidebarProps) {
   const [isServersExpanded, setIsServersExpanded] = useState<boolean>(true)
+  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false)
 
   return (
     <>
@@ -116,12 +118,21 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
             <HelpCircle size={20} />
             <span className="text-sm">Tutorial</span>
           </button>
-          <button className="w-full flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors">
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            className="w-full flex items-center gap-2 px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+          >
             <Settings size={20} />
             <span className="text-sm">Settings</span>
           </button>
         </div>
       </div>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+      />
     </>
   )
 }

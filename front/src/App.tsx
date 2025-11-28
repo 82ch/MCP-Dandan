@@ -328,6 +328,7 @@ function App() {
             setSelectedServer={setSelectedServer}
             servers={displayServers}
             setSelectedMessageId={setPendingMessageId}
+            isTutorialMode={isTutorialMode}
           />
         </div>
       ) : (

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { AlertTriangle, Shield, FileWarning, Database, UserX, LucideIcon } from 'lucide-react'
-import type { MCPServer, DetectedEvent, ThreatStats, TimelineData, TopServer } from '../types'
+import type { MCPServer, DetectedEvent, ThreatStats, TimelineData } from '../types'
 
 interface ThreatDefinition {
   name: string
@@ -37,7 +37,7 @@ const threatDefinitions: ThreatDefinition[] = [
     borderColor: 'border-yellow-200'
   },
   {
-    name: 'PII Filter',
+    name: 'PII Leak',
     description: 'Personally Identifiable Information (PII) detected in MCP tool requests.',
     icon: UserX,
     color: 'text-blue-600',
@@ -58,17 +58,126 @@ interface DashboardProps {
   setSelectedServer: (server: MCPServer | null) => void
   servers: MCPServer[]
   setSelectedMessageId: (messageId: string | number | null) => void
+  isTutorialMode?: boolean
 }
 
-function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: DashboardProps) {
+// 튜토리얼용 샘플 데이터 생성
+const generateTutorialData = () => {
+  const now = new Date()
+  const tutorialEvents: DetectedEvent[] = [
+    {
+      serverName: 'filesystem-server',
+      threatType: 'Filesystem Exposure',
+      severity: 'high',
+      severityColor: 'bg-red-500',
+      description: 'Attempted to access /etc/passwd',
+      lastSeen: new Date(now.getTime() - 5 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 1,
+      rawEventId: 101
+    },
+    {
+      serverName: 'database-server',
+      threatType: 'Command Injection',
+      severity: 'high',
+      severityColor: 'bg-red-500',
+      description: 'SQL injection pattern detected in query',
+      lastSeen: new Date(now.getTime() - 10 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 2,
+      rawEventId: 102
+    },
+    {
+      serverName: 'api-server',
+      threatType: 'PII Leak',
+      severity: 'mid',
+      severityColor: 'bg-orange-400',
+      description: 'Email address detected in API request',
+      lastSeen: new Date(now.getTime() - 15 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 3,
+      rawEventId: 103
+    },
+    {
+      serverName: 'mcp-tools',
+      threatType: 'Tool Poisoning',
+      severity: 'high',
+      severityColor: 'bg-red-500',
+      description: 'Suspicious tool modification detected',
+      lastSeen: new Date(now.getTime() - 20 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 4,
+      rawEventId: 104
+    },
+    {
+      serverName: 'network-server',
+      threatType: 'Data Exfiltration',
+      severity: 'mid',
+      severityColor: 'bg-orange-400',
+      description: 'Large data transfer to external IP',
+      lastSeen: new Date(now.getTime() - 25 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 5,
+      rawEventId: 105
+    },
+    {
+      serverName: 'filesystem-server',
+      threatType: 'Filesystem Exposure',
+      severity: 'low',
+      severityColor: 'bg-yellow-400',
+      description: 'Access to /tmp directory',
+      lastSeen: new Date(now.getTime() - 30 * 60000).toISOString().slice(0, 19).replace('T', ' '),
+      engineResultId: 6,
+      rawEventId: 106
+    }
+  ]
+
+  const tutorialThreatStats: Record<string, ThreatStats> = {
+    'Tool Poisoning': { detections: 1, affectedServers: 1 },
+    'Command Injection': { detections: 1, affectedServers: 1 },
+    'Filesystem Exposure': { detections: 2, affectedServers: 1 },
+    'PII Leak': { detections: 1, affectedServers: 1 },
+    'Data Exfiltration': { detections: 1, affectedServers: 1 }
+  }
+
+  const tutorialTimelineData: TimelineData[] = [
+    { date: new Date(now.getTime() - 30 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 1 },
+    { date: new Date(now.getTime() - 25 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 1 },
+    { date: new Date(now.getTime() - 20 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 2 },
+    { date: new Date(now.getTime() - 15 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 1 },
+    { date: new Date(now.getTime() - 10 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 3 },
+    { date: new Date(now.getTime() - 5 * 60000).toISOString().slice(0, 16).replace('T', ' '), count: 2 }
+  ]
+
+  const tutorialServerStats = [
+    { name: 'filesystem-server', count: 2 },
+    { name: 'database-server', count: 1 },
+    { name: 'api-server', count: 1 },
+    { name: 'mcp-tools', count: 1 },
+    { name: 'network-server', count: 1 }
+  ]
+
+  return {
+    events: tutorialEvents,
+    stats: tutorialThreatStats,
+    timeline: tutorialTimelineData,
+    servers: tutorialServerStats
+  }
+}
+
+function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutorialMode = false }: DashboardProps) {
   const [detectedEvents, setDetectedEvents] = useState<DetectedEvent[]>([])
-  const [topServers, setTopServers] = useState<TopServer[]>([])
   const [threatStats, setThreatStats] = useState<Record<string, ThreatStats>>({})
   const [timelineData, setTimelineData] = useState<TimelineData[]>([])
+  const [serverStats, setServerStats] = useState<Array<{ name: string; count: number }>>([])
 
   useEffect(() => {
-    fetchDashboardData()
-  }, [])
+    if (isTutorialMode) {
+      // 튜토리얼 모드에서는 샘플 데이터 사용
+      const tutorialData = generateTutorialData()
+      setDetectedEvents(tutorialData.events)
+      setThreatStats(tutorialData.stats)
+      setTimelineData(tutorialData.timeline)
+      setServerStats(tutorialData.servers)
+    } else {
+      fetchDashboardData()
+    }
+  }, [isTutorialMode])
 
   // Subscribe to WebSocket updates for real-time dashboard data
   useEffect(() => {
@@ -116,9 +225,9 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
           } else if (name.includes('filesystemexposure')) {
             threatType = 'Filesystem Exposure'
             console.log('Matched: Filesystem Exposure')
-          } else if (name.includes('pii') || name.includes('filter')) {
-            threatType = 'PII Filter'
-            console.log('Matched: PII Filter')
+          } else if (name.includes('pii') || name.includes('leak')) {
+            threatType = 'PII Leak'
+            console.log('Matched: PII Leak')
           } else if (name.includes('data') || name.includes('exfiltration')) {
             threatType = 'Data Exfiltration'
             console.log('Matched: Data Exfiltration')
@@ -132,19 +241,22 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
           console.log('No engine_name found in result:', result)
         }
 
-        // Determine severity based on severity field or score
-        let severity: 'low' | 'mid' | 'high' = result.severity || 'low'
+        // Use severity from DB directly
+        let severity: 'low' | 'mid' | 'high' = 'low'
         let severityColor = 'bg-yellow-400'
 
-        if (severity.toLowerCase() === 'high' || result.score >= 8) {
-          severity = 'high'
-          severityColor = 'bg-red-500'
-        } else if (severity.toLowerCase() === 'medium' || severity.toLowerCase() === 'mid' || result.score >= 5) {
-          severity = 'mid'
-          severityColor = 'bg-orange-400'
-        } else {
-          severity = 'low'
-          severityColor = 'bg-yellow-400'
+        if (result.severity) {
+          const severityLower = result.severity.toLowerCase()
+          if (severityLower === 'high') {
+            severity = 'high'
+            severityColor = 'bg-red-500'
+          } else if (severityLower === 'medium' || severityLower === 'mid') {
+            severity = 'mid'
+            severityColor = 'bg-orange-400'
+          } else {
+            severity = 'low'
+            severityColor = 'bg-yellow-400'
+          }
         }
 
         // Count threats
@@ -156,16 +268,8 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
         }
         threatAffectedServers[threatType].add(serverName)
 
-        // Parse event data if available
-        let description = result.detail || '—'
-        try {
-          if (result.data) {
-            const eventData = JSON.parse(result.data)
-            description = eventData.message?.params?.name || result.detail || '—'
-          }
-        } catch (e) {
-          // Keep default description
-        }
+        // Use detail from DB directly
+        const description = result.detail || '—'
 
         // Format timestamp
         const timestamp = result.created_at || new Date(result.ts).toISOString()
@@ -182,12 +286,6 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
         })
       })
 
-      // Sort servers by detection count
-      const sortedServers = Object.entries(serverDetectionCount)
-        .sort(([, a], [, b]) => (b as number) - (a as number))
-        .slice(0, 5)
-        .map(([name, count]) => ({ name, count: count as number }))
-
       // Build threat stats
       const stats: Record<string, ThreatStats> = {}
       threatDefinitions.forEach(threat => {
@@ -197,32 +295,48 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
         }
       })
 
-      // Process timeline data (group by date)
+      // Process timeline data (group by minute)
       const timelineMap: Record<string, number> = {}
       engineResults.forEach((result: any) => {
-        // Extract date from timestamp (e.g., "2025-11-07 04:01:18" -> "2025-11-07")
-        let date
+        // Extract timestamp down to the minute (e.g., "2025-11-07 04:01:18" -> "2025-11-07 04:01")
+        let minuteTimestamp
         if (result.created_at) {
-          date = result.created_at.split(' ')[0]
+          // Format: "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DD HH:MM"
+          const parts = result.created_at.split(' ')
+          if (parts.length === 2) {
+            const timeParts = parts[1].split(':')
+            minuteTimestamp = `${parts[0]} ${timeParts[0]}:${timeParts[1]}`
+          }
         } else if (result.ts) {
           const d = new Date(result.ts)
-          date = d.toISOString().split('T')[0]
+          const year = d.getFullYear()
+          const month = String(d.getMonth() + 1).padStart(2, '0')
+          const day = String(d.getDate()).padStart(2, '0')
+          const hours = String(d.getHours()).padStart(2, '0')
+          const minutes = String(d.getMinutes()).padStart(2, '0')
+          minuteTimestamp = `${year}-${month}-${day} ${hours}:${minutes}`
         }
 
-        if (date) {
-          timelineMap[date] = (timelineMap[date] || 0) + 1
+        if (minuteTimestamp) {
+          timelineMap[minuteTimestamp] = (timelineMap[minuteTimestamp] || 0) + 1
         }
       })
 
-      // Convert to array and sort by date
+      // Convert to array and sort by timestamp
       const timeline = Object.entries(timelineMap)
         .sort(([dateA], [dateB]) => dateA.localeCompare(dateB))
         .map(([date, count]) => ({ date, count: count as number }))
 
-      setTopServers(sortedServers)
+      // Build server stats (top 5 servers by detection count)
+      const topServerStats = Object.entries(serverDetectionCount)
+        .sort(([, a], [, b]) => (b as number) - (a as number))
+        .slice(0, 5)
+        .map(([name, count]) => ({ name, count: count as number }))
+
       setDetectedEvents(events)
       setThreatStats(stats)
       setTimelineData(timeline)
+      setServerStats(topServerStats)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     }
@@ -241,153 +355,10 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
     <div id="dashboard-container" className="h-full overflow-auto bg-gray-50 p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
-      {/* Top Section: Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-        {/* Top Affected Servers */}
-        <div className="bg-white rounded-lg shadow p-4" data-tutorial="top-servers">
-          <h2 className="text-base font-semibold text-gray-800 mb-3">Top Affected Servers</h2>
-          {topServers.length === 0 ? (
-            <p className="text-gray-500 text-center py-3 text-sm">No detections found</p>
-          ) : (
-            <div className="flex items-end justify-around gap-3 h-64">
-              {topServers.map((server, index) => {
-                const maxCount = topServers[0]?.count || 1
-                const barHeightPx = Math.max(20, (server.count / maxCount) * 240)
-
-                return (
-                  <div key={index} className="flex flex-col items-center gap-1 flex-1 h-full justify-end">
-                    <div className="text-xs text-gray-600 font-medium">{server.count}</div>
-                    <div
-                      className="w-full rounded-t transition-all duration-300"
-                      style={{ height: `${barHeightPx}px`, backgroundColor: '#D4EDFA' }}
-                    />
-                    <div className="text-xs text-gray-700 text-center wrap-words w-full mt-1">{server.name}</div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
-
-          {/* Time-Series View */}
-          <div className="mt-6 pt-6 border-t border-gray-200">
-            <h3 className="text-base font-semibold text-gray-800 mb-3">Time-Series View</h3>
-            {timelineData.length === 0 ? (
-              <p className="text-gray-500 text-center py-4 text-xs">No timeline data available</p>
-            ) : (
-              <div className="relative h-40">
-                <svg className="w-full h-full" viewBox="0 0 800 160" preserveAspectRatio="none">
-                  {/* Grid lines */}
-                  <line x1="40" y1="10" x2="40" y2="140" stroke="#E5E7EB" strokeWidth="1" />
-                  <line x1="40" y1="140" x2="780" y2="140" stroke="#E5E7EB" strokeWidth="1" />
-
-                  {/* Y-axis labels - only show max value */}
-                  {(() => {
-                    const maxCount = Math.max(...timelineData.map(d => d.count), 1)
-                    return (
-                      <text x="35" y="14" textAnchor="end" fontSize="10" fill="#9CA3AF">
-                        {maxCount}
-                      </text>
-                    )
-                  })()}
-
-                  {/* Line path */}
-                  {(() => {
-                    const maxCount = Math.max(...timelineData.map(d => d.count), 1)
-                    const xStep = 740 / (timelineData.length - 1 || 1)
-
-                    const points = timelineData.map((d, i) => {
-                      const x = 40 + i * xStep
-                      const y = 140 - (d.count / maxCount) * 130
-                      return `${x},${y}`
-                    }).join(' ')
-
-                    return (
-                      <>
-                        {/* Line */}
-                        <polyline
-                          points={points}
-                          fill="none"
-                          stroke="#6366F1"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-
-                        {/* Data points */}
-                        {timelineData.map((d, i) => {
-                          const x = 40 + i * xStep
-                          const y = 140 - (d.count / maxCount) * 130
-                          return (
-                            <circle
-                              key={i}
-                              cx={x}
-                              cy={y}
-                              r="2.5"
-                              fill="#6366F1"
-                            />
-                          )
-                        })}
-                      </>
-                    )
-                  })()}
-
-                  {/* X-axis labels - show only first and last */}
-                  {(() => {
-                    if (timelineData.length === 0) return null
-                    const first = timelineData[0]
-                    const last = timelineData[timelineData.length - 1]
-                    return (
-                      <>
-                        <text x="40" y="153" textAnchor="start" fontSize="9" fill="#9CA3AF">
-                          {first.date.slice(5)}
-                        </text>
-                        <text x="780" y="153" textAnchor="end" fontSize="9" fill="#9CA3AF">
-                          {last.date.slice(5)}
-                        </text>
-                      </>
-                    )
-                  })()}
-                </svg>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Threats */}
-        <div className="bg-white rounded-lg shadow p-6" data-tutorial="threats-panel">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4">Threats</h2>
-          <div className="grid grid-cols-1 gap-3">
-            {threatDefinitions.map((threat) => {
-              const Icon = threat.icon
-              const stats = threatStats[threat.name] || { detections: 0, affectedServers: 0 }
-
-              return (
-                <div
-                  key={threat.name}
-                  className={`border rounded-lg p-4 ${threat.bgColor} ${threat.borderColor}`}
-                >
-                  <div className="flex items-start gap-3">
-                    <Icon className={`${threat.color} shrink-0`} size={20} />
-                    <div className="flex-1 min-w-0">
-                      <h3 className={`font-semibold ${threat.color} text-sm`}>{threat.name}</h3>
-                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{threat.description}</p>
-                      <div className="flex flex-col gap-1 mt-2 text-xs text-gray-700">
-                        <span className="font-bold">Detections: {stats.detections}</span>
-                        <span className="font-bold">Affected Servers: {stats.affectedServers}</span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Detected Events Table */}
-      <div className="bg-white rounded-lg shadow" data-tutorial="detected-table">
+      {/* Detected Events Table - Full Width */}
+      <div className="bg-white rounded-lg shadow mb-6" data-tutorial="detected-table">
         <div className="p-6 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-800">Detected</h2>
+          <h2 className="text-lg font-semibold text-gray-800">Detected Threats</h2>
         </div>
         <div className="overflow-x-auto max-h-96 overflow-y-auto">
           <table className="w-full">
@@ -454,6 +425,387 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId }: Dashboa
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* Bottom Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Threat Categories */}
+        <div className="bg-white rounded-lg shadow p-6" data-tutorial="threat-categories">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Threat Categories</h2>
+          <div className="grid grid-cols-1 gap-3">
+            {threatDefinitions.map((threat) => {
+              const Icon = threat.icon
+              const stats = threatStats[threat.name] || { detections: 0, affectedServers: 0 }
+
+              return (
+                <div
+                  key={threat.name}
+                  className={`border rounded-lg p-4 ${threat.bgColor} ${threat.borderColor}`}
+                >
+                  <div className="flex items-start gap-3">
+                    <Icon className={`${threat.color} shrink-0`} size={20} />
+                    <div className="flex-1 min-w-0">
+                      <h3 className={`font-semibold ${threat.color} text-sm`}>{threat.name}</h3>
+                      <p className="text-xs text-gray-600 mt-1 line-clamp-2">{threat.description}</p>
+                      <div className="flex flex-col gap-1 mt-2 text-xs text-gray-700">
+                        <span className="font-bold">Detections: {stats.detections}</span>
+                        <span className="font-bold">Affected Servers: {stats.affectedServers}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Right Column: Charts stacked vertically */}
+        <div className="flex flex-col gap-6">
+          {/* Detected Threats per Server */}
+          <div className="bg-white rounded-lg shadow p-6" data-tutorial="server-chart">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Detected Threats per Server</h2>
+          {(() => {
+            const totalServerThreats = serverStats.reduce((sum, server) => sum + server.count, 0)
+            const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6']
+
+            return totalServerThreats === 0 ? (
+              <div className="h-64 flex items-center justify-center">
+                <p className="text-gray-500 text-center text-sm">No detections found</p>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center">
+                <svg width="280" height="280" viewBox="0 0 280 280">
+                  {(() => {
+                    const centerX = 140
+                    const centerY = 140
+                    const radius = 100
+                    let currentAngle = -90 // Start from top
+
+                    return (
+                      <>
+                        {serverStats.map((server, index) => {
+                          const angle = (server.count / totalServerThreats) * 360
+
+                          // Special case: if there's only one data point (100%), draw a full circle
+                          if (serverStats.length === 1) {
+                            return (
+                              <circle
+                                key={index}
+                                cx={centerX}
+                                cy={centerY}
+                                r={radius}
+                                fill={colors[index % colors.length]}
+                                opacity="0.9"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                            )
+                          }
+
+                          const startAngle = currentAngle
+                          const endAngle = currentAngle + angle
+
+                          // Convert to radians
+                          const startRad = (startAngle * Math.PI) / 180
+                          const endRad = (endAngle * Math.PI) / 180
+
+                          // Calculate arc points
+                          const x1 = centerX + radius * Math.cos(startRad)
+                          const y1 = centerY + radius * Math.sin(startRad)
+                          const x2 = centerX + radius * Math.cos(endRad)
+                          const y2 = centerY + radius * Math.sin(endRad)
+
+                          const largeArcFlag = angle > 180 ? 1 : 0
+
+                          const pathData = [
+                            `M ${centerX} ${centerY}`,
+                            `L ${x1} ${y1}`,
+                            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                            'Z'
+                          ].join(' ')
+
+                          currentAngle = endAngle
+
+                          return (
+                            <path
+                              key={index}
+                              d={pathData}
+                              fill={colors[index % colors.length]}
+                              opacity="0.9"
+                              stroke="white"
+                              strokeWidth="2"
+                            />
+                          )
+                        })}
+                        {/* Center circle for donut effect */}
+                        <circle cx={centerX} cy={centerY} r="60" fill="white" />
+                        {/* Center text */}
+                        <text x={centerX} y={centerY - 5} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#374151">
+                          {totalServerThreats}
+                        </text>
+                        <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize="12" fill="#6B7280">
+                          Total
+                        </text>
+                      </>
+                    )
+                  })()}
+                </svg>
+                {/* Legend */}
+                <div className="ml-6 flex flex-col gap-2">
+                  {serverStats.map((server, index) => {
+                    const percentage = ((server.count / totalServerThreats) * 100).toFixed(1)
+
+                    return (
+                      <div key={index} className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: colors[index % colors.length] }}
+                        />
+                        <div className="text-xs">
+                          <div className="font-medium text-gray-700 truncate max-w-[120px]" title={server.name}>
+                            {server.name}
+                          </div>
+                          <div className="text-gray-500">
+                            {server.count} ({percentage}%)
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+
+        {/* Detected Threats by Threat Category */}
+        <div className="bg-white rounded-lg shadow p-6" data-tutorial="category-chart">
+          <h2 className="text-lg font-semibold text-gray-800 mb-4">Detected Threats by Threat Category</h2>
+          {(() => {
+            const categoryData = threatDefinitions.map(threat => ({
+              name: threat.name,
+              count: threatStats[threat.name]?.detections || 0,
+              color: threat.color.replace('text-', '#').replace('-600', '')
+            }))
+            const totalThreats = categoryData.reduce((sum, cat) => sum + cat.count, 0)
+
+            // Map threat colors to hex values
+            const colorMap: Record<string, string> = {
+              'text-red-600': '#DC2626',
+              'text-orange-600': '#EA580C',
+              'text-yellow-600': '#CA8A04',
+              'text-blue-600': '#2563EB',
+              'text-purple-600': '#9333EA'
+            }
+
+            return totalThreats === 0 ? (
+              <div className="h-64 flex items-center justify-center">
+                <p className="text-gray-500 text-center text-sm">No detections found</p>
+              </div>
+            ) : (
+              <div className="h-64 flex items-center justify-center">
+                <svg width="280" height="280" viewBox="0 0 280 280">
+                  {(() => {
+                    const centerX = 140
+                    const centerY = 140
+                    const radius = 100
+                    let currentAngle = -90 // Start from top
+
+                    return (
+                      <>
+                        {categoryData.filter(cat => cat.count > 0).map((category, index) => {
+                          const angle = (category.count / totalThreats) * 360
+
+                          // Get color from threat definition
+                          const threatDef = threatDefinitions.find(t => t.name === category.name)
+                          const colorClass = threatDef?.color || 'text-gray-600'
+                          const fillColor = colorMap[colorClass] || '#6B7280'
+
+                          // Special case: if there's only one data point (100%), draw a full circle
+                          const filteredCategories = categoryData.filter(cat => cat.count > 0)
+                          if (filteredCategories.length === 1) {
+                            return (
+                              <circle
+                                key={index}
+                                cx={centerX}
+                                cy={centerY}
+                                r={radius}
+                                fill={fillColor}
+                                opacity="0.9"
+                                stroke="white"
+                                strokeWidth="2"
+                              />
+                            )
+                          }
+
+                          const startAngle = currentAngle
+                          const endAngle = currentAngle + angle
+
+                          // Convert to radians
+                          const startRad = (startAngle * Math.PI) / 180
+                          const endRad = (endAngle * Math.PI) / 180
+
+                          // Calculate arc points
+                          const x1 = centerX + radius * Math.cos(startRad)
+                          const y1 = centerY + radius * Math.sin(startRad)
+                          const x2 = centerX + radius * Math.cos(endRad)
+                          const y2 = centerY + radius * Math.sin(endRad)
+
+                          const largeArcFlag = angle > 180 ? 1 : 0
+
+                          const pathData = [
+                            `M ${centerX} ${centerY}`,
+                            `L ${x1} ${y1}`,
+                            `A ${radius} ${radius} 0 ${largeArcFlag} 1 ${x2} ${y2}`,
+                            'Z'
+                          ].join(' ')
+
+                          currentAngle = endAngle
+
+                          return (
+                            <path
+                              key={index}
+                              d={pathData}
+                              fill={fillColor}
+                              opacity="0.9"
+                              stroke="white"
+                              strokeWidth="2"
+                            />
+                          )
+                        })}
+                        {/* Center circle for donut effect */}
+                        <circle cx={centerX} cy={centerY} r="60" fill="white" />
+                        {/* Center text */}
+                        <text x={centerX} y={centerY - 5} textAnchor="middle" fontSize="20" fontWeight="bold" fill="#374151">
+                          {totalThreats}
+                        </text>
+                        <text x={centerX} y={centerY + 15} textAnchor="middle" fontSize="12" fill="#6B7280">
+                          Total
+                        </text>
+                      </>
+                    )
+                  })()}
+                </svg>
+                {/* Legend */}
+                <div className="ml-6 flex flex-col gap-2">
+                  {categoryData.filter(cat => cat.count > 0).map((category, index) => {
+                    const percentage = ((category.count / totalThreats) * 100).toFixed(1)
+                    const threatDef = threatDefinitions.find(t => t.name === category.name)
+                    const colorClass = threatDef?.color || 'text-gray-600'
+                    const fillColor = colorMap[colorClass] || '#6B7280'
+
+                    return (
+                      <div key={index} className="flex items-center gap-2">
+                        <div
+                          className="w-3 h-3 rounded-sm"
+                          style={{ backgroundColor: fillColor }}
+                        />
+                        <div className="text-xs">
+                          <div className="font-medium text-gray-700 truncate max-w-[120px]" title={category.name}>
+                            {category.name}
+                          </div>
+                          <div className="text-gray-500">
+                            {category.count} ({percentage}%)
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })()}
+        </div>
+        </div>
+      </div>
+
+      {/* Time-Series View - Full Width */}
+      <div className="bg-white rounded-lg shadow p-6 mt-6" data-tutorial="timeline">
+        <h2 className="text-lg font-semibold text-gray-800 mb-4">Time-Series View</h2>
+        {timelineData.length === 0 ? (
+          <p className="text-gray-500 text-center py-4 text-sm">No timeline data available</p>
+        ) : (
+          <div className="relative h-48">
+            <svg className="w-full h-full" viewBox="0 0 1200 200" preserveAspectRatio="none">
+              {/* Grid lines */}
+              <line x1="40" y1="10" x2="40" y2="170" stroke="#E5E7EB" strokeWidth="1" />
+              <line x1="40" y1="170" x2="1180" y2="170" stroke="#E5E7EB" strokeWidth="1" />
+
+              {/* Y-axis labels - only show max value */}
+              {(() => {
+                const maxCount = Math.max(...timelineData.map(d => d.count), 1)
+                return (
+                  <text x="35" y="14" textAnchor="end" fontSize="12" fill="#9CA3AF">
+                    {maxCount}
+                  </text>
+                )
+              })()}
+
+              {/* Line path */}
+              {(() => {
+                const maxCount = Math.max(...timelineData.map(d => d.count), 1)
+                const xStep = 1140 / (timelineData.length - 1 || 1)
+
+                const points = timelineData.map((d, i) => {
+                  const x = 40 + i * xStep
+                  const y = 170 - (d.count / maxCount) * 160
+                  return `${x},${y}`
+                }).join(' ')
+
+                return (
+                  <>
+                    {/* Line */}
+                    <polyline
+                      points={points}
+                      fill="none"
+                      stroke="#6366F1"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+
+                    {/* Data points */}
+                    {timelineData.map((d, i) => {
+                      const x = 40 + i * xStep
+                      const y = 170 - (d.count / maxCount) * 160
+                      return (
+                        <circle
+                          key={i}
+                          cx={x}
+                          cy={y}
+                          r="3"
+                          fill="#6366F1"
+                        />
+                      )
+                    })}
+                  </>
+                )
+              })()}
+
+              {/* X-axis labels - show only first and last */}
+              {(() => {
+                if (timelineData.length === 0) return null
+                const first = timelineData[0]
+                const last = timelineData[timelineData.length - 1]
+                // Extract time portion (HH:MM) from "YYYY-MM-DD HH:MM"
+                const formatTime = (timestamp: string) => {
+                  const parts = timestamp.split(' ')
+                  return parts.length === 2 ? parts[1] : timestamp
+                }
+                return (
+                  <>
+                    <text x="40" y="188" textAnchor="start" fontSize="11" fill="#9CA3AF">
+                      {formatTime(first.date)}
+                    </text>
+                    <text x="1180" y="188" textAnchor="end" fontSize="11" fill="#9CA3AF">
+                      {formatTime(last.date)}
+                    </text>
+                  </>
+                )
+              })()}
+            </svg>
+          </div>
+        )}
       </div>
     </div>
   )

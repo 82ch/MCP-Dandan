@@ -16,6 +16,11 @@ interface ElectronAPI {
   getBlockingData: () => Promise<any>
   closeBlockingWindow: () => Promise<void>
   resizeBlockingWindow: (width: number, height: number) => Promise<void>
+  getConfig: () => Promise<any>
+  saveConfig: (config: any) => Promise<boolean>
+  getEnv: () => Promise<any>
+  saveEnv: (env: any) => Promise<boolean>
+  restartApp: () => Promise<void>
   platform: string
   versions: {
     node: string

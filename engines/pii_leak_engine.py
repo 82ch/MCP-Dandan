@@ -135,12 +135,12 @@ rule Medical_PHI
 """
 
 
-class PIIFilterEngine(BaseEngine):
+class PIILeakEngine(BaseEngine):
 
     def __init__(self, db):
         super().__init__(
             db=db,
-            name='PIIFilterEngine',
+            name='PIILeakEngine',
             event_types=['MCP'],
             producers=['local', 'remote']
         )
@@ -148,11 +148,11 @@ class PIIFilterEngine(BaseEngine):
         # Load YARA rules from embedded string
         try:
             self.rules = yara.compile(source=YARA_RULES)
-            safe_print(f"[PIIFilterEngine] YARA rules loaded successfully (embedded)")
+            safe_print(f"[PIILeakEngine] YARA rules loaded successfully (embedded)")
         except Exception as e:
-            safe_print(f"[PIIFilterEngine] Failed to load YARA rules: {e}")
+            safe_print(f"[PIILeakEngine] Failed to load YARA rules: {e}")
             import traceback
-            safe_print(f"[PIIFilterEngine] Traceback: {traceback.format_exc()}")
+            safe_print(f"[PIILeakEngine] Traceback: {traceback.format_exc()}")
             self.rules = None
 
     def should_process(self, data: dict) -> bool:
@@ -172,26 +172,26 @@ class PIIFilterEngine(BaseEngine):
         return False
 
     def process(self, data: Any) -> Any:
-        safe_print(f"[PIIFilterEngine] Processing event")
+        safe_print(f"[PIILeakEngine] Processing event")
 
         if not self.rules:
-            safe_print(f"[PIIFilterEngine] YARA rules not loaded, skipping\n")
+            safe_print(f"[PIILeakEngine] YARA rules not loaded, skipping\n")
             return None
 
         # Extract text from tools/call request
         analysis_text = self._extract_analysis_text(data)
 
         if not analysis_text:
-            safe_print(f"[PIIFilterEngine] No text to analyze\n")
+            safe_print(f"[PIILeakEngine] No text to analyze\n")
             return None
 
-        safe_print(f"[PIIFilterEngine] Analyzing: {analysis_text[:200]}")
+        safe_print(f"[PIILeakEngine] Analyzing: {analysis_text[:200]}")
 
         # Detect PII using YARA
         pii_matches = self._detect_pii(analysis_text)
 
         if not pii_matches:
-            safe_print(f"[PIIFilterEngine] No PII detected\n")
+            safe_print(f"[PIILeakEngine] No PII detected\n")
             return None
 
         # Calculate severity based on matches
@@ -223,7 +223,7 @@ class PIIFilterEngine(BaseEngine):
             }
         }
 
-        safe_print(f"[PIIFilterEngine] PII detected! severity={severity}, score={score}, matches={len(pii_matches)}\n")
+        safe_print(f"[PIILeakEngine] PII detected! severity={severity}, score={score}, matches={len(pii_matches)}\n")
         return result
 
     def _detect_pii(self, text: str) -> list[dict]:
@@ -247,7 +247,7 @@ class PIIFilterEngine(BaseEngine):
 
             return findings
         except Exception as e:
-            safe_print(f"[PIIFilterEngine] Error during YARA matching: {e}")
+            safe_print(f"[PIILeakEngine] Error during YARA matching: {e}")
             return []
 
     def _extract_analysis_text(self, data: dict) -> str:

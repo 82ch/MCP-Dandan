@@ -116,7 +116,7 @@ from event_hub import EventHub
 from engines.tools_poisoning_engine import ToolsPoisoningEngine
 from engines.command_injection_engine import CommandInjectionEngine
 from engines.file_system_exposure_engine import FileSystemExposureEngine
-from engines.pii_filter_engine import PIIFilterEngine
+from engines.pii_leak_engine import PIILeakEngine
 from engines.data_exfiltration_engine import DataExfiltrationEngine
 
 # WebSocket handler
@@ -151,13 +151,13 @@ def setup_engines(db: Database) -> list:
         except Exception as e:
             safe_print(f"[Engine] Failed to initialize FileSystemExposureEngine: {e}")
 
-    # PII Filter Engine
-    if config.get_pii_filter_enabled():
+    # PII Leak Engine
+    if config.get_pii_leak_enabled():
         try:
-            engine = PIIFilterEngine(db)
+            engine = PIILeakEngine(db)
             engines.append(engine)
         except Exception as e:
-            safe_print(f"[Engine] Failed to initialize PIIFilterEngine: {e}")
+            safe_print(f"[Engine] Failed to initialize PIILeakEngine: {e}")
     # Data Exfiltration Engine
     if config.get_data_exfiltration_enabled():
         try:

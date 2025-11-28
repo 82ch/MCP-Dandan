@@ -27,27 +27,47 @@ class Config:
 
         # Engine settings (from config file)
         self.config = configparser.ConfigParser()
+        self.config_file = config_file
         if os.path.exists(config_file):
             self.config.read(config_file, encoding='utf-8')
         else:
-            safe_print(f'[Config] Warning: {config_file} not found, using defaults')
+            safe_print(f'[Config] {config_file} not found, creating default config')
+            self._create_default_config(config_file)
+            self.config.read(config_file, encoding='utf-8')
+
+    def _create_default_config(self, config_file: str):
+        """Create default config.conf file."""
+        default_content = """# 82ch Unified Configuration
+# Observer + Engine integrated mode
+
+[Engine]
+# Detection engines to enable
+tools_poisoning_engine = True
+command_injection_engine = True
+data_exfiltration_engine = True
+file_system_exposure_engine = True
+pii_leak_engine = True
+"""
+        with open(config_file, 'w', encoding='utf-8') as f:
+            f.write(default_content)
+        safe_print(f'[Config] Created default config at {config_file}')
 
     # ========== Engine Settings ==========
 
     def get_tools_poisoning_enabled(self) -> bool:
-        return self.config.getboolean('Engine', 'tools_poisoning_enabled', fallback=True)
+        return self.config.getboolean('Engine', 'tools_poisoning_engine', fallback=True)
 
     def get_command_injection_enabled(self) -> bool:
-        return self.config.getboolean('Engine', 'command_injection_enabled', fallback=True)
+        return self.config.getboolean('Engine', 'command_injection_engine', fallback=True)
 
     def get_file_system_exposure_enabled(self) -> bool:
-        return self.config.getboolean('Engine', 'file_system_exposure_enabled', fallback=True)
+        return self.config.getboolean('Engine', 'file_system_exposure_engine', fallback=True)
 
-    def get_pii_filter_enabled(self) -> bool:
-        return self.config.getboolean('Engine', 'pii_filter_engine_enabled', fallback=True)
+    def get_pii_leak_enabled(self) -> bool:
+        return self.config.getboolean('Engine', 'pii_leak_engine', fallback=True)
 
     def get_data_exfiltration_enabled(self) -> bool:
-        return self.config.getboolean('Engine', 'data_exfiltration_enabled', fallback=True)
+        return self.config.getboolean('Engine', 'data_exfiltration_engine', fallback=True)
 
     def get_dangerous_tool_filter_enabled(self) -> bool:
         """
