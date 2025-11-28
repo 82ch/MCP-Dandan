@@ -88,7 +88,15 @@ declare global {
       getEngineResults: () => Promise<any[]>
       getEngineResultsByEvent: (rawEventId: number) => Promise<any[]>
       onWebSocketUpdate: (callback: (message: any) => void) => () => void
-      updateToolSafety: (mcpTag: string, toolName: string, safety: number) => Promise<boolean>
+      sendBlockingDecision: (requestId: string, decision: 'allow' | 'block') => Promise<void>
+      getBlockingData: () => Promise<any>
+      closeBlockingWindow: () => Promise<void>
+      resizeBlockingWindow: (width: number, height: number) => Promise<void>
+      getConfig: () => Promise<any>
+      saveConfig: (config: any) => Promise<boolean>
+      getEnv: () => Promise<any>
+      saveEnv: (env: any) => Promise<boolean>
+      restartApp: () => Promise<void>
       platform: string
       versions: {
         node: string
@@ -98,3 +106,5 @@ declare global {
     }
   }
 }
+
+export {}
