@@ -8,12 +8,6 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && electron-builder",
-    "build:win": "npm run build -- --win",
-    "build:mac": "npm run build -- --mac",
-    "build:linux": "npm run build -- --linux",
-    "lint": "eslint .",
-    "preview": "vite preview",
     "postinstall": "npm run rebuild-native",
     "rebuild-native": "electron-rebuild -f -w better-sqlite3"
   },
@@ -22,11 +16,9 @@
     "lucide-react": "^0.552.0",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
-    "sql.js": "^1.13.0",
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.36.0",
     "@tailwindcss/postcss": "^4.1.16",
     "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^24.10.1",
@@ -34,50 +26,12 @@
     "@types/react-dom": "^19.1.9",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.0.4",
-    "concurrently": "^9.2.1",
-    "cross-env": "^10.1.0",
     "electron": "^33.2.1",
-    "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
-    "esbuild": "^0.27.0",
-    "eslint": "^9.36.0",
-    "eslint-plugin-react-hooks": "^5.2.0",
-    "eslint-plugin-react-refresh": "^0.4.22",
-    "globals": "^16.4.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",
     "vite-plugin-electron": "^0.29.0",
-    "vite-plugin-electron-renderer": "^0.14.6",
-    "wait-on": "^9.0.3"
-  },
-  "build": {
-    "appId": "com.82ch.desktop",
-    "productName": "82ch Desktop",
-    "directories": {
-      "output": "release"
-    },
-    "files": [
-      "dist/**/*",
-      "dist-electron/**/*"
-    ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "public/icon.ico"
-    },
-    "mac": {
-      "target": [
-        "dmg"
-      ],
-      "icon": "public/icon.icns"
-    },
-    "linux": {
-      "target": [
-        "AppImage"
-      ],
-      "icon": "public/icon.png"
-    }
+    "vite-plugin-electron-renderer": "^0.14.6"
   }
 }
