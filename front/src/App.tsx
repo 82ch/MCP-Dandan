@@ -308,7 +308,7 @@ function App() {
       {/* Main Content Area */}
       {selectedServer === null ? (
         /* Dashboard View */
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <Dashboard
             setSelectedServer={setSelectedServer}
             servers={displayServers}

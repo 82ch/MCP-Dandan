@@ -352,7 +352,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
   }
 
   return (
-    <div id="dashboard-container" className="h-full overflow-auto bg-gray-50 p-6">
+    <div id="dashboard-container" className="h-full overflow-y-auto overflow-x-hidden bg-gray-50 p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
 
       {/* Detected Events Table - Full Width */}
@@ -428,9 +428,9 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
       </div>
 
       {/* Bottom Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 min-w-0">
         {/* Threat Categories */}
-        <div className="bg-white rounded-lg shadow p-6" data-tutorial="threat-categories">
+        <div className="bg-white rounded-lg shadow p-6 min-w-0" data-tutorial="threat-categories">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Threat Categories</h2>
           <div className="grid grid-cols-1 gap-3">
             {threatDefinitions.map((threat) => {
@@ -460,9 +460,9 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
         </div>
 
         {/* Right Column: Charts stacked vertically */}
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-6 min-w-0">
           {/* Detected Threats per Server */}
-          <div className="bg-white rounded-lg shadow p-6" data-tutorial="server-chart">
+          <div className="bg-white rounded-lg shadow p-6 min-w-0" data-tutorial="server-chart">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Detected Threats per Server</h2>
           {(() => {
             const totalServerThreats = serverStats.reduce((sum, server) => sum + server.count, 0)
@@ -579,7 +579,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
         </div>
 
         {/* Detected Threats by Threat Category */}
-        <div className="bg-white rounded-lg shadow p-6" data-tutorial="category-chart">
+        <div className="bg-white rounded-lg shadow p-6 min-w-0" data-tutorial="category-chart">
           <h2 className="text-lg font-semibold text-gray-800 mb-4">Detected Threats by Threat Category</h2>
           {(() => {
             const categoryData = threatDefinitions.map(threat => ({
@@ -720,7 +720,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
       </div>
 
       {/* Time-Series View - Full Width */}
-      <div className="bg-white rounded-lg shadow p-6 mt-6" data-tutorial="timeline">
+      <div className="bg-white rounded-lg shadow p-6 mt-6 min-w-0" data-tutorial="timeline">
         <h2 className="text-lg font-semibold text-gray-800 mb-4">Time-Series View</h2>
         {timelineData.length === 0 ? (
           <p className="text-gray-500 text-center py-4 text-sm">No timeline data available</p>
