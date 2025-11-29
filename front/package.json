@@ -54,7 +54,9 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "public/**/*",
+      "icons/**/*"
     ],
     "win": {
       "target": [
@@ -81,7 +83,9 @@
         "AppImage",
         "deb"
       ],
-      "category": "Development"
+      "category": "Development",
+      "icon": "icons",
+      "executableName": "82ch-desktop"
     },
     "extraResources": [
       {
