@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
-import { execSync } from 'child_process'
+import { execSync, spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
 import type BetterSqlite3 from 'better-sqlite3'
 
@@ -21,6 +21,7 @@ let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
 let pendingBlockingData: any = null
 let isRestarting = false
+let backendProcess: ChildProcess | null = null
 
 // Disable 82ch proxy and restore config files
 function restoreConfigFiles() {
@@ -47,8 +48,110 @@ function restoreConfigFiles() {
   }
 }
 
+// Start backend server in production mode
+function startBackendServer() {
+  // Only start backend in production (packaged app)
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log('[Backend] Running in dev mode - backend should be started externally')
+    return
+  }
+
+  try {
+    console.log('[Backend] Starting Python backend server...')
+
+    // Get resource paths
+    const isPackaged = app.isPackaged
+    let serverPath: string
+    let workingDir: string
+    let dataDir: string
+
+    if (isPackaged) {
+      // In production, resources are in app.asar.unpacked or extraResources
+      const resourcesPath = process.resourcesPath
+      serverPath = path.join(resourcesPath, 'server.py')
+      workingDir = resourcesPath
+      dataDir = path.join(app.getPath('userData'), 'data')
+    } else {
+      // In development
+      const projectRoot = path.join(__dirname, '..', '..')
+      serverPath = path.join(projectRoot, 'server.py')
+      workingDir = projectRoot
+      dataDir = path.join(projectRoot, 'data')
+    }
+
+    console.log('[Backend] Server path:', serverPath)
+    console.log('[Backend] Working dir:', workingDir)
+    console.log('[Backend] Data dir:', dataDir)
+
+    // Ensure data directory exists
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+      console.log('[Backend] Created data directory:', dataDir)
+    }
+
+    // Set DB_PATH environment variable
+    const dbPath = path.join(dataDir, 'mcp_observer.db')
+    console.log('[Backend] DB path:', dbPath)
+
+    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+
+    // Start backend process
+    backendProcess = spawn(pythonCmd, [serverPath], {
+      cwd: workingDir,
+      env: {
+        ...process.env,
+        DB_PATH: dbPath,
+        PYTHONUNBUFFERED: '1'  // Ensure real-time output
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    // Log stdout
+    backendProcess.stdout?.on('data', (data) => {
+      const output = data.toString().trim()
+      if (output) {
+        console.log(`[Backend] ${output}`)
+      }
+    })
+
+    // Log stderr
+    backendProcess.stderr?.on('data', (data) => {
+      const output = data.toString().trim()
+      if (output) {
+        console.error(`[Backend Error] ${output}`)
+      }
+    })
+
+    backendProcess.on('error', (error) => {
+      console.error('[Backend] Failed to start:', error)
+    })
+
+    backendProcess.on('exit', (code, signal) => {
+      console.log(`[Backend] Process exited with code ${code} and signal ${signal}`)
+      backendProcess = null
+    })
+
+    console.log('[Backend] Server started with PID:', backendProcess.pid)
+  } catch (error) {
+    console.error('[Backend] Error starting server:', error)
+  }
+}
+
 // Kill backend server function
 function killBackendServer() {
+  // Kill spawned process if exists
+  if (backendProcess) {
+    console.log('[Backend] Terminating backend process...')
+    try {
+      backendProcess.kill('SIGTERM')
+      backendProcess = null
+      console.log('[Backend] Process terminated')
+    } catch (error) {
+      console.error('[Backend] Error terminating process:', error)
+    }
+  }
+
+  // Also kill any process on port 8282 as fallback
   try {
     console.log('[Electron] Killing backend server on port 8282...')
     if (process.platform === 'win32') {
@@ -157,6 +260,9 @@ function createBlockingWindow(blockingData: any) {
 
 // 앱이 준비되면 윈도우 생성
 app.whenReady().then(async () => {
+  // Start backend server in production mode
+  startBackendServer()
+
   // Wait for backend server to be ready before initializing database
   const backendReady = await waitForBackend()
 

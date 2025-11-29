@@ -173,8 +173,14 @@ async def initialize_engine_system():
     safe_print("Initializing Engine System")
     safe_print("=" * 80)
 
-    # Initialize database
-    db = Database()
+    # Initialize database with DB_PATH from environment variable if available
+    db_path = os.environ.get('DB_PATH')
+    if db_path:
+        safe_print(f"Using DB_PATH from environment: {db_path}")
+        db = Database(db_path=db_path)
+    else:
+        safe_print("Using default database path")
+        db = Database()
     await db.connect()
 
     # Setup engines
@@ -454,7 +460,12 @@ async def on_startup(app):
         safe_print(f"[Server] Warning: Failed to initialize engines: {e}")
         safe_print("[Server] Continuing in Observer-only mode...")
         # Create minimal database without engines
-        db = Database()
+        db_path = os.environ.get('DB_PATH')
+        if db_path:
+            safe_print(f"Using DB_PATH from environment: {db_path}")
+            db = Database(db_path=db_path)
+        else:
+            db = Database()
         await db.connect()
         app['db'] = db
 

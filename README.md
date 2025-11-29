@@ -13,6 +13,24 @@
 
 ## Quick Start
 
+### Desktop Application (Recommended)
+
+**One-Line Installation (Linux)**:
+```bash
+curl -fsSL https://raw.githubusercontent.com/your-org/82ch/main/install.sh | sudo bash
+```
+
+**Build and Install Locally**:
+```bash
+./build-linux.sh    # Build for Linux
+./quick-install.sh  # Install
+82ch-desktop        # Run
+```
+
+See [BUILD.md](BUILD.md) for detailed desktop build instructions.
+
+### Command Line Server
+
 ```bash
 # 1. Install dependencies
 pip install -r requirements.txt
@@ -118,6 +136,12 @@ All engines run in parallel for each event:
 
 ```
 82ch/
+├── front/                       # Desktop Application (Electron + React)
+│   ├── electron/                # Electron main process
+│   │   └── main.ts              # Backend launcher & DB management
+│   ├── src/                     # React UI components
+│   └── release/                 # Built packages (AppImage, DEB)
+│
 ├── server.py                    # Main entry point (Observer + Engine)
 ├── cli_proxy.py                 # STDIO proxy wrapper
 │
@@ -136,21 +160,25 @@ All engines run in parallel for each event:
 │
 ├── verification.py              # Security verification + EventHub integration
 ├── event_hub.py                 # Event routing hub
-├── database.py                  # SQLite database manager
+├── database.py                  # SQLite database manager (supports DB_PATH env var)
 ├── config.py                    # Unified configuration
 ├── state.py                     # Global state management
 │
 ├── schema.sql                   # Database schema
 ├── query_db.py                  # Database query utilities
 │
+├── build-linux.sh               # Build desktop app for Linux
+├── quick-install.sh             # Quick installation script
+├── install.sh                   # One-line installer (for releases)
+├── BUILD.md                     # Detailed build documentation
+│
 ├── config.conf.example          # Example configuration
 ├── requirements.txt             # Python dependencies
-├── setup.ps1                    # PowerShell setup script
 ├── Dockerfile
 ├── docker-compose.yml
 │
 └── data/                        # Database files (auto-created)
-    └── mcp_observer.db
+    └── mcp_observer.db          # Dev mode DB (production uses user data dir)
 ```
 
 ## Configuration
