@@ -399,22 +399,23 @@ function connectWebSocket() {
 
 function initializeDatabase() {
   try {
-    // Use DB_PATH from environment variable or default path
-    // In development: front/../data/mcp_observer.db
-    // In production: can be set via DB_PATH env var
+    // Determine DB path based on packaged vs development mode
     let dbPath: string
-    if (process.env.DB_PATH) {
-      dbPath = process.env.DB_PATH
+    const isPackaged = app.isPackaged
+
+    if (isPackaged) {
+      // In production, use the same path as the backend server
+      const dataDir = path.join(app.getPath('userData'), 'data')
+      dbPath = path.join(dataDir, 'mcp_observer.db')
     } else {
-      // Default: go up one directory from electron folder to project root
+      // In development, use project root data directory
       const projectRoot = path.join(__dirname, '..', '..')
       dbPath = path.join(projectRoot, 'data', 'mcp_observer.db')
     }
 
     console.log(`[DB] Initializing database...`)
     console.log(`[DB] Database path: ${dbPath}`)
-    console.log(`[DB] __dirname: ${__dirname}`)
-    console.log(`[DB] app.getAppPath(): ${app.getAppPath()}`)
+    console.log(`[DB] Packaged mode: ${isPackaged}`)
 
     db = new Database(dbPath, {
       readonly: true,
