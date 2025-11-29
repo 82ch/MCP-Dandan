@@ -68,34 +68,17 @@
       "category": "Development"
     },
     "extraResources": [
-      {
-        "from": "../server.py",
-        "to": "server.py"
-      },
-      {
-        "from": "../config.py",
-        "to": "config.py"
-      },
-      {
-        "from": "../database.py",
-        "to": "database.py"
-      },
-      {
-        "from": "../state.py",
-        "to": "state.py"
-      },
-      {
-        "from": "../event_hub.py",
-        "to": "event_hub.py"
-      },
-      {
-        "from": "../verification.py",
-        "to": "verification.py"
-      },
-      {
-        "from": "../websocket_handler.py",
-        "to": "websocket_handler.py"
-      },
+      "../server.py",
+      "../cli_proxy.py",
+      "../cli_remote_proxy.py",
+      "../config.py",
+      "../database.py",
+      "../state.py",
+      "../event_hub.py",
+      "../verification.py",
+      "../websocket_handler.py",
+      "../schema.sql",
+      "../requirements.txt",
       {
         "from": "../utils",
         "to": "utils"
@@ -107,10 +90,6 @@
       {
         "from": "../transports",
         "to": "transports"
-      },
-      {
-        "from": "../requirements.txt",
-        "to": "requirements.txt"
       }
     ]
   }
