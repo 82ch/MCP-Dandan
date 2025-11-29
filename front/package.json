@@ -45,8 +45,7 @@
     "appId": "com.82ch.desktop",
     "productName": "82ch Desktop",
     "directories": {
-      "output": "release",
-      "buildResources": "build-resources"
+      "output": "release"
     },
     "files": [
       "dist/**/*",
