@@ -73,6 +73,38 @@
         "to": "server.py"
       },
       {
+        "from": "../config.py",
+        "to": "config.py"
+      },
+      {
+        "from": "../database.py",
+        "to": "database.py"
+      },
+      {
+        "from": "../state.py",
+        "to": "state.py"
+      },
+      {
+        "from": "../event_hub.py",
+        "to": "event_hub.py"
+      },
+      {
+        "from": "../verification.py",
+        "to": "verification.py"
+      },
+      {
+        "from": "../websocket_handler.py",
+        "to": "websocket_handler.py"
+      },
+      {
+        "from": "../utils",
+        "to": "utils"
+      },
+      {
+        "from": "../engines",
+        "to": "engines"
+      },
+      {
         "from": "../transports",
         "to": "transports"
       },
