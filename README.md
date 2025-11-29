@@ -5,6 +5,12 @@
 </p>
 <p align="center">MCP-DANDAN</p>
 
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
+  <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python">
+  <img src="https://img.shields.io/badge/electron-33+-green.svg" alt="Electron">
+</p>
+
 ## Overview
 
 MCP-DANDAN is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
