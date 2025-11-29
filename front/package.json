@@ -3,7 +3,11 @@
   "private": true,
   "version": "1.0.0",
   "description": "82ch Desktop Application",
-  "author": "82ch Team",
+  "author": {
+    "name": "82ch Team",
+    "email": "wlsklemon@naver.com"
+  },
+  "homepage": "https://github.com/82ch",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
