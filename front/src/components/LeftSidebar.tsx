@@ -18,7 +18,7 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
 
   return (
     <>
-      {/* Toggle Button */}
+      {/* Toggle Button - 항상 표시 */}
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="fixed top-4 left-4 z-50 p-2 bg-white rounded-lg shadow-md hover:bg-gray-100 transition-colors"
@@ -26,11 +26,21 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
         {isOpen ? <ChevronLeft size={20} /> : <ChevronRight size={20} />}
       </button>
 
+      {/* Overlay for mobile - 사이드바가 열렸을 때 배경 클릭하면 닫힘 */}
+      {isOpen && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-30 md:hidden"
+          onClick={() => setIsOpen(false)}
+        />
+      )}
+
       {/* Sidebar */}
       <div
         className={`bg-white border-r border-gray-300 transition-all duration-300 flex flex-col ${
           isOpen ? 'w-64' : 'w-0'
-        } overflow-hidden`}
+        } overflow-hidden shrink-0 relative z-40 md:relative md:z-auto ${
+          isOpen ? 'md:static fixed left-0 top-0 bottom-0' : ''
+        }`}
       >
         {/* Dashboard Button */}
         <div className="p-4 border-b border-gray-200 mt-12">
