@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "82ch Desktop Application",
+  "license": "MIT",
   "author": "82ch Team",
   "type": "module",
   "main": "dist-electron/main.js",
