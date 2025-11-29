@@ -127,14 +127,23 @@ npm run dev
 현재 빌드 설정은 Python 서버 파일들을 `extraResources`로 포함하도록 구성되어 있습니다.
 애플리케이션 실행 시 Python이 시스템에 설치되어 있어야 합니다.
 
-### 데이터베이스 경로
+### 데이터베이스 및 설정 파일 경로
 
-프로덕션 모드에서는 사용자 데이터 디렉토리에 데이터베이스가 생성됩니다:
-- **Linux**: `~/.config/82ch Desktop/data/mcp_observer.db`
-- **Windows**: `%APPDATA%\82ch Desktop\data\mcp_observer.db`
-- **macOS**: `~/Library/Application Support/82ch Desktop/data/mcp_observer.db`
+프로덕션 모드에서는 사용자 데이터 디렉토리에 데이터베이스와 설정 파일이 생성됩니다:
 
-개발 모드에서는 프로젝트 루트의 `data/mcp_observer.db`를 사용합니다.
+**Linux**:
+- DB: `~/.config/82ch Desktop/data/mcp_observer.db`
+- Config: `~/.config/82ch Desktop/data/config.conf`
+
+**Windows**:
+- DB: `%APPDATA%\82ch Desktop\data\mcp_observer.db`
+- Config: `%APPDATA%\82ch Desktop\data\config.conf`
+
+**macOS**:
+- DB: `~/Library/Application Support/82ch Desktop/data/mcp_observer.db`
+- Config: `~/Library/Application Support/82ch Desktop/data/config.conf`
+
+개발 모드에서는 프로젝트 루트의 `data/mcp_observer.db`와 `config.conf`를 사용합니다.
 
 ### 백엔드 로그 확인
 
