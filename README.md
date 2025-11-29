@@ -137,3 +137,7 @@ https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 - **Settings Panel**: Configure detection engines and system behavior
 - **Chat Panel**: Interact with the system and view logs
 
+
+https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067
+
+
