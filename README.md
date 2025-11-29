@@ -15,6 +15,10 @@
 
 MCP-DANDAN is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
 
+
+https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
+
+
 ## Features
 
 - **Real-time MCP Traffic Monitoring**: Intercepts and analyzes MCP communications
@@ -119,7 +123,11 @@ Uses semantic analysis to detect misuse of MCP tools:
 - Auto-categorizes severity: none/low/medium/high
 
 ### Mistral API Key
-<p align="center"><img width="536" height="555" alt="image" src="https://github.com/user-attachments/assets/625991de-7942-497d-96bc-a49bba6572ae" /></p>
+<p align="center">
+
+https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
+
+</p>
 <p align="center">Input your MISTRAL_API_KEY for Tool Poisoning Engine</p>
 
 ## Desktop UI Features
