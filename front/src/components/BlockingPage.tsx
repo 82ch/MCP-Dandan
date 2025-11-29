@@ -186,7 +186,7 @@ function BlockingPage() {
             {/* 아이콘 + 타이틀 가로 정렬 */}
             <div className="flex flex-row items-center justify-center gap-3 mb-3">
               {/* 경고 아이콘 */}
-              <img src="/warning.png" alt="Warning" className="w-30 h-30 object-contain" />
+              <img src="./warning.png" alt="Warning" className="w-30 h-30 object-contain" />
 
               {/* 타이틀 */}
               <h3 className="text-4xl md:text-2xl font-bold text-red-900 text-center">Threat Detected</h3>
