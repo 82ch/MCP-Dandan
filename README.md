@@ -100,22 +100,19 @@ The server will start on `http://127.0.0.1:8282` and the Electron desktop app wi
 
 ## Detection Engines
 
-### 1. Sensitive File Engine
-Detects access to sensitive files like `.env`, credentials, private keys, etc.
-
-### 2. Command Injection Engine
+### 1. Command Injection Engine
 Identifies potential command injection patterns in tool calls.
 
-### 3. File System Exposure Engine
+### 2. File System Exposure Engine
 Monitors unauthorized file system access attempts.
 
-### 4. PII Leak Engine
+### 3. PII Leak Engine
 Detects potential leakage of personally identifiable information.
 
-### 5. Data Exfiltration Engine
+### 4. Data Exfiltration Engine
 Identifies suspicious data transfer patterns.
 
-### 6. Tools Poisoning Engine (LLM-based)
+### 5. Tools Poisoning Engine (LLM-based)
 Uses semantic analysis to detect misuse of MCP tools:
 - Compares tool specifications vs actual usage
 - Scores alignment (0-100) with detailed breakdown
