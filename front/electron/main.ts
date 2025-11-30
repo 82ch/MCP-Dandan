@@ -178,12 +178,27 @@ function killBackendServer() {
 }
 
 const createWindow = () => {
+  // Use .ico for Windows, .png for other platforms
+  // In production, icons are in app.asar.unpacked/icons
+  // In development, icons are in front/icons
+  let iconPath: string
+  if (app.isPackaged) {
+    const iconFileName = process.platform === 'win32' ? 'dandan.ico' : 'dandan.png'
+    iconPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'icons', iconFileName)
+  } else {
+    const iconFileName = process.platform === 'win32' ? 'dandan.ico' : 'dandan.png'
+    iconPath = path.join(__dirname, '..', 'icons', iconFileName)
+  }
+
+  console.log('[Electron] Icon path:', iconPath)
+  console.log('[Electron] Icon exists:', fs.existsSync(iconPath))
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    icon: path.join(__dirname, '..', 'icons', 'dandan.png'),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,

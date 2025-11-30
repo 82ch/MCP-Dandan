@@ -60,27 +60,22 @@
     ],
     "asarUnpack": [
       "dist/logos/**/*",
-      "dist/*.png"
+      "dist/*.png",
+      "icons/**/*"
     ],
     "win": {
       "target": [
         {
-          "target": "nsis",
+          "target": "msi",
           "arch": [
             "x64"
           ]
         }
       ],
-      "icon": "icons/dandan.png",
+      "icon": "icons/dandan.ico",
       "signAndEditExecutable": false,
       "forceCodeSigning": false,
       "artifactName": "${productName}-Setup-${version}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true
     },
     "linux": {
       "target": [
