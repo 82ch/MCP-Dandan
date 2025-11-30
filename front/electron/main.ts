@@ -847,8 +847,20 @@ ipcMain.handle('api:tool:update-safety', async (_event, mcpTag: string, toolName
 
 // Config file path
 function getConfigPath() {
-  const projectRoot = path.join(__dirname, '..', '..')
-  return path.join(projectRoot, 'config.conf')
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    // In production, use userData directory
+    const dataDir = path.join(app.getPath('userData'), 'data')
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    return path.join(dataDir, 'config.conf')
+  } else {
+    // In development, use project root
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, 'config.conf')
+  }
 }
 
 // Parse config.conf file
@@ -926,10 +938,11 @@ ipcMain.handle('config:get', () => {
   console.log(`[IPC] config:get called`)
   try {
     const configPath = getConfigPath()
+    console.log(`[IPC] Config path: ${configPath}`)
 
     // Create default config if not exists
     if (!fs.existsSync(configPath)) {
-      console.log(`[IPC] config.conf not found, creating default`)
+      console.log(`[IPC] config.conf not found at ${configPath}, creating default`)
       const defaultConfig = {
         Engine: {
           tools_poisoning_engine: true,
@@ -941,12 +954,13 @@ ipcMain.handle('config:get', () => {
       }
       const content = generateConfig(defaultConfig)
       fs.writeFileSync(configPath, content, 'utf-8')
+      console.log(`[IPC] Default config created at ${configPath}`)
       return defaultConfig
     }
 
     const content = fs.readFileSync(configPath, 'utf-8')
     const config = parseConfig(content)
-    console.log(`[IPC] config:get returning config`)
+    console.log(`[IPC] config:get returning config from ${configPath}`)
     return config
   } catch (error) {
     console.error('[IPC] Error reading config:', error)
@@ -971,8 +985,20 @@ ipcMain.handle('config:save', (_event, config: any) => {
 
 // Get .env file path
 function getEnvPath() {
-  const projectRoot = path.join(__dirname, '..', '..')
-  return path.join(projectRoot, '.env')
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    // In production, use userData directory
+    const dataDir = path.join(app.getPath('userData'), 'data')
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    return path.join(dataDir, '.env')
+  } else {
+    // In development, use project root
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, '.env')
+  }
 }
 
 // Get env variables
@@ -980,9 +1006,13 @@ ipcMain.handle('env:get', () => {
   console.log(`[IPC] env:get called`)
   try {
     const envPath = getEnvPath()
+    console.log(`[IPC] Env path: ${envPath}`)
+
     if (!fs.existsSync(envPath)) {
+      console.log(`[IPC] .env file not found at ${envPath}, returning empty`)
       return { MISTRAL_API_KEY: '' }
     }
+
     const content = fs.readFileSync(envPath, 'utf-8')
     const env: any = {}
     const lines = content.split('\n')
@@ -992,7 +1022,7 @@ ipcMain.handle('env:get', () => {
         env[match[1].trim()] = match[2].trim()
       }
     }
-    console.log(`[IPC] env:get returning env`)
+    console.log(`[IPC] env:get returning env from ${envPath}`)
     return env
   } catch (error) {
     console.error('[IPC] Error reading env:', error)

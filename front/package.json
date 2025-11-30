@@ -1,13 +1,13 @@
 {
-  "name": "82ch-desktop",
+  "name": "mcp-dandan",
   "private": true,
   "version": "1.0.0",
-  "description": "82ch Desktop Application",
+  "description": "MCP-Dandan Desktop Application",
   "author": {
     "name": "82ch Team",
     "email": "wlsklemon@naver.com"
   },
-  "homepage": "https://github.com/82ch",
+  "homepage": "https://github.com/82ch/mcp-dandan",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
@@ -47,8 +47,8 @@
     "vite-plugin-electron-renderer": "^0.14.6"
   },
   "build": {
-    "appId": "com.82ch.desktop",
-    "productName": "82ch Desktop",
+    "appId": "com.82ch.mcp-dandan",
+    "productName": "MCP-Dandan",
     "directories": {
       "output": "release"
     },
@@ -88,8 +88,8 @@
         "deb"
       ],
       "category": "Development",
-      "icon": "icons/dandan.png",
-      "executableName": "82ch-desktop"
+      "icon": "icons",
+      "executableName": "mcp-dandan"
     },
     "extraResources": [
       {
