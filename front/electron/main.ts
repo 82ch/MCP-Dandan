@@ -89,11 +89,13 @@ function startBackendServer() {
       console.log('[Backend] Created data directory:', dataDir)
     }
 
-    // Set DB_PATH and CONFIG_PATH environment variables
+    // Set DB_PATH, CONFIG_PATH and ENV_PATH environment variables
     const dbPath = path.join(dataDir, 'mcp_observer.db')
     const configPath = path.join(dataDir, 'config.conf')
+    const envPath = path.join(dataDir, '.env')
     console.log('[Backend] DB path:', dbPath)
     console.log('[Backend] Config path:', configPath)
+    console.log('[Backend] Env path:', envPath)
 
     const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
 
@@ -104,6 +106,7 @@ function startBackendServer() {
         ...process.env,
         DB_PATH: dbPath,
         CONFIG_PATH: configPath,
+        ENV_PATH: envPath,
         PYTHONUNBUFFERED: '1'  // Ensure real-time output
       },
       stdio: ['ignore', 'pipe', 'pipe']
