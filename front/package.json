@@ -77,6 +77,9 @@
       "forceCodeSigning": false,
       "artifactName": "${productName}-Setup-${version}.${ext}"
     },
+    "msi": {
+      "runAfterFinish": false
+    },
     "linux": {
       "target": [
         "AppImage",
