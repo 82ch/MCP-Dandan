@@ -18,6 +18,7 @@
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:linux": "npm run build && electron-builder --linux",
+    "dist:mac": "npm run build && electron-builder --mac",
     "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {

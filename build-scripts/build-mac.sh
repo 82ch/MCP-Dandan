@@ -42,23 +42,40 @@ fi
 echo "Python3 version: $(python3 --version)"
 
 # Step 1: Setup bundled Python runtime
-echo -e "\n${BLUE}[1/4] Setting up bundled Python runtime...${NC}"
+echo -e "\n${BLUE}[1/5] Setting up bundled Python runtime...${NC}"
 bash "$ROOT_DIR/scripts/setup-python-macos.sh"
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to setup Python runtime${NC}"
     exit 1
 fi
 
-# Step 2: Build PyInstaller executable
-echo -e "\n${BLUE}[2/4] Building Python backend with PyInstaller...${NC}"
-"$ROOT_DIR/build/python-macos/python/bin/python3" -m PyInstaller "$ROOT_DIR/server.spec" --clean
+# Step 2: Setup virtual environment for PyInstaller
+echo -e "\n${BLUE}[2/5] Setting up PyInstaller environment...${NC}"
+if [ ! -d "$ROOT_DIR/venv" ]; then
+    echo "Creating virtual environment..."
+    python3 -m venv "$ROOT_DIR/venv"
+fi
+
+# Activate virtual environment and install dependencies
+source "$ROOT_DIR/venv/bin/activate"
+echo "Installing Python dependencies..."
+pip install --upgrade pip
+pip install -r "$ROOT_DIR/requirements.txt"
+pip install pyinstaller
+
+# Step 3: Build PyInstaller executable
+echo -e "\n${BLUE}[3/5] Building Python backend with PyInstaller...${NC}"
+pyinstaller "$ROOT_DIR/server.spec" --clean
 if [ $? -ne 0 ]; then
     echo -e "${RED}Failed to build Python backend${NC}"
+    deactivate
     exit 1
 fi
 
-# Step 3: Install frontend dependencies
-echo -e "\n${BLUE}[3/4] Installing frontend dependencies...${NC}"
+deactivate
+
+# Step 4: Install frontend dependencies
+echo -e "\n${BLUE}[4/5] Installing frontend dependencies...${NC}"
 cd "$ROOT_DIR/front"
 
 if [ ! -d "node_modules" ]; then
@@ -68,8 +85,8 @@ else
     echo "npm dependencies already installed, skipping..."
 fi
 
-# Step 4: Build Electron packages
-echo -e "\n${BLUE}[4/4] Building Electron package (DMG)...${NC}"
+# Step 5: Build Electron packages
+echo -e "\n${BLUE}[5/5] Building Electron package (DMG)...${NC}"
 npm run dist:mac
 
 cd "$ROOT_DIR"
