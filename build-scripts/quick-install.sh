@@ -17,9 +17,10 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${BLUE}  82ch Desktop - Quick Install${NC}"
 echo -e "${BLUE}========================================${NC}\n"
 
-# Get script directory
+# Get script directory and navigate to project root
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-RELEASE_DIR="$SCRIPT_DIR/front/release"
+ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+RELEASE_DIR="$ROOT_DIR/front/release"
 
 # Check if release directory exists
 if [ ! -d "$RELEASE_DIR" ]; then

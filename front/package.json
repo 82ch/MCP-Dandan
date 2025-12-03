@@ -75,10 +75,68 @@
       "icon": "icons/dandan.ico",
       "signAndEditExecutable": false,
       "forceCodeSigning": false,
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "../build/python-windows",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server.exe", "schema.sql", "_internal/**/*"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
     },
     "msi": {
       "runAfterFinish": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "icons/dandan.png",
+      "extraResources": [
+        {
+          "from": "../build/python-macos/python",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server", "schema.sql"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
     },
     "linux": {
       "target": [
@@ -87,65 +145,32 @@
       ],
       "category": "Development",
       "icon": "icons",
-      "executableName": "mcp-dandan"
-    },
-    "extraResources": [
-      {
-        "from": "../server.py",
-        "to": "server.py"
-      },
-      {
-        "from": "../cli_proxy.py",
-        "to": "cli_proxy.py"
-      },
-      {
-        "from": "../cli_remote_proxy.py",
-        "to": "cli_remote_proxy.py"
-      },
-      {
-        "from": "../config.py",
-        "to": "config.py"
-      },
-      {
-        "from": "../database.py",
-        "to": "database.py"
-      },
-      {
-        "from": "../state.py",
-        "to": "state.py"
-      },
-      {
-        "from": "../event_hub.py",
-        "to": "event_hub.py"
-      },
-      {
-        "from": "../verification.py",
-        "to": "verification.py"
-      },
-      {
-        "from": "../websocket_handler.py",
-        "to": "websocket_handler.py"
-      },
-      {
-        "from": "../schema.sql",
-        "to": "schema.sql"
-      },
-      {
-        "from": "../requirements.txt",
-        "to": "requirements.txt"
-      },
-      {
-        "from": "../utils",
-        "to": "utils"
-      },
-      {
-        "from": "../engines",
-        "to": "engines"
-      },
-      {
-        "from": "../transports",
-        "to": "transports"
-      }
-    ]
+      "executableName": "mcp-dandan",
+      "extraResources": [
+        {
+          "from": "../build/python-linux/python",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server", "schema.sql"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
+    }
   }
 }

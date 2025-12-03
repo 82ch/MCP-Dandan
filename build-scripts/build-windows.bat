@@ -1,18 +1,22 @@
 @echo off
 REM ================================================================================
-REM 82ch Desktop - Windows Build Script
+REM MCP-Dandan - Windows Complete Build Script
+REM Includes: Python Runtime Bundling + PyInstaller + Electron MSI
 REM ================================================================================
 
 echo ================================================================================
-echo 82ch Desktop - Windows Build Script
+echo MCP-Dandan - Windows Complete Build Script
 echo ================================================================================
 echo.
 
-REM Check if Python is available
-python --version >nul 2>&1
+REM Get script directory and move to project root
+cd /d "%~dp0\.."
+set ROOT_DIR=%CD%
+
+REM Check if PowerShell is available
+powershell -Command "exit" >nul 2>&1
 if %errorlevel% neq 0 (
-    echo [ERROR] Python is not installed or not in PATH
-    echo Please install Python 3.10 or higher from https://www.python.org/
+    echo [ERROR] PowerShell is not available
     exit /b 1
 )
 
@@ -24,64 +28,67 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-echo [1/5] Installing Python dependencies...
+echo [1/4] Setting up bundled Python runtime...
 echo ================================================================================
-pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File "%ROOT_DIR%\scripts\setup-python-windows.ps1"
 if %errorlevel% neq 0 (
-    echo [ERROR] Failed to install Python dependencies
+    echo [ERROR] Failed to setup Python runtime
     exit /b 1
 )
 
 echo.
-echo [2/5] Installing PyInstaller...
+echo [2/4] Building Python backend with PyInstaller...
 echo ================================================================================
-pip install pyinstaller
-if %errorlevel% neq 0 (
-    echo [ERROR] Failed to install PyInstaller
-    exit /b 1
-)
-
-echo.
-echo [3/5] Building Python backend with PyInstaller...
-echo ================================================================================
-pyinstaller server.spec --clean
+"%ROOT_DIR%\build\python-windows\python.exe" -m PyInstaller "%ROOT_DIR%\server.spec" --clean
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to build Python backend
     exit /b 1
 )
 
 echo.
-echo [4/5] Installing frontend dependencies...
+echo [3/4] Installing frontend dependencies...
 echo ================================================================================
-cd front
-call npm install --legacy-peer-deps
+cd "%ROOT_DIR%\front"
+if not exist "node_modules" (
+    echo Installing npm dependencies...
+    call npm install --legacy-peer-deps
+) else (
+    echo npm dependencies already installed, skipping...
+)
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to install frontend dependencies
-    cd ..
+    cd "%ROOT_DIR%"
     exit /b 1
 )
 
 echo.
-echo [5/5] Building Electron application...
+echo [4/4] Building Electron MSI installer...
 echo ================================================================================
 call npm run dist:win
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to build Electron application
-    cd ..
+    cd "%ROOT_DIR%"
     exit /b 1
 )
 
-cd ..
+cd "%ROOT_DIR%"
 
 echo.
 echo ================================================================================
 echo Build completed successfully!
 echo ================================================================================
 echo.
-echo Installer location:
-echo   front\release\82ch Desktop-Setup-*.exe
+echo Output files:
+dir /B "%ROOT_DIR%\front\release\*.msi" 2>nul
+echo.
+echo MSI Installer location:
+echo   %ROOT_DIR%\front\release\MCP-Dandan-Setup-*.msi
 echo.
 echo You can now distribute the installer to users.
+echo The installer includes:
+echo   - Bundled Python 3.12.8 runtime
+echo   - PyInstaller compiled backend (82ch-server.exe)
+echo   - Electron frontend with all dependencies
 echo.
 
 pause

@@ -22,6 +22,49 @@ let wsClient: any = null
 let pendingBlockingData: any = null
 let isRestarting = false
 let backendProcess: ChildProcess | null = null
+let pythonProcesses: Set<number> = new Set() // Track spawned Python processes for cleanup
+
+// ========================================
+// Get bundled Python paths
+// ========================================
+function getBundledPythonPath(): string {
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    const resourcesPath = process.resourcesPath
+
+    if (process.platform === 'win32') {
+      return path.join(resourcesPath, 'python', 'python.exe')
+    } else if (process.platform === 'darwin') {
+      return path.join(resourcesPath, 'python', 'bin', 'python3')
+    } else { // Linux
+      return path.join(resourcesPath, 'python', 'bin', 'python3')
+    }
+  } else {
+    // Development mode - use system Python
+    return process.platform === 'win32' ? 'python' : 'python3'
+  }
+}
+
+function getBackendServerPath(): string {
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    const resourcesPath = process.resourcesPath
+    const serverDir = path.join(resourcesPath, 'server')
+
+    if (process.platform === 'win32') {
+      return path.join(serverDir, '82ch-server.exe')
+    } else {
+      // macOS and Linux
+      return path.join(serverDir, '82ch-server')
+    }
+  } else {
+    // Development mode - use server.py
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, 'server.py')
+  }
+}
 
 // Disable 82ch proxy and restore config files
 function restoreConfigFiles() {
@@ -31,11 +74,14 @@ function restoreConfigFiles() {
     const projectRoot = path.join(__dirname, '..', '..')
     const configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
 
-    // Use python3 on macOS/Linux, python on Windows
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    // Use bundled Python in production, system Python in dev
+    const pythonCmd = getBundledPythonPath()
+
+    console.log(`[Electron] Using Python: ${pythonCmd}`)
+    console.log(`[Electron] Config finder: ${configFinderPath}`)
 
     // Use --disable to remove proxy from local servers and delete remote servers
-    execSync(`${pythonCmd} "${configFinderPath}" --disable --app all`, {
+    execSync(`"${pythonCmd}" "${configFinderPath}" --disable --app all`, {
       cwd: projectRoot,
       stdio: 'pipe',
       timeout: 10000
@@ -61,20 +107,18 @@ function startBackendServer() {
 
     // Get resource paths
     const isPackaged = app.isPackaged
-    let serverPath: string
+    const serverPath = getBackendServerPath() // Use helper function for exe/py selection
     let workingDir: string
     let dataDir: string
 
     if (isPackaged) {
       // In production, resources are in app.asar.unpacked or extraResources
       const resourcesPath = process.resourcesPath
-      serverPath = path.join(resourcesPath, 'server.py')
-      workingDir = resourcesPath
+      workingDir = path.join(resourcesPath, 'server')
       dataDir = path.join(app.getPath('userData'), 'data')
     } else {
       // In development
       const projectRoot = path.join(__dirname, '..', '..')
-      serverPath = path.join(projectRoot, 'server.py')
       workingDir = projectRoot
       dataDir = path.join(projectRoot, 'data')
     }
@@ -82,6 +126,7 @@ function startBackendServer() {
     console.log('[Backend] Server path:', serverPath)
     console.log('[Backend] Working dir:', workingDir)
     console.log('[Backend] Data dir:', dataDir)
+    console.log('[Backend] Packaged:', isPackaged)
 
     // Ensure data directory exists
     if (!fs.existsSync(dataDir)) {
@@ -97,20 +142,59 @@ function startBackendServer() {
     console.log('[Backend] Config path:', configPath)
     console.log('[Backend] Env path:', envPath)
 
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    let command: string
+    let args: string[]
+
+    if (isPackaged) {
+      // Production: Run executable directly
+      command = serverPath
+      args = []
+      console.log('[Backend] Running as executable')
+    } else {
+      // Development: Run with Python interpreter
+      const pythonCmd = getBundledPythonPath()
+      command = pythonCmd
+      args = [serverPath]
+      console.log('[Backend] Running with Python:', pythonCmd)
+    }
+
+    // Get bundled Python and config_finder paths to pass to backend
+    const pythonCmd = getBundledPythonPath()
+    let configFinderPath: string
+    let cliProxyPath: string
+
+    if (isPackaged) {
+      const resourcesPath = process.resourcesPath
+      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
+      cliProxyPath = path.join(resourcesPath, 'cli', 'cli_proxy.py')
+    } else {
+      const projectRoot = path.join(__dirname, '..', '..')
+      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+      cliProxyPath = path.join(projectRoot, 'cli_proxy.py')
+    }
 
     // Start backend process
-    backendProcess = spawn(pythonCmd, [serverPath], {
+    backendProcess = spawn(command, args, {
       cwd: workingDir,
       env: {
         ...process.env,
         DB_PATH: dbPath,
         CONFIG_PATH: configPath,
         ENV_PATH: envPath,
+        BUNDLED_PYTHON_PATH: pythonCmd,  // Pass bundled Python path
+        CONFIG_FINDER_PATH: configFinderPath,  // Pass config_finder.py path
+        MCP_PROXY_PYTHON_PATH: pythonCmd,  // For config_finder.py to use
+        MCP_PROXY_SCRIPT_PATH: cliProxyPath,  // For config_finder.py to use
         PYTHONUNBUFFERED: '1'  // Ensure real-time output
       },
       stdio: ['ignore', 'pipe', 'pipe']
     })
+
+    // Track the PID for cleanup
+    if (backendProcess.pid) {
+      pythonProcesses.add(backendProcess.pid)
+      console.log('[Backend] Server started with PID:', backendProcess.pid)
+    }
 
     // Log stdout
     backendProcess.stdout?.on('data', (data) => {
@@ -134,10 +218,11 @@ function startBackendServer() {
 
     backendProcess.on('exit', (code, signal) => {
       console.log(`[Backend] Process exited with code ${code} and signal ${signal}`)
+      if (backendProcess?.pid) {
+        pythonProcesses.delete(backendProcess.pid)
+      }
       backendProcess = null
     })
-
-    console.log('[Backend] Server started with PID:', backendProcess.pid)
   } catch (error) {
     console.error('[Backend] Error starting server:', error)
   }
@@ -145,21 +230,26 @@ function startBackendServer() {
 
 // Kill backend server function
 function killBackendServer() {
-  // Kill spawned process if exists
+  console.log('[Backend] Terminating backend and all Python processes...')
+
+  // 1. Kill spawned backend process if exists
   if (backendProcess) {
-    console.log('[Backend] Terminating backend process...')
     try {
+      console.log(`[Backend] Terminating backend process PID: ${backendProcess.pid}`)
       backendProcess.kill('SIGTERM')
+      if (backendProcess.pid) {
+        pythonProcesses.delete(backendProcess.pid)
+      }
       backendProcess = null
-      console.log('[Backend] Process terminated')
+      console.log('[Backend] Backend process terminated')
     } catch (error) {
-      console.error('[Backend] Error terminating process:', error)
+      console.error('[Backend] Error terminating backend process:', error)
     }
   }
 
-  // Also kill any process on port 8282 as fallback
+  // 2. Kill any process on port 8282 as fallback
   try {
-    console.log('[Electron] Killing backend server on port 8282...')
+    console.log('[Electron] Killing any process on port 8282...')
     if (process.platform === 'win32') {
       // Windows
       execSync('FOR /F "tokens=5" %P IN (\'netstat -ano ^| findstr :8282 ^| findstr LISTENING\') DO taskkill /PID %P /F', {
@@ -170,10 +260,87 @@ function killBackendServer() {
       // macOS/Linux
       execSync('lsof -ti:8282 | xargs kill -9', { stdio: 'ignore' })
     }
-    console.log('[Electron] Backend server killed successfully')
+    console.log('[Electron] Port 8282 cleaned up')
   } catch (error) {
     // Server might not be running, ignore error
-    console.log('[Electron] No backend server to kill or already stopped')
+    console.log('[Electron] No process on port 8282 or already stopped')
+  }
+
+  // 3. Kill all tracked Python processes spawned by bundled Python
+  if (pythonProcesses.size > 0) {
+    console.log(`[Electron] Killing ${pythonProcesses.size} tracked Python processes...`)
+
+    for (const pid of pythonProcesses) {
+      try {
+        if (process.platform === 'win32') {
+          execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' })
+        } else {
+          execSync(`kill -9 ${pid}`, { stdio: 'ignore' })
+        }
+        console.log(`[Electron] Killed Python process PID: ${pid}`)
+      } catch (error) {
+        console.log(`[Electron] Failed to kill PID ${pid} (may already be dead)`)
+      }
+    }
+
+    pythonProcesses.clear()
+  }
+
+  // 4. Additional cleanup: Kill ALL python.exe processes started from our bundled Python location
+  if (app.isPackaged) {
+    try {
+      const pythonPath = getBundledPythonPath()
+      const pythonDir = path.dirname(pythonPath)
+
+      console.log(`[Electron] Killing all Python processes from: ${pythonDir}`)
+
+      if (process.platform === 'win32') {
+        // Windows: Find all python.exe processes and check their image path
+        try {
+          const output = execSync(
+            `wmic process where "name='python.exe'" get ProcessId,ExecutablePath`,
+            { encoding: 'utf-8' }
+          )
+
+          const lines = output.split('\n').slice(1) // Skip header
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed) continue
+
+            // Check if this python.exe is from our bundled location
+            if (trimmed.includes(pythonDir)) {
+              const pidMatch = trimmed.match(/(\d+)\s*$/)
+              if (pidMatch) {
+                const pid = pidMatch[1]
+                try {
+                  execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' })
+                  console.log(`[Electron] Killed bundled Python process PID: ${pid}`)
+                } catch (e) {
+                  // Process may have already exited
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // wmic command failed, likely no python.exe processes running
+          console.log('[Electron] No python.exe processes found')
+        }
+      } else {
+        // macOS/Linux: Find processes using our bundled Python
+        try {
+          const grepPattern = pythonDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          execSync(`ps aux | grep "${grepPattern}" | grep -v grep | awk '{print $2}' | xargs kill -9`, {
+            stdio: 'ignore'
+          })
+          console.log('[Electron] Killed all bundled Python processes')
+        } catch (error) {
+          // No processes found or all killed
+          console.log('[Electron] No bundled Python processes found')
+        }
+      }
+    } catch (error) {
+      console.error('[Electron] Error during comprehensive Python cleanup:', error)
+    }
   }
 }
 
@@ -1069,4 +1236,83 @@ ipcMain.handle('app:restart', () => {
   isRestarting = true
   app.relaunch()
   app.exit(0)
+})
+
+// Enable MCP protection (patch MCP configs to use bundled Python + cli_proxy)
+ipcMain.handle('config:enable-protection', async () => {
+  console.log(`[IPC] config:enable-protection called`)
+  try {
+    const pythonCmd = getBundledPythonPath()
+    const isPackaged = app.isPackaged
+
+    let cliProxyPath: string
+    let configFinderPath: string
+
+    if (isPackaged) {
+      // Production: use bundled paths
+      const resourcesPath = process.resourcesPath
+      cliProxyPath = path.join(resourcesPath, 'cli', 'cli_proxy.py')
+      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
+    } else {
+      // Development: use project paths
+      const projectRoot = path.join(__dirname, '..', '..')
+      cliProxyPath = path.join(projectRoot, 'cli_proxy.py')
+      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+    }
+
+    console.log(`[IPC] Python: ${pythonCmd}`)
+    console.log(`[IPC] CLI Proxy: ${cliProxyPath}`)
+    console.log(`[IPC] Config Finder: ${configFinderPath}`)
+
+    // Run config_finder.py to patch MCP configs
+    // Pass bundled Python path and CLI proxy path as environment variables
+    execSync(`"${pythonCmd}" "${configFinderPath}" --enable --app all`, {
+      stdio: 'pipe',
+      timeout: 10000,
+      env: {
+        ...process.env,
+        MCP_PROXY_PYTHON_PATH: pythonCmd,
+        MCP_PROXY_SCRIPT_PATH: cliProxyPath
+      }
+    })
+
+    console.log(`[IPC] MCP protection enabled successfully`)
+    return { success: true }
+  } catch (error) {
+    console.error('[IPC] Failed to enable protection:', error)
+    return { success: false, error: String(error) }
+  }
+})
+
+// Disable MCP protection (restore original MCP configs)
+ipcMain.handle('config:disable-protection', async () => {
+  console.log(`[IPC] config:disable-protection called`)
+  try {
+    const pythonCmd = getBundledPythonPath()
+    const isPackaged = app.isPackaged
+
+    let configFinderPath: string
+
+    if (isPackaged) {
+      const resourcesPath = process.resourcesPath
+      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
+    } else {
+      const projectRoot = path.join(__dirname, '..', '..')
+      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+    }
+
+    console.log(`[IPC] Config Finder: ${configFinderPath}`)
+
+    // Run config_finder.py with --disable flag
+    execSync(`"${pythonCmd}" "${configFinderPath}" --disable --app all`, {
+      stdio: 'pipe',
+      timeout: 10000
+    })
+
+    console.log(`[IPC] MCP protection disabled successfully`)
+    return { success: true }
+  } catch (error) {
+    console.error('[IPC] Failed to disable protection:', error)
+    return { success: false, error: String(error) }
+  }
 })
