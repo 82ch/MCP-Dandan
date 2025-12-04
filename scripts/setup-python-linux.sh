@@ -79,10 +79,10 @@ if [ -z "$PYTHON_DIR" ]; then
     exit 1
 fi
 
-# Upgrade pip
+# Upgrade pip to stable version (avoid pip 25.x issues)
 echo "[3/5] Upgrading pip..."
-"$PYTHON_DIR/bin/python3" -m pip install --upgrade pip
-echo "  -> pip upgraded"
+"$PYTHON_DIR/bin/python3" -m pip install --upgrade "pip<25"
+echo "  -> pip upgraded to stable version"
 
 # Install requirements
 echo "[4/5] Installing Python packages..."
