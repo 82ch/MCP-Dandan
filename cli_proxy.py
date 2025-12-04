@@ -1,17 +1,112 @@
 #!/usr/bin/env python3
 """
-82ch STDIO Proxy - CLI Helper
+82ch STDIO Proxy - CLI Helper (Bundled Python Compatible)
 
 Intercepts MCP STDIO communications between client and server for security verification.
+This version automatically configures sys.path for bundled Python environments.
 """
 
 import sys
 import os
+
+# ========================================
+# CRITICAL: Setup sys.path for bundled Python
+# ========================================
+def setup_bundled_python_path():
+    r"""
+    Configure sys.path to find modules in bundled Python environment.
+
+    Expected structures:
+    - Windows: python.exe at C:\Program Files\MCP-Dandan\resources\python\python.exe
+               Modules at C:\Program Files\MCP-Dandan\resources\python\Lib\site-packages\
+    - macOS:   python3 at /Applications/MCP-Dandan.app/Contents/Resources/python/bin/python3
+               Modules at /Applications/MCP-Dandan.app/Contents/Resources/python/lib/python3.12/site-packages/
+    - Linux:   python3 at /opt/mcp-dandan/resources/python/bin/python3
+               Modules at /opt/mcp-dandan/resources/python/lib/python3.12/site-packages/
+    """
+    # Get the directory containing this script
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+
+    # Determine if we're in a bundled environment
+    # Bundled: script is in resources/cli/ folder
+    # Dev: script is in project root
+    is_bundled = 'resources' in script_dir.split(os.sep) or 'cli' in script_dir.split(os.sep)
+
+    if is_bundled:
+        # We're in bundled environment
+        # Navigate up from resources/cli/ to resources/
+        if script_dir.endswith('cli'):
+            resources_dir = os.path.dirname(script_dir)
+        else:
+            resources_dir = script_dir
+        python_dir = os.path.join(resources_dir, 'python')
+
+        if not os.path.exists(python_dir):
+            print(f"[ERROR] Bundled Python not found at: {python_dir}", file=sys.stderr)
+            print(f"[ERROR] Script dir: {script_dir}", file=sys.stderr)
+            return False
+
+        # Find site-packages directory
+        site_packages = None
+
+        if sys.platform == 'win32':
+            # Windows: python\Lib\site-packages
+            site_packages = os.path.join(python_dir, 'Lib', 'site-packages')
+        else:
+            # macOS/Linux: python/lib/python3.X/site-packages
+            lib_dir = os.path.join(python_dir, 'lib')
+            if os.path.exists(lib_dir):
+                # Find python3.X directory
+                for item in os.listdir(lib_dir):
+                    if item.startswith('python3.'):
+                        candidate = os.path.join(lib_dir, item, 'site-packages')
+                        if os.path.exists(candidate):
+                            site_packages = candidate
+                            break
+
+        if not site_packages or not os.path.exists(site_packages):
+            print(f"[ERROR] site-packages not found in: {python_dir}", file=sys.stderr)
+            return False
+
+        # Add site-packages to sys.path at the beginning
+        if site_packages not in sys.path:
+            sys.path.insert(0, site_packages)
+            print(f"[INFO] Added bundled site-packages to sys.path: {site_packages}", file=sys.stderr)
+
+        # Also add the cli directory itself for importing cli_remote_proxy
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+            print(f"[INFO] Added cli directory to sys.path: {script_dir}", file=sys.stderr)
+
+        return True
+    else:
+        # Development mode - modules should be in project root
+        project_root = script_dir
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+            print(f"[INFO] Added project root to sys.path: {project_root}", file=sys.stderr)
+        return True
+
+# Setup sys.path BEFORE importing any project modules
+if not setup_bundled_python_path():
+    print("[FATAL] Failed to setup Python path for bundled environment", file=sys.stderr)
+    sys.exit(1)
+
+# ========================================
+# Now we can safely import project modules
+# ========================================
 import json
 import subprocess
 import requests
 from typing import Optional, Dict, Any
-from utils import safe_print
+
+# Import project modules (should now work in bundled environment)
+try:
+    from utils import safe_print
+except ImportError as e:
+    print(f"[ERROR] Failed to import utils module: {e}", file=sys.stderr)
+    print(f"[ERROR] sys.path: {sys.path}", file=sys.stderr)
+    sys.exit(1)
 
 # Force UTF-8 encoding for stdin/stdout to handle Unicode properly
 # This prevents encoding issues on Windows (cp949) and other systems

@@ -3,13 +3,7 @@
 <p align="center">
   <img src="https://github.com/user-attachments/assets/64407558-fe51-4960-862c-05024ab1a912" width="124" height="124" />
 </p>
-<p align="center">MCP-DANDAN</p>
-
-<p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
-  <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python">
-  <img src="https://img.shields.io/badge/electron-33+-green.svg" alt="Electron">
-</p>
+<p align="center">MCP (Model Context Protocol) 보안 프록시 및 위협 탐지 통합 시스템</p>
 
 ## Overview
 
@@ -34,21 +28,125 @@ https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
 - **Cross-Platform**: Supports Windows, macOS, and Linux
 
 ## Quick Start
-### Installation
 
+### Desktop Application (Recommended)
+
+**One-Line Installation (Linux)**:
 ```bash
-# Install all dependencies (Python + Node.js)
-npm run install-all
+curl -fsSL https://raw.githubusercontent.com/your-org/82ch/main/install.sh | sudo bash
 ```
 
-### Running the Application
-
+**Build and Install Locally**:
 ```bash
-# Start both server and desktop UI
-npm run dev
+./build-linux.sh    # Build for Linux
+./quick-install.sh  # Install
+82ch-desktop        # Run
 ```
 
-The server will start on `http://127.0.0.1:8282` and the Electron desktop app will launch automatically.
+See [BUILD.md](BUILD.md) for detailed desktop build instructions.
+
+### Command Line Server
+
+```bash
+# 1. Install dependencies
+pip install -r requirements.txt
+
+# 2. (macOS only) Install SSL certificates
+# Required if using python.org installer
+python3 mcp_python_install_certificates.py
+
+# 3. Configure (optional)
+cp config.conf.example config.conf
+# Edit config.conf to enable/disable engines
+
+# 4. Run the integrated server
+python server.py
+```
+
+### SSL Certificate Setup
+
+**macOS users**: If you installed Python from python.org, you may need to install SSL certificates:
+
+```bash
+# Option 1: Use our installer script
+python3 mcp_python_install_certificates.py
+
+# Option 2: Run Python's installer
+open "/Applications/Python 3.XX/Install Certificates.command"
+```
+
+**Linux/Windows users**: SSL certificates should work out of the box. If you encounter SSL errors, the proxy will automatically fall back to using certifi's certificate bundle.
+
+Server will start on `http://127.0.0.1:8282`
+
+## Architecture
+
+```
+MCP Client
+    ↓
+Observer (HTTP+SSE / STDIO Proxy)
+    ↓ (in-process)
+EventHub (Event Router)
+    ↓
+Detection Engines (parallel processing)
+    ↓
+Database (SQLite)
+```
+
+### Data Flow
+
+```
+MCP Request → Observer → Verification
+                ↓
+            EventHub.process_event()
+                ↓
+    ├─→ Database (raw_events, rpc_events)
+    │
+    └─→ Detection Engines (parallel)
+        ├─ SensitiveFileEngine
+        ├─ CommandInjectionEngine
+        ├─ FileSystemExposureEngine
+        └─ ToolsPoisoningEngine (LLM)
+            ↓
+        Database (engine_results)
+```
+
+## Components
+
+### Observer (MCP Proxy)
+- Intercepts MCP communications (HTTP+SSE, STDIO)
+- Injects `user_intent` parameter into tool calls
+- Performs real-time verification
+- Publishes events to EventHub
+
+**Supported Transports:**
+- HTTP+SSE (Server-Sent Events)
+- HTTP-only (polling)
+- STDIO (standard input/output via cli_proxy.py)
+
+### EventHub
+- Central event processing hub
+- Routes events to interested engines
+- Manages database persistence
+- No external dependencies (in-process)
+
+### Detection Engines
+All engines run in parallel for each event:
+
+1. **SensitiveFileEngine** (Signature-based)
+   - Detects access to sensitive files (.env, credentials, etc.)
+
+2. **CommandInjectionEngine** (Signature-based)
+   - Identifies command injection patterns
+
+3. **FileSystemExposureEngine** (Signature-based)
+   - Monitors filesystem exposure risks
+
+4. **ToolsPoisoningEngine** (LLM-based)
+   - Uses Mistral AI for semantic analysis
+   - Compares tool specs vs actual usage
+   - Scores alignment (0-100) with detailed breakdown
+   - Auto-categorizes severity: none/low/medium/high
 
 ## Project Structure
 <img width="4726" height="4052" alt="image" src="https://github.com/user-attachments/assets/b37e688a-71a2-499b-b6be-45b3bd6ac6d4" />
@@ -84,13 +182,12 @@ https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 </p>
 <p align="center">Input your MISTRAL_API_KEY for Tool Poisoning Engine</p>
 
-## Desktop UI Features
+- **No ZeroMQ**: Direct in-process communication
+- **Single Database**: Shared SQLite instance
+- **Unified Config**: Combined Observer + Engine settings
+- **Async Throughout**: Full asyncio support
 
-- **Real-time Dashboard**: Monitor MCP traffic and threats in real time
-- **Interactive Tutorial**: Learn how to use the system with step-by-step guides
-- **Blocking Interface**: Review and control threat blocking actions
-- **Settings Panel**: Configure detection engines and system behavior
-- **Chat Panel**: Interact with the system and view logs
+## License
 
 
 https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067

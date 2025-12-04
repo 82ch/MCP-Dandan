@@ -1,5 +1,5 @@
 """
-Remote SSE proxy for Claude Desktop STDIO connections.
+Remote SSE proxy for Claude Desktop STDIO connections (Bundled Python Compatible).
 
 This module adapts the existing transports/sse_bidirectional.py logic
 to work with STDIO for Claude Desktop, which doesn't support HTTP+SSE natively.
@@ -7,14 +7,73 @@ to work with STDIO for Claude Desktop, which doesn't support HTTP+SSE natively.
 
 import sys
 import os
+
+# ========================================
+# CRITICAL: Setup sys.path for bundled Python
+# ========================================
+def setup_bundled_python_path():
+    """Configure sys.path to find modules in bundled Python environment."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    is_bundled = 'resources' in script_dir.split(os.sep) or 'cli' in script_dir.split(os.sep)
+
+    if is_bundled:
+        if script_dir.endswith('cli'):
+            resources_dir = os.path.dirname(script_dir)
+        else:
+            resources_dir = script_dir
+        python_dir = os.path.join(resources_dir, 'python')
+
+        if not os.path.exists(python_dir):
+            print(f"[ERROR] Bundled Python not found at: {python_dir}", file=sys.stderr)
+            return False
+
+        site_packages = None
+        if sys.platform == 'win32':
+            site_packages = os.path.join(python_dir, 'Lib', 'site-packages')
+        else:
+            lib_dir = os.path.join(python_dir, 'lib')
+            if os.path.exists(lib_dir):
+                for item in os.listdir(lib_dir):
+                    if item.startswith('python3.'):
+                        candidate = os.path.join(lib_dir, item, 'site-packages')
+                        if os.path.exists(candidate):
+                            site_packages = candidate
+                            break
+
+        if not site_packages or not os.path.exists(site_packages):
+            print(f"[ERROR] site-packages not found in: {python_dir}", file=sys.stderr)
+            return False
+
+        if site_packages not in sys.path:
+            sys.path.insert(0, site_packages)
+            print(f"[INFO] Added bundled site-packages to sys.path: {site_packages}", file=sys.stderr)
+
+        # Also add the cli directory itself for module imports
+        if script_dir not in sys.path:
+            sys.path.insert(0, script_dir)
+            print(f"[INFO] Added cli directory to sys.path: {script_dir}", file=sys.stderr)
+
+        return True
+    else:
+        project_root = script_dir
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
+            print(f"[INFO] Added project root to sys.path: {project_root}", file=sys.stderr)
+        return True
+
+# Setup sys.path BEFORE importing any project modules
+if not setup_bundled_python_path():
+    print("[FATAL] Failed to setup Python path for bundled environment", file=sys.stderr)
+    sys.exit(1)
+
+# ========================================
+# Now import other modules
+# ========================================
 import asyncio
 import json
 import aiohttp
 import time
 from typing import Optional, Dict, Any
-
-# Import state management
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 # Override safe_print to use stderr before importing verification
 # This prevents verification logs from polluting stdout (which is used for JSON-RPC)

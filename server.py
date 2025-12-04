@@ -173,8 +173,14 @@ async def initialize_engine_system():
     safe_print("Initializing Engine System")
     safe_print("=" * 80)
 
-    # Initialize database
-    db = Database()
+    # Initialize database with DB_PATH from environment variable if available
+    db_path = os.environ.get('DB_PATH')
+    if db_path:
+        safe_print(f"Using DB_PATH from environment: {db_path}")
+        db = Database(db_path=db_path)
+    else:
+        safe_print("Using default database path")
+        db = Database()
     await db.connect()
 
     # Setup engines
@@ -430,19 +436,56 @@ async def on_startup(app):
 
     # Configure Claude Desktop config on startup
     import subprocess
-    try:
-        result = subprocess.run(
-            [PYTHON_CMD, str(CONFIG_FINDER_PATH)],
-            text=True,
-            timeout=30,
-            capture_output=True   # stderr 보려고 이거 넣는 것도 추천
-        )
-        if result.returncode == 0:
-            safe_print("\n[Config] Claude Desktop configured successfully")
-        else:
-            safe_print(f"\n[Config] Warning: Configuration failed - {result.stderr}")
-    except Exception as e:
-        safe_print(f"\n[Config] Warning: Failed to configure Claude Desktop - {e}")
+
+    # Get bundled Python path and config_finder path from environment variables
+    bundled_python = os.environ.get('BUNDLED_PYTHON_PATH')
+    config_finder_path = os.environ.get('CONFIG_FINDER_PATH')
+    mcp_proxy_python = os.environ.get('MCP_PROXY_PYTHON_PATH')
+    mcp_proxy_script = os.environ.get('MCP_PROXY_SCRIPT_PATH')
+
+    if bundled_python and config_finder_path:
+        # Use bundled Python to run config_finder (works in both dev and production)
+        safe_print(f"\n[Config] Using bundled Python: {bundled_python}")
+        safe_print(f"[Config] Config finder path: {config_finder_path}")
+        safe_print(f"[Config] MCP Proxy Python: {mcp_proxy_python}")
+        safe_print(f"[Config] MCP Proxy Script: {mcp_proxy_script}")
+        try:
+            # Pass environment variables to config_finder so it can use bundled Python
+            config_env = os.environ.copy()
+            if mcp_proxy_python:
+                config_env['MCP_PROXY_PYTHON_PATH'] = mcp_proxy_python
+            if mcp_proxy_script:
+                config_env['MCP_PROXY_SCRIPT_PATH'] = mcp_proxy_script
+
+            result = subprocess.run(
+                [bundled_python, config_finder_path],
+                text=True,
+                timeout=30,
+                capture_output=True,
+                env=config_env  # Pass environment variables
+            )
+            if result.returncode == 0:
+                safe_print("[Config] Claude Desktop configured successfully")
+            else:
+                safe_print(f"[Config] Warning: Configuration failed - {result.stderr}")
+        except Exception as e:
+            safe_print(f"[Config] Warning: Failed to configure Claude Desktop - {e}")
+    else:
+        # Fallback to default paths (for standalone server.py execution)
+        safe_print("\n[Config] BUNDLED_PYTHON_PATH or CONFIG_FINDER_PATH not set, using defaults")
+        try:
+            result = subprocess.run(
+                [PYTHON_CMD, str(CONFIG_FINDER_PATH)],
+                text=True,
+                timeout=30,
+                capture_output=True
+            )
+            if result.returncode == 0:
+                safe_print("[Config] Claude Desktop configured successfully")
+            else:
+                safe_print(f"[Config] Warning: Configuration failed - {result.stderr}")
+        except Exception as e:
+            safe_print(f"[Config] Warning: Failed to configure Claude Desktop - {e}")
 
     # Initialize engine system
     try:
@@ -454,7 +497,12 @@ async def on_startup(app):
         safe_print(f"[Server] Warning: Failed to initialize engines: {e}")
         safe_print("[Server] Continuing in Observer-only mode...")
         # Create minimal database without engines
-        db = Database()
+        db_path = os.environ.get('DB_PATH')
+        if db_path:
+            safe_print(f"Using DB_PATH from environment: {db_path}")
+            db = Database(db_path=db_path)
+        else:
+            db = Database()
         await db.connect()
         app['db'] = db
 
