@@ -10,7 +10,7 @@ class DataExfiltrationEngine(BaseEngine):
     Zero-Click Data Exfiltration Detection Engine
 
     Detects data exfiltration where email addresses from previous MCP communications
-    (tool descriptions, tool responses) are later used in send_email tool calls.
+    (tool descriptions, tool responses) are later used in email send tool calls.
 
     Attack Pattern:
     1. Attacker poisons tool description/response with their email (e.g., "contact: attacker@evil.com")
@@ -23,7 +23,7 @@ class DataExfiltrationEngine(BaseEngine):
         super().__init__(
             db=db,
             name='DataExfiltrationEngine',
-            event_types=['MCP', 'RPC', 'JsonRPC'],
+            event_types=['MCP'],
             producers=['local', 'remote']
         )
 
@@ -38,91 +38,45 @@ class DataExfiltrationEngine(BaseEngine):
 
         # Keywords that indicate email/gmail functionality
         self.email_tool_keywords = [
-            'gmail', 'email', 'mail', 'send_email', 'send_mail',
-            'compose', 'message', 'sendmail', 'smtp', 'send-email'
+            'send_email', 'GMAIL_SEND_EMAIL'
         ]
 
         # Email recipient field names
-        self.recipient_fields = ['to', 'cc', 'bcc', 'recipients', 'recipient']
+        self.recipient_fields = ['to', 'cc', 'bcc', 'recipient_email']
 
-    async def process(self, data: Any) -> Any:
+    def process(self, data: Any) -> Any:
         """
         Main processing logic:
         1. Extract and track emails from tool descriptions and responses
         2. Check send_email calls for tracked emails
         """
         safe_print(f"[DataExfiltrationEngine] Processing event")
-
+        
         message = data.get('data', {}).get('message', {})
         method = message.get('method', '')
         task = data.get('data', {}).get('task', '')
+        
+        # Debug/logging: surface key values for triage
+        safe_print(f"[DataExfiltrationEngine] Debug - method={method}, task={task}")
+        safe_print(f"[DataExfiltrationEngine] Debug - producer={data.get('producer')}, eventType={data.get('eventType')}, ts={data.get('ts')}, mcpTag={self._get_mcp_tag(data)}")
+        safe_print(f"[DataExfiltrationEngine] Debug - message={message}")
 
-        # Step 1: Track emails from tools/list responses (tool descriptions)
-        if method == 'tools/list' and task == 'RECV':
-            await self._track_emails_from_tool_list(message, data)
-            return None  # Just tracking, no detection yet
-
-        # Step 2: Track emails from any tool call responses
+        # Step 1: Track emails from incoming responses
         if task == 'RECV' and 'result' in message:
-            await self._track_emails_from_response(message, data)
+            safe_print(f"[DataExfiltrationEngine] Tracking emails from tool call response")
+            self._track_emails_from_response(message, data)
             return None  # Just tracking, no detection yet
 
-        # Step 3: Detect exfiltration in send_email tool calls
+        # Step 2: Detect exfiltration in outgoing tool calls
         if method == 'tools/call' and task == 'SEND':
-            detection_result = await self._detect_exfiltration_in_tool_call(message, data)
+            safe_print(f"[DataExfiltrationEngine] Checking for exfiltration in tool call")
+            detection_result =  self._detect_exfiltration_in_tool_call(message, data)
             if detection_result:
                 return detection_result
 
         return None
 
-    async def _track_emails_from_tool_list(self, message: dict, data: dict):
-        """
-        Extract and track emails from tool descriptions in tools/list response
-        These are potential injection points for attackers
-        """
-        result = message.get('result', {})
-        tools = result.get('tools', [])
-
-        if not tools:
-            return
-
-        mcpTag = self._get_mcp_tag(data)
-        timestamp = datetime.fromtimestamp(data.get('ts', 0) / 1000).isoformat()
-
-        for tool in tools:
-            if not isinstance(tool, dict):
-                continue
-
-            tool_name = tool.get('name', '')
-            description = tool.get('description', '')
-            input_schema = tool.get('inputSchema', {})
-
-            # Extract emails from description
-            if description:
-                emails = self.email_pattern.findall(description)
-                for email in emails:
-                    self.suspicious_emails[email.lower()] = {
-                        'source': 'tool_description',
-                        'tool_name': tool_name,
-                        'mcpTag': mcpTag,
-                        'timestamp': timestamp,
-                        'context': description[:200]
-                    }
-                    safe_print(f"[DataExfiltrationEngine] 📧 Tracked email from tool description: {email} (tool: {tool_name}, server: {mcpTag})")
-
-            # Extract emails from input schema (parameter descriptions)
-            schema_emails = self._extract_emails_from_schema(input_schema)
-            for email, context in schema_emails:
-                self.suspicious_emails[email.lower()] = {
-                    'source': 'tool_schema',
-                    'tool_name': tool_name,
-                    'mcpTag': mcpTag,
-                    'timestamp': timestamp,
-                    'context': context[:200]
-                }
-                safe_print(f"[DataExfiltrationEngine] 📧 Tracked email from tool schema: {email} (tool: {tool_name}, server: {mcpTag})")
-
-    async def _track_emails_from_response(self, message: dict, data: dict):
+    def _track_emails_from_response(self, message: dict, data: dict):
         """
         Extract and track emails from tool call responses
         Attackers can inject emails in response data
@@ -159,13 +113,15 @@ class DataExfiltrationEngine(BaseEngine):
             }
             safe_print(f"[DataExfiltrationEngine] 📧 Tracked email from tool response: {email} (server: {mcpTag})")
 
-    async def _detect_exfiltration_in_tool_call(self, message: dict, data: dict) -> dict | None:
+    def _detect_exfiltration_in_tool_call(self, message: dict, data: dict) -> dict | None:
         """
         Check if send_email tool call contains tracked suspicious emails
         This indicates zero-click exfiltration
         """
         params = message.get('params', {})
-        tool_name = params.get('name', '')
+        arguments = params.get('arguments', {})
+        params = arguments.get('params', {})
+        tool_name = params.get('tool_slug', '')
         arguments = params.get('arguments', {})
 
         # Check if this is an email tool
@@ -354,7 +310,7 @@ class DataExfiltrationEngine(BaseEngine):
 
         return total_score
 
-    async def get_tracked_emails_summary(self) -> dict:
+    def get_tracked_emails_summary(self) -> dict:
         """
         Get summary of currently tracked suspicious emails
         Useful for debugging and monitoring
