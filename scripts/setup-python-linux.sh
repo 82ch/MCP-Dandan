@@ -4,7 +4,7 @@
 
 set -e
 
-PYTHON_VERSION="${PYTHON_VERSION:-3.12.8}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12.7}"
 OUTPUT_DIR="${OUTPUT_DIR:-build/python-linux}"
 
 echo "======================================"
@@ -18,23 +18,58 @@ echo ""
 mkdir -p "$OUTPUT_DIR"
 
 # Use python-build-standalone releases
-# https://github.com/indygreg/python-build-standalone
+# Repository moved from indygreg to astral-sh
+# https://github.com/astral-sh/python-build-standalone
 PYTHON_BUILD_VERSION="20241016"
 PYTHON_MAJOR_MINOR=$(echo $PYTHON_VERSION | sed -E 's/([0-9]+\.[0-9]+)\..*/\1/')
-PYTHON_URL="https://github.com/indygreg/python-build-standalone/releases/download/$PYTHON_BUILD_VERSION/cpython-$PYTHON_VERSION+$PYTHON_BUILD_VERSION-x86_64-unknown-linux-gnu-install_only.tar.gz"
+PYTHON_URL="https://github.com/astral-sh/python-build-standalone/releases/download/$PYTHON_BUILD_VERSION/cpython-$PYTHON_VERSION+$PYTHON_BUILD_VERSION-x86_64-unknown-linux-gnu-install_only.tar.gz"
 PYTHON_TAR="$OUTPUT_DIR/python-standalone.tar.gz"
 
 echo "[1/5] Downloading Python $PYTHON_VERSION standalone build..."
 if [ -f "$PYTHON_TAR" ]; then
-    echo "  -> Already downloaded, skipping"
+    echo "  -> Already downloaded, verifying..."
+    # Verify the tar file is valid
+    if ! gzip -t "$PYTHON_TAR" 2>/dev/null; then
+        echo "  -> Corrupted file detected, re-downloading..."
+        rm -f "$PYTHON_TAR"
+    fi
+fi
+
+if [ ! -f "$PYTHON_TAR" ]; then
+    echo "  -> Downloading from: $PYTHON_URL"
+    # Download with retry logic
+    for i in {1..3}; do
+        if curl -L -f --retry 3 --retry-delay 2 -o "$PYTHON_TAR" "$PYTHON_URL"; then
+            echo "  -> Downloaded successfully: $PYTHON_TAR"
+            break
+        else
+            echo "  -> Download attempt $i failed"
+            rm -f "$PYTHON_TAR"
+            if [ $i -eq 3 ]; then
+                echo "  -> ERROR: Failed to download after 3 attempts"
+                exit 1
+            fi
+            sleep 2
+        fi
+    done
+
+    # Verify downloaded file
+    if ! gzip -t "$PYTHON_TAR" 2>/dev/null; then
+        echo "  -> ERROR: Downloaded file is corrupted"
+        rm -f "$PYTHON_TAR"
+        exit 1
+    fi
 else
-    curl -L -o "$PYTHON_TAR" "$PYTHON_URL"
-    echo "  -> Downloaded: $PYTHON_TAR"
+    echo "  -> Using existing valid download"
 fi
 
 # Extract Python
 echo "[2/5] Extracting Python..."
-tar -xzf "$PYTHON_TAR" -C "$OUTPUT_DIR"
+if ! tar -xzf "$PYTHON_TAR" -C "$OUTPUT_DIR"; then
+    echo "  -> ERROR: Failed to extract tar file"
+    rm -f "$PYTHON_TAR"
+    exit 1
+fi
 echo "  -> Extracted to: $OUTPUT_DIR"
 
 # Find python directory (usually named 'python')
