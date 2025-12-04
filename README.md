@@ -1,4 +1,4 @@
-# 82ch - MCP Security Framework
+# MCP-Dandan - MCP Security Framework
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/64407558-fe51-4960-862c-05024ab1a912" width="124" height="124" />
@@ -7,9 +7,25 @@
 
 ## Overview
 
-82ch는 MCP(Model Context Protocol) 통신을 모니터링하고 보안 위협을 실시간으로 탐지하는 통합 프레임워크입니다.
+MCP-Dandan is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
 
-**통합 모드**: Observer(프록시) + Engine(탐지 엔진)이 단일 프로세스에서 실행됩니다.
+
+https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
+
+
+## Features
+
+- **Real-time MCP Traffic Monitoring**: Intercepts and analyzes MCP communications
+- **Multi-Engine Threat Detection**:
+  - Command Injection Detection
+  - File System Exposure Detection
+  - PII Leak Detection
+  - Data Exfiltration Detection
+  - Tools Poisoning Detection (LLM-based)
+- **Desktop UI**: Electron-based application with interactive dashboard
+- **Interactive Tutorial**: Built-in tutorial system for new users
+- **Blocking Capabilities**: Real-time threat blocking with user control
+- **Cross-Platform**: Supports Windows, macOS, and Linux
 
 ## Quick Start
 
@@ -133,175 +149,38 @@ All engines run in parallel for each event:
    - Auto-categorizes severity: none/low/medium/high
 
 ## Project Structure
+<img width="4726" height="4052" alt="image" src="https://github.com/user-attachments/assets/b37e688a-71a2-499b-b6be-45b3bd6ac6d4" />
 
-```
-82ch/
-├── front/                       # Desktop Application (Electron + React)
-│   ├── electron/                # Electron main process
-│   │   └── main.ts              # Backend launcher & DB management
-│   ├── src/                     # React UI components
-│   └── release/                 # Built packages (AppImage, DEB)
-│
-├── server.py                    # Main entry point (Observer + Engine)
-├── cli_proxy.py                 # STDIO proxy wrapper
-│
-├── transports/                  # Observer transport handlers
-│   ├── sse_transport.py
-│   ├── http_only_handler.py
-│   ├── stdio_handlers.py
-│   └── message_handler.py
-│
-├── engines/                     # Detection engines
-│   ├── base_engine.py
-│   ├── sensitive_file_engine.py
-│   ├── command_injection_engine.py
-│   ├── file_system_exposure_engine.py
-│   └── tools_poisoning_engine.py
-│
-├── verification.py              # Security verification + EventHub integration
-├── event_hub.py                 # Event routing hub
-├── database.py                  # SQLite database manager (supports DB_PATH env var)
-├── config.py                    # Unified configuration
-├── state.py                     # Global state management
-│
-├── schema.sql                   # Database schema
-├── query_db.py                  # Database query utilities
-│
-├── build-linux.sh               # Build desktop app for Linux
-├── quick-install.sh             # Quick installation script
-├── install.sh                   # One-line installer (for releases)
-├── BUILD.md                     # Detailed build documentation
-│
-├── config.conf.example          # Example configuration
-├── requirements.txt             # Python dependencies
-├── Dockerfile
-├── docker-compose.yml
-│
-└── data/                        # Database files (auto-created)
-    └── mcp_observer.db          # Dev mode DB (production uses user data dir)
-```
 
-## Configuration
 
-### Environment Variables (Observer)
-```bash
-export MCP_PROXY_PORT=8282
-export MCP_PROXY_HOST=127.0.0.1
-export MCP_SCAN_MODE=REQUEST_RESPONSE
-export MCP_DEBUG=false
-```
 
-### config.conf (Engine)
-```ini
-[Engine]
-sensitive_file_enabled = True
-command_injection_enabled = True
-file_system_exposure_enabled = True
-tools_poisoning_enabled = True
-```
+## Detection Engines
 
-### Mistral API Key (for ToolsPoisoningEngine)
-Create `.env` file:
-```
-MISTRAL_API_KEY=your_api_key_here
-```
+### 1. Command Injection Engine
+Identifies potential command injection patterns in tool calls.
 
-## Database Schema
+### 2. File System Exposure Engine
+Monitors unauthorized file system access attempts.
 
-### raw_events
-모든 수신 이벤트 (타임스탬프, producer, eventType)
+### 3. PII Leak Engine
+Detects potential leakage of personally identifiable information.
 
-### rpc_events
-JSON-RPC MCP 메시지 (request/response)
+### 4. Data Exfiltration Engine
+Identifies suspicious data transfer patterns.
 
-### mcpl (MCP Tool List)
-`tools/list`에서 추출한 도구 명세
+### 5. Tools Poisoning Engine (LLM-based)
+Uses semantic analysis to detect misuse of MCP tools:
+- Compares tool specifications vs actual usage
+- Scores alignment (0-100) with detailed breakdown
+- Auto-categorizes severity: none/low/medium/high
 
-### engine_results
-탐지 결과:
-- `severity`: none/low/medium/high
-- `score`: 수치 점수 (0-100)
-- `detail`: 상세 분석 JSON
-- `serverName`: MCP 서버명
-- `producer`: 이벤트 소스 (local/remote)
+### Mistral API Key
+<p align="center">
 
-## ToolsPoisoningEngine
+https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 
-LLM 기반 semantic gap 탐지:
-
-### Scoring Dimensions
-- **DomainMatch** (0-40): 도메인 일치도
-- **OperationMatch** (0-35): 동작 일치도
-- **ArgumentSpecificity** (0-15): 인수 일치도
-- **Consistency** (0-10): 논리 일관성
-
-### Severity Classification
-- **80-100** → `none` (정상)
-- **60-79** → `low` (의심)
-- **40-59** → `medium` (위험)
-- **0-39** → `high` (치명적)
-
-## Usage Examples
-
-### Running the Server
-```bash
-# Single command starts everything
-python server.py
-```
-
-Output:
-```
-================================================================================
-82ch - MCP Security Framework
-================================================================================
-Observer + Engine integrated mode
-================================================================================
-Initializing Engine System
-================================================================================
-
-Active Detection Engines (4):
-  1. Sensitive File Detector
-  2. Tools Poisoning Detector
-  3. Command Injection Detector
-  4. File System Exposure Detector
-
-[EventHub] Started
-Engine system initialized successfully
-================================================================================
-
-[Observer] Starting HTTP server...
-[Observer] Listening on http://127.0.0.1:8282
-[Observer] Scan mode: REQUEST_RESPONSE
-
-================================================================================
-All components ready. Waiting for connections...
-Press Ctrl+C to stop
-================================================================================
-```
-
-### Using STDIO Proxy
-```bash
-# Wrap an MCP server with security monitoring
-python cli_proxy.py npx -y @modelcontextprotocol/server-filesystem /path/to/allowed
-```
-
-### Querying Results
-```bash
-# View detection results
-python query_db.py
-```
-
-## Requirements
-
-- Python 3.10+
-- SQLite3
-- aiohttp
-- aiosqlite
-- Mistral API key (for ToolsPoisoningEngine)
-
-## Development
-
-The codebase is organized as a single integrated application:
+</p>
+<p align="center">Input your MISTRAL_API_KEY for Tool Poisoning Engine</p>
 
 - **No ZeroMQ**: Direct in-process communication
 - **Single Database**: Shared SQLite instance
@@ -310,4 +189,7 @@ The codebase is organized as a single integrated application:
 
 ## License
 
-See LICENSE file for details.
+
+https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067
+
+

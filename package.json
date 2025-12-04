@@ -2,6 +2,7 @@
   "name": "82ch",
   "version": "1.0.0",
   "description": "MCP Security Framework with Desktop UI",
+  "license": "MIT",
   "private": true,
   "scripts": {
     "dev": "concurrently --kill-others --handle-input \"npm run server\" \"npm run front\" --names \"server,front\" --prefix-colors \"blue,green\"",

@@ -3,6 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "description": "MCP-Dandan Desktop Application",
+  "license": "MIT",
   "author": {
     "name": "82ch Team",
     "email": "wlsklemon@naver.com"
