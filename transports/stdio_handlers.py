@@ -84,19 +84,19 @@ async def handle_verify_request(request):
         # Only verify tools/call for security
         if message.get('method') == 'tools/call':
             tool_args = message.get('params', {}).get('arguments', {})
-            user_intent = tool_args.get('user_intent', '')
-            tool_args_clean = {k: v for k, v in tool_args.items() if k != 'user_intent'}
+            tool_call_reason = tool_args.get('tool_call_reason', '')
+            tool_args_clean = {k: v for k, v in tool_args.items() if k != 'tool_call_reason'}
 
             safe_print(f"[Verify] Tool call: {tool_name} from {app_name}/{server_name}")
-            if user_intent:
-                safe_print(f"[Verify] User intent: {user_intent}")
+            if tool_call_reason:
+                safe_print(f"[Verify] Tool call reason: {tool_call_reason}")
 
             # Verify the tool call (skip logging since we already logged above)
             verification = await verify_tool_call(
                 tool_name=tool_name,
                 tool_args=tool_args_clean,
                 server_info=server_info,
-                user_intent=user_intent,
+                tool_call_reason=tool_call_reason,
                 skip_logging=True
             )
 
