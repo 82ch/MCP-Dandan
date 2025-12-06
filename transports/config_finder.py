@@ -55,8 +55,19 @@ class ClaudeConfigFinder:
 
     def __init__(self, proxy_path: Optional[str] = None):
         self.proxy_path = proxy_path or self._build_proxy_path()
-        # Use python3 on macOS/Linux, python on Windows
-        self.python_cmd = 'python' if platform.system() == 'Windows' else 'python3'
+        # Get bundled Python path from environment variable (set by Electron)
+        # Falls back to system Python if not set (dev mode)
+        self.python_cmd = os.getenv('MCP_PROXY_PYTHON_PATH')
+        if not self.python_cmd:
+            # Development mode - use system Python
+            self.python_cmd = 'python' if platform.system() == 'Windows' else 'python3'
+
+        # Get CLI proxy script path from environment variable (set by Electron)
+        # Falls back to relative path if not set (dev mode)
+        self.cli_proxy_path = os.getenv('MCP_PROXY_SCRIPT_PATH')
+        if not self.cli_proxy_path:
+            # Development mode - use relative path
+            self.cli_proxy_path = self.proxy_path
 
     def configure_all_proxies(self) -> bool:
         """Configure both Claude and Cursor proxies"""
@@ -433,7 +444,7 @@ class ClaudeConfigFinder:
 
                     # Build new config for cli_proxy.py (unified entry point)
                     server_config['command'] = self.python_cmd
-                    server_config['args'] = [self.proxy_path]
+                    server_config['args'] = [self.cli_proxy_path]
 
                     # Add environment variables for remote connection
                     existing_env = server_config.get('env', {})
@@ -476,10 +487,11 @@ class ClaudeConfigFinder:
                     existing_args = []
 
                 # Build new args: [cli_proxy.py, original_command, ...original_args]
-                new_args = [self.proxy_path, current_command] + existing_args
+                # Use cli_proxy_path (may be bundled path set by Electron)
+                new_args = [self.cli_proxy_path, current_command] + existing_args
                 server_config['args'] = new_args
 
-                # Set command to python/python3 based on OS
+                # Set command to bundled Python (from env var) or system Python (dev mode)
                 server_config['command'] = self.python_cmd
 
                 # Add/update environment variables
@@ -564,7 +576,7 @@ class ClaudeConfigFinder:
 
                     # Build new config for cli_proxy.py
                     server_config['command'] = self.python_cmd
-                    server_config['args'] = [self.proxy_path]
+                    server_config['args'] = [self.cli_proxy_path]
 
                     # Add environment variables for remote connection
                     existing_env = server_config.get('env', {})
@@ -609,10 +621,11 @@ class ClaudeConfigFinder:
                     existing_args = []
 
                 # Build new args: [cli_proxy.py, original_command, ...original_args]
-                new_args = [self.proxy_path, current_command] + existing_args
+                # Use cli_proxy_path (may be bundled path set by Electron)
+                new_args = [self.cli_proxy_path, current_command] + existing_args
                 server_config['args'] = new_args
 
-                # Set command to python/python3 based on OS
+                # Set command to bundled Python (from env var) or system Python (dev mode)
                 server_config['command'] = self.python_cmd
 
                 # Add/update environment variables

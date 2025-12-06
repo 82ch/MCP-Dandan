@@ -1,16 +1,26 @@
 {
-  "name": "82ch-desktop",
+  "name": "mcp-dandan",
   "private": true,
   "version": "1.0.0",
-  "description": "82ch Desktop Application",
+  "description": "MCP-Dandan Desktop Application",
   "license": "MIT",
-  "author": "82ch Team",
+  "author": {
+    "name": "82ch Team",
+    "email": "wlsklemon@naver.com"
+  },
+  "homepage": "https://github.com/82ch/mcp-dandan",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "postinstall": "npm run rebuild-native",
-    "rebuild-native": "electron-rebuild -f -w better-sqlite3"
+    "rebuild-native": "electron-rebuild -f -w better-sqlite3",
+    "build": "tsc && vite build",
+    "pack": "npm run build && electron-builder --dir",
+    "dist": "npm run build && electron-builder",
+    "dist:linux": "npm run build && electron-builder --linux",
+    "dist:mac": "npm run build && electron-builder --mac",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "dependencies": {
     "better-sqlite3": "^11.7.0",
@@ -30,11 +40,139 @@
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.0.4",
     "electron": "^35.7.5",
+    "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.9.3",
     "vite": "^7.1.7",
     "vite-plugin-electron": "^0.29.0",
     "vite-plugin-electron-renderer": "^0.14.6"
+  },
+  "build": {
+    "appId": "com.82ch.mcp-dandan",
+    "productName": "MCP-Dandan",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "public/**/*",
+      "icons/**/*"
+    ],
+    "asarUnpack": [
+      "dist/logos/**/*",
+      "dist/*.png",
+      "icons/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "msi",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "icons/dandan.ico",
+      "signAndEditExecutable": false,
+      "forceCodeSigning": false,
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "extraResources": [
+        {
+          "from": "../build/python-windows",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server.exe", "schema.sql", "_internal/**/*"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
+    },
+    "msi": {
+      "runAfterFinish": false
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.developer-tools",
+      "icon": "icons/dandan.png",
+      "extraResources": [
+        {
+          "from": "../build/python-macos/python",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server", "schema.sql"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development",
+      "icon": "icons",
+      "executableName": "mcp-dandan",
+      "extraResources": [
+        {
+          "from": "../build/python-linux/python",
+          "to": "python",
+          "filter": ["**/*"]
+        },
+        {
+          "from": "../dist",
+          "to": "server",
+          "filter": ["82ch-server", "schema.sql"]
+        },
+        {
+          "from": "../cli_proxy.py",
+          "to": "cli/cli_proxy.py"
+        },
+        {
+          "from": "../cli_remote_proxy.py",
+          "to": "cli/cli_remote_proxy.py"
+        },
+        {
+          "from": "../transports",
+          "to": "transports",
+          "filter": ["**/*.py"]
+        }
+      ]
+    }
   }
 }

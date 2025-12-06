@@ -84,12 +84,12 @@ function LeftSidebar({ isOpen, setIsOpen, servers, selectedServer, setSelectedSe
                   }`}
                 >
                   <img
-                    src={`/logos/${server.icon}`}
+                    src={`./logos/${server.icon}`}
                     alt={server.appName || server.name}
                     className="w-6 h-6 rounded object-contain"
                     onError={(e) => {
                       // Fallback to default icon if image fails to load
-                      e.currentTarget.src = '/logos/default.svg'
+                      e.currentTarget.src = './logos/default.svg'
                     }}
                   />
                   <div className="flex flex-col flex-1">
