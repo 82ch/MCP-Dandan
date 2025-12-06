@@ -1,16 +1,16 @@
 # MCP-Dandan - MCP Security Framework
-
-<p align="center">
-  <img width="124" height="124" alt="image" src="https://github.com/user-attachments/assets/679e148e-b328-4ebe-b301-d8c17f7e4e93" />
-
-</p>
-<p align="center">MCP-DANDAN</p>
-
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.8+-blue.svg" alt="Python">
   <img src="https://img.shields.io/badge/electron-33+-green.svg" alt="Electron">
 </p>
+<p align="center">
+  <img width="124" height="124" alt="image" src="https://github.com/user-attachments/assets/679e148e-b328-4ebe-b301-d8c17f7e4e93" />
+
+</p>
+<p align="center">MCP-Dandan</p>
+
+
 
 ## Overview
 
