@@ -39,7 +39,7 @@
     "@types/react-dom": "^19.1.9",
     "@types/ws": "^8.5.13",
     "@vitejs/plugin-react": "^5.0.4",
-    "electron": "^33.2.1",
+    "electron": "^35.7.5",
     "electron-builder": "^26.0.12",
     "electron-rebuild": "^3.2.9",
     "tailwindcss": "^4.0.0",
