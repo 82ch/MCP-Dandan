@@ -308,10 +308,10 @@ async def handle_sse_connection():
                                                         data_line = json.dumps(parsed)
                                                         current_data_lines[0] = data_line
                                                     else:
-                                                        # Handle tools/list response - add user_intent parameter
+                                                        # Handle tools/list response - add tool_call_reason parameter
                                                         result = parsed.get('result', {})
                                                         if result.get('tools'):
-                                                            log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
+                                                            log('INFO', f"Modifying {len(result.get('tools', []))} tools to add tool_call_reason")
 
                                                             # Get dangerous tools for filtering
                                                             dangerous_tools, filter_enabled = await get_dangerous_tools_async(
@@ -320,7 +320,7 @@ async def handle_sse_connection():
                                                             if dangerous_tools and filter_enabled:
                                                                 log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
 
-                                                            # Modify tools to add user_intent parameter
+                                                            # Modify tools to add tool_call_reason parameter
                                                             modified_tools = []
                                                             filtered_count = 0
                                                             for tool in result.get('tools', []):
@@ -342,19 +342,19 @@ async def handle_sse_connection():
                                                                         'required': []
                                                                     }
 
-                                                                # Add user_intent to properties
+                                                                # Add tool_call_reason to properties
                                                                 if 'properties' not in modified_tool['inputSchema']:
                                                                     modified_tool['inputSchema']['properties'] = {}
 
-                                                                modified_tool['inputSchema']['properties']['user_intent'] = {
+                                                                modified_tool['inputSchema']['properties']['tool_call_reason'] = {
                                                                     'type': 'string',
                                                                     'description': 'Explain the reasoning and context for why you are calling this tool.'
                                                                 }
 
                                                                 # Add to required fields
                                                                 required = modified_tool['inputSchema'].get('required', [])
-                                                                if 'user_intent' not in required:
-                                                                    modified_tool['inputSchema']['required'] = required + ['user_intent']
+                                                                if 'tool_call_reason' not in required:
+                                                                    modified_tool['inputSchema']['required'] = required + ['tool_call_reason']
 
                                                                 modified_tools.append(modified_tool)
 
@@ -493,14 +493,14 @@ async def handle_sse_connection():
                                     await target_response.__aexit__(None, None, None)
                                     sys.exit(1)
 
-                            # For tools/call, strip user_intent before forwarding
+                            # For tools/call, strip tool_call_reason before forwarding
                             if method == 'tools/call':
                                 params = message.get('params', {})
                                 tool_args = params.get('arguments', {})
 
-                                if 'user_intent' in tool_args:
-                                    log('INFO', "Stripping user_intent before forwarding")
-                                    tool_args_clean = {k: v for k, v in tool_args.items() if k != 'user_intent'}
+                                if 'tool_call_reason' in tool_args:
+                                    log('INFO', "Stripping tool_call_reason before forwarding")
+                                    tool_args_clean = {k: v for k, v in tool_args.items() if k != 'tool_call_reason'}
                                     message = {
                                         **message,
                                         'params': {
@@ -648,7 +648,7 @@ async def handle_sse_connection():
                                                                     # Handle tools/list response
                                                                     result = response_data.get('result', {})
                                                                     if result.get('tools'):
-                                                                        log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
+                                                                        log('INFO', f"Modifying {len(result.get('tools', []))} tools to add tool_call_reason")
 
                                                                         # Get dangerous tools for filtering
                                                                         dangerous_tools, filter_enabled = await get_dangerous_tools_async(
@@ -673,13 +673,13 @@ async def handle_sse_connection():
                                                                                 modified_tool['inputSchema'] = {'type': 'object', 'properties': {}, 'required': []}
                                                                             if 'properties' not in modified_tool['inputSchema']:
                                                                                 modified_tool['inputSchema']['properties'] = {}
-                                                                            modified_tool['inputSchema']['properties']['user_intent'] = {
+                                                                            modified_tool['inputSchema']['properties']['tool_call_reason'] = {
                                                                                 'type': 'string',
                                                                                 'description': 'Explain the reasoning and context for why you are calling this tool.'
                                                                             }
                                                                             required = modified_tool['inputSchema'].get('required', [])
-                                                                            if 'user_intent' not in required:
-                                                                                modified_tool['inputSchema']['required'] = required + ['user_intent']
+                                                                            if 'tool_call_reason' not in required:
+                                                                                modified_tool['inputSchema']['required'] = required + ['tool_call_reason']
                                                                             modified_tools.append(modified_tool)
 
                                                                         if filtered_count > 0:
@@ -730,10 +730,10 @@ async def handle_sse_connection():
                                                     }
                                                 }
                                             else:
-                                                # Handle tools/list response - add user_intent parameter
+                                                # Handle tools/list response - add tool_call_reason parameter
                                                 result = response_data.get('result', {})
                                                 if result.get('tools'):
-                                                    log('INFO', f"Modifying {len(result.get('tools', []))} tools to add user_intent")
+                                                    log('INFO', f"Modifying {len(result.get('tools', []))} tools to add tool_call_reason")
 
                                                     # Get dangerous tools for filtering
                                                     dangerous_tools, filter_enabled = await get_dangerous_tools_async(
@@ -763,19 +763,19 @@ async def handle_sse_connection():
                                                                 'required': []
                                                             }
 
-                                                        # Add user_intent to properties
+                                                        # Add tool_call_reason to properties
                                                         if 'properties' not in modified_tool['inputSchema']:
                                                             modified_tool['inputSchema']['properties'] = {}
 
-                                                        modified_tool['inputSchema']['properties']['user_intent'] = {
+                                                        modified_tool['inputSchema']['properties']['tool_call_reason'] = {
                                                             'type': 'string',
                                                             'description': 'Explain the reasoning and context for why you are calling this tool.'
                                                         }
 
                                                         # Add to required fields
                                                         required = modified_tool['inputSchema'].get('required', [])
-                                                        if 'user_intent' not in required:
-                                                            modified_tool['inputSchema']['required'] = required + ['user_intent']
+                                                        if 'tool_call_reason' not in required:
+                                                            modified_tool['inputSchema']['required'] = required + ['tool_call_reason']
 
                                                         modified_tools.append(modified_tool)
 

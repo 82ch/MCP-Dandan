@@ -26,7 +26,7 @@ async def verify_tool_call(
     tool_name: str,
     tool_args: Dict[str, Any],
     server_info: Dict[str, Any],
-    user_intent: str = "",
+    tool_call_reason: str = "",
     skip_logging: bool = False,
     producer: str = "local"
 ) -> VerificationResult:
@@ -37,7 +37,7 @@ async def verify_tool_call(
         tool_name: Name of the tool being called
         tool_args: Arguments passed to the tool
         server_info: Information about the MCP server
-        user_intent: User's explanation for the tool call
+        tool_call_reason: User's explanation for the tool call
         skip_logging: If True, skip EventHub logging (used when already logged)
 
     Returns:
@@ -49,8 +49,8 @@ async def verify_tool_call(
     safe_print(f"[Verification] Checking tool call: {tool_name}")
     safe_print(f"[Verification] Server: {app_name}/{server_name}")
 
-    if user_intent:
-        safe_print(f"[Verification] User intent: {user_intent}")
+    if tool_call_reason:
+        safe_print(f"[Verification] Tool call reason: {tool_call_reason}")
 
     # Send event to EventHub for engine analysis (unless already logged)
     if not skip_logging and state.event_hub:
@@ -68,7 +68,7 @@ async def verify_tool_call(
                     'method': 'tools/call',
                     'params': {
                         'name': tool_name,
-                        'arguments': {**tool_args, 'user_intent': user_intent} if user_intent else tool_args
+                        'arguments': {**tool_args, 'tool_call_reason': tool_call_reason} if tool_call_reason else tool_args
                     }
                 },
                 'mcpTag': server_name
@@ -99,7 +99,7 @@ async def verify_tool_call(
                         'method': 'tools/call',
                         'params': {
                             'name': tool_name,
-                            'arguments': {**tool_args, 'user_intent': user_intent} if user_intent else tool_args
+                            'arguments': {**tool_args, 'tool_call_reason': tool_call_reason} if tool_call_reason else tool_args
                         }
                     },
                     'mcpTag': server_name

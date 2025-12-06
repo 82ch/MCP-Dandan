@@ -62,11 +62,11 @@ function BlockingModal({ blockingRequest, onDecision }: BlockingModalProps) {
 
   const { request_id, detection_results, engine_name, severity, server_name, tool_name, event_data } = blockingRequest
   const toolArgs = event_data?.data?.message?.params?.arguments || {}
-  const userIntent = toolArgs?.user_intent || ''
+  const toolCallReason = toolArgs?.tool_call_reason || ''
 
-  // Remove user_intent from toolArgs for display
+  // Remove tool_call_reason from toolArgs for display
   const displayArgs = { ...toolArgs }
-  delete displayArgs.user_intent
+  delete displayArgs.tool_call_reason
 
   // Simple view (default)
   if (!showDetails) {
@@ -186,17 +186,17 @@ function BlockingModal({ blockingRequest, onDecision }: BlockingModalProps) {
             </div>
           </div>
 
-          {/* MCP Tool Intent */}
-          {userIntent && (
+          {/* MCP Tool Call Reason */}
+          {toolCallReason && (
             <div className="mb-3 md:mb-4">
               <h3 className="text-[10px] md:text-xs font-semibold text-gray-700 mb-1.5 flex items-center gap-1">
                 <svg className="w-3 h-3 md:w-4 md:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
                 </svg>
-                Intent
+                Reason
               </h3>
               <div className="bg-blue-50 border border-blue-200 rounded p-2 md:p-3">
-                <p className="text-[10px] md:text-sm text-blue-900 leading-tight">{userIntent}</p>
+                <p className="text-[10px] md:text-sm text-blue-900 leading-tight">{toolCallReason}</p>
               </div>
             </div>
           )}

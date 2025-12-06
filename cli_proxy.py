@@ -155,7 +155,7 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                     if dangerous_tools and filter_enabled:
                         log('INFO', f"Found {len(dangerous_tools)} dangerous tools to filter: {dangerous_tools}")
 
-                    # Modify tools to add user_intent parameter (same as process_response)
+                    # Modify tools to add tool_call_reason parameter (same as process_response)
                     modified_tools = []
                     filtered_count = 0
                     for tool in state.server_tools:
@@ -177,19 +177,19 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
                                 'required': []
                             }
 
-                        # Add user_intent to properties
+                        # Add tool_call_reason to properties
                         if 'properties' not in modified_tool['inputSchema']:
                             modified_tool['inputSchema']['properties'] = {}
 
-                        modified_tool['inputSchema']['properties']['user_intent'] = {
+                        modified_tool['inputSchema']['properties']['tool_call_reason'] = {
                             'type': 'string',
                             'description': 'Explain the reasoning and context for why you are calling this tool.'
                         }
 
                         # Add to required fields
                         required = modified_tool['inputSchema'].get('required', [])
-                        if 'user_intent' not in required:
-                            modified_tool['inputSchema']['required'] = required + ['user_intent']
+                        if 'tool_call_reason' not in required:
+                            modified_tool['inputSchema']['required'] = required + ['tool_call_reason']
 
                         # Add security prefix to description
                         if modified_tool.get('description'):
@@ -269,10 +269,10 @@ def process_request(message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             state.current_tool_name = params.get('name', 'unknown')
             state.current_tool_id = message.get('id')
 
-            # Strip user_intent before forwarding to target
-            if params.get('arguments') and 'user_intent' in params['arguments']:
-                log('DEBUG', "Stripping user_intent before forwarding")
-                clean_args = {k: v for k, v in params['arguments'].items() if k != 'user_intent'}
+            # Strip tool_call_reason before forwarding to target
+            if params.get('arguments') and 'tool_call_reason' in params['arguments']:
+                log('DEBUG', "Stripping tool_call_reason before forwarding")
+                clean_args = {k: v for k, v in params['arguments'].items() if k != 'tool_call_reason'}
                 message = {
                     **message,
                     'params': {
@@ -370,15 +370,15 @@ def process_response(message: Dict[str, Any]) -> Dict[str, Any]:
                     if 'properties' not in modified_tool['inputSchema']:
                         modified_tool['inputSchema']['properties'] = {}
 
-                    modified_tool['inputSchema']['properties']['user_intent'] = {
+                    modified_tool['inputSchema']['properties']['tool_call_reason'] = {
                         'type': 'string',
                         'description': 'Explain the reasoning and context for why you are calling this tool.'
                     }
 
                     # Add to required fields
                     required = modified_tool['inputSchema'].get('required', [])
-                    if 'user_intent' not in required:
-                        modified_tool['inputSchema']['required'] = required + ['user_intent']
+                    if 'tool_call_reason' not in required:
+                        modified_tool['inputSchema']['required'] = required + ['tool_call_reason']
 
                     # Add security prefix to description
                     if modified_tool.get('description'):
