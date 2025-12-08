@@ -175,8 +175,16 @@ front/dist/
 front/dist-electron/
 front/.vite/
 front/.electron-vite/
+front/release/
+front/coverage/
 
 # Environment files (keep .env.example)
 .env.local
 front/.env
 front/.env.local
+
+# Test coverage
+htmlcov/
+.coverage
+coverage/
+*.coverage
