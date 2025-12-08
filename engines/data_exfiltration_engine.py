@@ -1,5 +1,5 @@
 from engines.base_engine import BaseEngine
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import re
 from utils import safe_print
 from datetime import datetime
@@ -113,7 +113,7 @@ class DataExfiltrationEngine(BaseEngine):
             }
             safe_print(f"[DataExfiltrationEngine] 📧 Tracked email from tool response: {email} (server: {mcpTag})")
 
-    def _detect_exfiltration_in_tool_call(self, message: dict, data: dict) -> dict | None:
+    def _detect_exfiltration_in_tool_call(self, message: dict, data: dict) -> Optional[dict]:
         """
         Check if send_email tool call contains tracked suspicious emails
         This indicates zero-click exfiltration

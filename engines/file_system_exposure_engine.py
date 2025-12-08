@@ -1,5 +1,5 @@
 from engines.base_engine import BaseEngine
-from typing import Any
+from typing import Any, Optional
 import re
 from utils import safe_print
 
@@ -348,7 +348,7 @@ class FileSystemExposureEngine(BaseEngine):
                         if isinstance(item, dict):
                             self._extract_from_dict(item, paths, depth + 1)
 
-    def _check_critical_paths(self, path: str) -> dict | None:
+    def _check_critical_paths(self, path: str) -> Optional[dict]:
         """Check against critical system paths"""
         for category, patterns in self.critical_path_regex.items():
             for pattern in patterns:
