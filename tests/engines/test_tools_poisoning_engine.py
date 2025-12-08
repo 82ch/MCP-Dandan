@@ -7,7 +7,8 @@ from unittest.mock import patch
 class TestToolsPoisoningEngine:
     """Test ToolsPoisoningEngine detection capabilities"""
 
-    def test_engine_initialization(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_engine_initialization(self, mock_db):
         """Test engine initializes correctly"""
         with patch.dict('os.environ', {}, clear=True):
             engine = ToolsPoisoningEngine(mock_db)
@@ -16,14 +17,16 @@ class TestToolsPoisoningEngine:
             assert 'JsonRPC' in engine.event_types
             assert 'MCP' in engine.event_types
 
-    def test_get_mistral_api_key_from_env(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_get_mistral_api_key_from_env(self, mock_db):
         """Test loading Mistral API key from environment"""
         with patch.dict('os.environ', {'MISTRAL_API_KEY': 'test-key-123'}):
             engine = ToolsPoisoningEngine(mock_db)
             api_key = engine._get_mistral_api_key()
             assert api_key == 'test-key-123'
 
-    def test_should_process_tools_list_response(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_should_process_tools_list_response(self, mock_db):
         """Test engine processes tools/list responses with RECV task"""
         engine = ToolsPoisoningEngine(mock_db)
 
@@ -45,7 +48,8 @@ class TestToolsPoisoningEngine:
 
         assert engine.should_process(event) is True
 
-    def test_should_not_process_send_task(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_should_not_process_send_task(self, mock_db):
         """Test engine doesn't process SEND tasks"""
         engine = ToolsPoisoningEngine(mock_db)
 
@@ -62,7 +66,8 @@ class TestToolsPoisoningEngine:
 
         assert engine.should_process(event) is False
 
-    def test_should_not_process_other_methods(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_should_not_process_other_methods(self, mock_db):
         """Test engine doesn't process non-tools/list methods"""
         engine = ToolsPoisoningEngine(mock_db)
 
@@ -80,7 +85,8 @@ class TestToolsPoisoningEngine:
 
         assert engine.should_process(event) is False
 
-    def test_has_tool_descriptions(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_has_tool_descriptions(self, mock_db):
         """Test checking for tool descriptions in message"""
         engine = ToolsPoisoningEngine(mock_db)
 
@@ -100,7 +106,8 @@ class TestToolsPoisoningEngine:
         }
         assert engine._has_tool_descriptions(message_without_tools) is False
 
-    def test_extract_tools_info(self, mock_db):
+    @pytest.mark.asyncio
+    async def test_extract_tools_info(self, mock_db):
         """Test tool information extraction"""
         engine = ToolsPoisoningEngine(mock_db)
 
