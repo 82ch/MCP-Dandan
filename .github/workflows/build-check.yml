@@ -30,7 +30,7 @@ jobs:
 
       - name: Install Node.js dependencies
         working-directory: ./front
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Build check (no packaging)
         working-directory: ./front

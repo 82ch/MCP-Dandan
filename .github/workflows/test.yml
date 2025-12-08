@@ -59,7 +59,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: ./front
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: Run Vitest
         working-directory: ./front
@@ -105,7 +105,7 @@ jobs:
 
       - name: Install frontend dependencies
         working-directory: ./front
-        run: npm ci --legacy-peer-deps
+        run: npm install --legacy-peer-deps
 
       - name: TypeScript check
         working-directory: ./front
