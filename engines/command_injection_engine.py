@@ -1,3 +1,4 @@
+from __future__ import annotations
 from engines.base_engine import BaseEngine
 from typing import Any
 import re
