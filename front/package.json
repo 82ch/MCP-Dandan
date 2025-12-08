@@ -9,6 +9,7 @@
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
+    "build": "vite build",
     "postinstall": "npm run rebuild-native",
     "rebuild-native": "electron-rebuild -f -w better-sqlite3",
     "test": "vitest",
