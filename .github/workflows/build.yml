@@ -18,8 +18,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: front/package-lock.json
 
       - name: Run Linux setup script
         run: |
@@ -57,8 +55,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: front/package-lock.json
 
       - name: Run Windows setup script
         run: |
@@ -94,8 +90,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: front/package-lock.json
 
       - name: Run macOS setup script
         run: |
