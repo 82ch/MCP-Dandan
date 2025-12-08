@@ -1,0 +1,47 @@
+name: Build Check
+
+on:
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  build-check:
+    name: Build Verification
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install Node.js dependencies
+        working-directory: ./front
+        run: npm ci --legacy-peer-deps
+
+      - name: Build check (no packaging)
+        working-directory: ./front
+        run: npm run build
+
+      - name: Verify build output
+        run: |
+          if [ ! -d "front/dist" ]; then
+            echo "Build failed: dist directory not found"
+            exit 1
+          fi
+          echo "✅ Build verification successful"

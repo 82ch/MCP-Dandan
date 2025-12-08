@@ -1,0 +1,148 @@
+name: Package & Release
+
+on:
+  push:
+    branches: [build]
+    tags:
+      - 'v*'
+
+jobs:
+  package-linux:
+    name: Package for Linux
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Run Linux setup script
+        run: |
+          chmod +x scripts/setup-python-linux.sh
+          ./scripts/setup-python-linux.sh
+
+      - name: Install Node.js dependencies
+        working-directory: ./front
+        run: npm ci --legacy-peer-deps
+
+      - name: Build and Package Linux
+        working-directory: ./front
+        run: npm run build:linux
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-package
+          path: |
+            front/release/*.deb
+            front/release/*.AppImage
+            front/release/*.rpm
+          retention-days: 30
+
+  package-windows:
+    name: Package for Windows
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Run Windows setup script
+        run: |
+          powershell -ExecutionPolicy Bypass -File scripts/setup-python-windows.ps1
+
+      - name: Install Node.js dependencies
+        working-directory: ./front
+        run: npm ci --legacy-peer-deps
+
+      - name: Build and Package Windows
+        working-directory: ./front
+        run: npm run build:win
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-package
+          path: |
+            front/release/*.exe
+            front/release/*.msi
+          retention-days: 30
+
+  package-macos:
+    name: Package for macOS
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: front/package-lock.json
+
+      - name: Run macOS setup script
+        run: |
+          chmod +x scripts/setup-python-macos.sh
+          ./scripts/setup-python-macos.sh
+
+      - name: Install Node.js dependencies
+        working-directory: ./front
+        run: npm ci --legacy-peer-deps
+
+      - name: Build and Package macOS
+        working-directory: ./front
+        run: npm run build:mac
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload macOS artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-package
+          path: |
+            front/release/*.dmg
+            front/release/*.app
+          retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    needs: [package-linux, package-windows, package-macos]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/linux-package/*
+            artifacts/windows-package/*
+            artifacts/macos-package/*
+          draft: true
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
