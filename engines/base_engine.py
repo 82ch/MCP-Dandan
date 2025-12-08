@@ -1,11 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import Any, Optional, List
 from utils import safe_print
 
 
 class BaseEngine(ABC):
 
-    def __init__(self, db, name: str, event_types: list[str] | None = None, producers: list[str] | None = None):
+    def __init__(self, db, name: str, event_types: Optional[List[str]] = None, producers: Optional[List[str]] = None):
         self.db = db
         self.name = name
         self.event_types = event_types or []
