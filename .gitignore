@@ -162,7 +162,7 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-package-lock.json
+# package-lock.json  # Commented out - needed for CI/CD
 
 # Electron
 dist/
