@@ -12,7 +12,11 @@
     "install-all": "pip install -r requirements.txt && node -e \"const {execSync}=require('child_process');if(process.platform==='darwin')try{execSync('python3 mcp_python_install_certificates.py',{stdio:'inherit'})}catch(e){}\" && npm install && cd front && npm install --legacy-peer-deps",
     "kill-server:win": "FOR /F \"tokens=5\" %P IN ('netstat -ano ^| findstr :8282 ^| findstr LISTENING') DO taskkill /PID %P /F",
     "kill-server:unix": "lsof -ti:8282 | xargs kill -9 2>/dev/null || true",
-    "kill-server": "node -e \"const {execSync}=require('child_process');try{execSync(process.platform==='win32'?'FOR /F \\\"tokens=5\\\" %P IN (\\'netstat -ano ^| findstr :8282 ^| findstr LISTENING\\') DO taskkill /PID %P /F':'lsof -ti:8282 | xargs kill -9',{stdio:'inherit',shell:true})}catch(e){}\""
+    "kill-server": "node -e \"const {execSync}=require('child_process');try{execSync(process.platform==='win32'?'FOR /F \\\"tokens=5\\\" %P IN (\\'netstat -ano ^| findstr :8282 ^| findstr LISTENING\\') DO taskkill /PID %P /F':'lsof -ti:8282 | xargs kill -9',{stdio:'inherit',shell:true})}catch(e){}\"",
+    "test": "npm run test:python && npm run test:frontend",
+    "test:python": "pytest",
+    "test:frontend": "cd front && npm run test",
+    "test:coverage": "pytest --cov=. --cov-report=html && cd front && npm run test:coverage"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"
