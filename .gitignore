@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+!front/build/
+!front/build/linux-postrm.sh
 develop-eggs/
 dist/
 downloads/
