@@ -446,8 +446,154 @@ function createBlockingWindow(blockingData: any) {
   })
 }
 
+// Install cleanup agents on first run
+function installCleanupAgents() {
+  if (!app.isPackaged) return // Only in production
+
+  if (process.platform === 'darwin') {
+    installMacOSCleanupAgent()
+  } else if (process.platform === 'win32') {
+    installWindowsCleanupTask()
+  }
+}
+
+// Install macOS cleanup agent
+function installMacOSCleanupAgent() {
+  try {
+    const homeDir = require('os').homedir()
+    const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.82ch.mcp-dandan.cleanup.plist')
+
+    // Check if already installed
+    if (fs.existsSync(plistPath)) {
+      console.log('[macOS] Cleanup agent already installed')
+      return
+    }
+
+    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.82ch.mcp-dandan.cleanup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>
+    if [ ! -d "/Applications/MCP-Dandan.app" ] &amp;&amp; [ ! -d "$HOME/Applications/MCP-Dandan.app" ]; then
+      rm -rf "$HOME/Library/Application Support/mcp-dandan"
+      rm -rf "$HOME/.config/mcp-dandan"
+      launchctl unload "$HOME/Library/LaunchAgents/com.82ch.mcp-dandan.cleanup.plist" 2>/dev/null
+      rm -f "$HOME/Library/LaunchAgents/com.82ch.mcp-dandan.cleanup.plist"
+    fi
+    </string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+`
+
+    const launchAgentsDir = path.join(homeDir, 'Library', 'LaunchAgents')
+    if (!fs.existsSync(launchAgentsDir)) {
+      fs.mkdirSync(launchAgentsDir, { recursive: true })
+    }
+
+    fs.writeFileSync(plistPath, plistContent, 'utf-8')
+    console.log('[macOS] Cleanup agent installed successfully')
+
+    // Try to load the agent
+    try {
+      execSync(`launchctl load "${plistPath}"`, { stdio: 'ignore' })
+      console.log('[macOS] Cleanup agent loaded')
+    } catch (err) {
+      console.log('[macOS] Cleanup agent will load on next login')
+    }
+  } catch (error) {
+    console.error('[macOS] Failed to install cleanup agent:', error)
+  }
+}
+
+// Install Windows cleanup scheduled task
+function installWindowsCleanupTask() {
+  try {
+    const taskName = 'MCP-Dandan-Cleanup'
+
+    // Check if task already exists
+    try {
+      execSync(`schtasks /Query /TN "${taskName}"`, { stdio: 'ignore' })
+      console.log('[Windows] Cleanup task already installed')
+      return
+    } catch {
+      // Task doesn't exist, continue with installation
+    }
+
+    const appData = app.getPath('appData')
+    const dataPath = path.join(appData, 'mcp-dandan')
+    const exePath = process.execPath
+
+    // Ensure mcp-dandan directory exists
+    if (!fs.existsSync(dataPath)) {
+      fs.mkdirSync(dataPath, { recursive: true })
+    }
+
+    // Put cleanup script INSIDE mcp-dandan folder so it gets deleted together
+    const scriptPath = path.join(dataPath, 'cleanup.ps1')
+
+    // Create PowerShell cleanup script
+    const scriptContent = `
+# MCP-Dandan Cleanup Script
+$exePath = "${exePath.replace(/\\/g, '\\\\')}"
+$dataPath = "${dataPath.replace(/\\/g, '\\\\')}"
+
+# Check if MCP-Dandan.exe exists
+if (-not (Test-Path $exePath)) {
+    # App is uninstalled, clean up data
+    if (Test-Path $dataPath) {
+        Remove-Item -Path $dataPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    # Remove this scheduled task
+    schtasks /Delete /TN "MCP-Dandan-Cleanup" /F 2>$null
+}
+`
+
+    fs.writeFileSync(scriptPath, scriptContent, 'utf-8')
+    console.log('[Windows] Cleanup script created at:', scriptPath)
+
+    // Create VBScript wrapper to run PowerShell completely hidden (no window flash)
+    const vbsPath = path.join(dataPath, 'cleanup.vbs')
+    const vbsContent = `Set objShell = CreateObject("WScript.Shell")
+objShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -File ""${scriptPath.replace(/\\/g, '\\\\')}""", 0, False
+Set objShell = Nothing`
+
+    fs.writeFileSync(vbsPath, vbsContent, 'utf-8')
+    console.log('[Windows] VBScript wrapper created at:', vbsPath)
+
+    // Create scheduled task to run VBScript (completely hidden, no window flash)
+    const createCmd = `schtasks /Create /TN "${taskName}" /TR "wscript.exe \\"${vbsPath}\\"" /SC MINUTE /MO 1 /F`
+
+    try {
+      execSync(createCmd, { stdio: 'pipe', encoding: 'utf-8' })
+      console.log('[Windows] Cleanup scheduled task created successfully')
+    } catch (error: any) {
+      console.error('[Windows] Failed to create scheduled task:', error.message)
+      throw error
+    }
+  } catch (error) {
+    console.error('[Windows] Failed to install cleanup task:', error)
+  }
+}
+
 // 앱이 준비되면 윈도우 생성
 app.whenReady().then(async () => {
+  // Install cleanup agents on first run (registers external cleanup scripts)
+  installCleanupAgents()
+
   // Start backend server in production mode
   startBackendServer()
 

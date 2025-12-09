@@ -1,7 +1,7 @@
 {
   "name": "mcp-dandan",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "MCP-Dandan Desktop Application",
   "license": "MIT",
   "author": {
@@ -105,7 +105,14 @@
       ]
     },
     "msi": {
-      "runAfterFinish": false
+      "runAfterFinish": false,
+      "perMachine": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true,
+      "perMachine": false
     },
     "mac": {
       "target": [
@@ -171,8 +178,15 @@
           "from": "../transports",
           "to": "transports",
           "filter": ["**/*.py"]
+        },
+        {
+          "from": "scripts/uninstall-linux.sh",
+          "to": "uninstall.sh"
         }
       ]
+    },
+    "deb": {
+      "afterRemove": "build/linux-postrm.sh"
     }
   }
 }
