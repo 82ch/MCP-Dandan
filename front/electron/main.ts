@@ -912,3 +912,76 @@ ipcMain.handle('app:restart', () => {
   app.relaunch()
   app.exit(0)
 })
+
+// Export database to CSV
+ipcMain.handle('database:export', async () => {
+  console.log(`[IPC] database:export called`)
+  try {
+    const response = await fetch('http://127.0.0.1:8282/database/export')
+
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`)
+    }
+
+    // Get the CSV data as blob
+    const blob = await response.blob()
+    const buffer = Buffer.from(await blob.arrayBuffer())
+
+    // Extract filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = '82ch_threats.csv'
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
+      }
+    }
+
+    // Show save dialog
+    const { dialog } = require('electron')
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: 'Export Threats Database',
+      defaultPath: filename,
+      filters: [
+        { name: 'CSV Files', extensions: ['csv'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
+    })
+
+    if (canceled || !filePath) {
+      console.log('[IPC] Export canceled by user')
+      return { success: false, canceled: true }
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, buffer)
+    console.log(`[IPC] Database exported to: ${filePath}`)
+
+    return { success: true, filePath }
+  } catch (error: any) {
+    console.error('[IPC] Error exporting database:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Delete database
+ipcMain.handle('database:delete', async () => {
+  console.log(`[IPC] database:delete called`)
+  try {
+    const response = await fetch('http://127.0.0.1:8282/database/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    })
+
+    const result = await response.json()
+    console.log(`[IPC] Delete result:`, result)
+
+    // No restart needed - backend reinitializes the database automatically
+    // Frontend will receive reload_all event via WebSocket
+
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error deleting database:', error)
+    return { success: false, error: error.message }
+  }
+})

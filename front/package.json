@@ -1,8 +1,8 @@
 {
-  "name": "82ch-desktop",
+  "name": "mcp-dandan",
   "private": true,
   "version": "1.0.0",
-  "description": "82ch Desktop Application",
+  "description": "MCP-Dandan - MCP Security Framework",
   "license": "MIT",
   "author": "82ch Team",
   "type": "module",

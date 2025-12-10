@@ -47,6 +47,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   // App control
   restartApp: () => ipcRenderer.invoke('app:restart'),
 
+  // Database management
+  exportDatabase: () => ipcRenderer.invoke('database:export'),
+  deleteDatabase: () => ipcRenderer.invoke('database:delete'),
+
   // 필요에 따라 추가 API 노출
   platform: process.platform,
   versions: {
@@ -81,6 +85,8 @@ declare global {
       getEnv: () => Promise<any>
       saveEnv: (env: any) => Promise<boolean>
       restartApp: () => Promise<void>
+      exportDatabase: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>
+      deleteDatabase: () => Promise<{ success: boolean; message?: string; error?: string }>
       platform: string
       versions: {
         node: string

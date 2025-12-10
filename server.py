@@ -387,6 +387,165 @@ async def handle_update_tool_safety(request):
         )
 
 
+async def handle_export_threats(request):
+    """
+    Export all detected threats to CSV format.
+
+    Response:
+        CSV file with all engine_results data
+    """
+    import csv
+    import io
+    from datetime import datetime
+
+    try:
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text='{"error": "Database not available"}',
+                content_type='application/json'
+            )
+
+        # Query all engine results with raw event details
+        query = """
+            SELECT
+                er.id,
+                er.engine_name,
+                er.serverName,
+                er.producer,
+                er.severity,
+                er.score,
+                er.detail,
+                er.created_at,
+                re.ts as event_timestamp,
+                re.event_type,
+                re.pname as app_name
+            FROM engine_results er
+            LEFT JOIN raw_events re ON er.raw_event_id = re.id
+            ORDER BY er.created_at DESC
+        """
+
+        async with db.conn.execute(query) as cursor:
+            rows = await cursor.fetchall()
+            columns = [desc[0] for desc in cursor.description]
+
+        # Create CSV in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+
+        # Write header
+        writer.writerow(columns)
+
+        # Write data
+        for row in rows:
+            writer.writerow(row)
+
+        csv_data = output.getvalue()
+        output.close()
+
+        # Generate filename with timestamp
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'82ch_threats_{timestamp}.csv'
+
+        return web.Response(
+            body=csv_data,
+            headers={
+                'Content-Type': 'text/csv',
+                'Content-Disposition': f'attachment; filename="{filename}"'
+            }
+        )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_export_threats: {e}")
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
+async def handle_delete_database(request):
+    """
+    Clear all data from database tables (faster and safer than deleting files).
+
+    Response:
+        { "success": true, "message": "Database cleared successfully" }
+    """
+    import json
+
+    try:
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        safe_print(f"[Server] Clearing all database tables...")
+
+        # Delete all data from tables (keep schema)
+        tables_to_clear = [
+            'raw_events',
+            'rpc_events',
+            'engine_results',
+            'mcpl'
+        ]
+
+        cleared_tables = []
+        for table in tables_to_clear:
+            try:
+                # Delete all rows
+                await db.conn.execute(f"DELETE FROM {table}")
+
+                # Reset autoincrement counter
+                await db.conn.execute(f"DELETE FROM sqlite_sequence WHERE name='{table}'")
+
+                cleared_tables.append(table)
+                safe_print(f"[Server] Cleared table: {table}")
+            except Exception as e:
+                safe_print(f"[Server] Warning: Could not clear table {table}: {e}")
+
+        # Commit all changes
+        await db.conn.commit()
+
+        # Vacuum to reclaim space and optimize
+        try:
+            await db.conn.execute("VACUUM")
+            safe_print(f"[Server] Database vacuumed successfully")
+        except Exception as e:
+            safe_print(f"[Server] Warning: Vacuum failed: {e}")
+
+        safe_print(f"[Server] Database cleared successfully")
+
+        # Broadcast reload_all to all clients
+        from websocket_handler import ws_handler
+        if ws_handler:
+            asyncio.create_task(ws_handler.broadcast_reload_all())
+            safe_print(f"[Server] Broadcasted reload_all to clients")
+
+        return web.Response(
+            text=json.dumps({
+                "success": True,
+                "message": "Database cleared successfully",
+                "cleared_tables": cleared_tables,
+                "restart_required": False
+            }),
+            content_type='application/json'
+        )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_delete_database: {e}")
+        import traceback
+        traceback.print_exc()
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
 def setup_routes(app):
     """Setup application routes."""
 
@@ -408,6 +567,10 @@ def setup_routes(app):
     app.router.add_post('/tools/safety', handle_get_tools_safety)
     app.router.add_post('/tools/safety/update', handle_update_tool_safety)
 
+    # Database management API endpoints
+    app.router.add_get('/database/export', handle_export_threats)
+    app.router.add_post('/database/delete', handle_delete_database)
+
     safe_print(f"[Server] Routes configured:")
     safe_print(f"  GET  /health - Health check")
     safe_print(f"  GET  /ws - WebSocket endpoint (real-time updates)")
@@ -416,6 +579,8 @@ def setup_routes(app):
     safe_print(f"  POST /register-tools - Tool registration")
     safe_print(f"  POST /tools/safety - Tools safety status")
     safe_print(f"  POST /tools/safety/update - Update tool safety manually")
+    safe_print(f"  GET  /database/export - Export threats to CSV")
+    safe_print(f"  POST /database/delete - Delete database and restart")
 
 
 async def on_startup(app):
