@@ -97,6 +97,7 @@ declare global {
       getEnv: () => Promise<any>
       saveEnv: (env: any) => Promise<boolean>
       restartApp: () => Promise<void>
+      updateToolSafety: (serverName: string, toolName: string, safety: number) => Promise<boolean>
       platform: string
       versions: {
         node: string

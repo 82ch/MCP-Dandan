@@ -27,13 +27,22 @@ class Config:
 
         # Engine settings (from config file)
         self.config = configparser.ConfigParser()
-        self.config_file = config_file
-        if os.path.exists(config_file):
-            self.config.read(config_file, encoding='utf-8')
+
+        # Use CONFIG_PATH environment variable if set
+        config_path = os.getenv('CONFIG_PATH')
+        if config_path:
+            self.config_file = config_path
+            safe_print(f'[Config] Using CONFIG_PATH from environment: {config_path}')
         else:
-            safe_print(f'[Config] {config_file} not found, creating default config')
-            self._create_default_config(config_file)
-            self.config.read(config_file, encoding='utf-8')
+            self.config_file = config_file
+
+        if os.path.exists(self.config_file):
+            self.config.read(self.config_file, encoding='utf-8')
+            safe_print(f'[Config] Loaded config from {self.config_file}')
+        else:
+            safe_print(f'[Config] {self.config_file} not found, creating default config')
+            self._create_default_config(self.config_file)
+            self.config.read(self.config_file, encoding='utf-8')
 
     def _create_default_config(self, config_file: str):
         """Create default config.conf file."""

@@ -9,6 +9,8 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+!front/build/
+!front/build/linux-postrm.sh
 develop-eggs/
 dist/
 downloads/
@@ -30,6 +32,7 @@ MANIFEST
 # PyInstaller
 *.manifest
 *.spec
+!server.spec
 
 # Installer logs
 pip-log.txt

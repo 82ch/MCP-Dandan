@@ -76,17 +76,27 @@ Output:
         from pathlib import Path
         from dotenv import load_dotenv
 
-        # .env 파일 로드 (engines/.env 또는 engines/engines/.env)
-        current_dir = Path(__file__).parent
-        env_path = current_dir / '.env'
-
-        if env_path.exists():
-            load_dotenv(env_path)
+        # ENV_PATH 환경 변수가 있으면 우선 사용 (패키징된 앱용)
+        env_path_from_env = os.getenv('ENV_PATH')
+        if env_path_from_env:
+            env_path = Path(env_path_from_env)
+            safe_print(f"[ToolsPoisoningEngine] Using ENV_PATH from environment: {env_path}")
+            if env_path.exists():
+                load_dotenv(env_path)
+            else:
+                safe_print(f"[ToolsPoisoningEngine] Warning: ENV_PATH file not found: {env_path}")
         else:
-            # 상위 디렉토리에서도 시도
-            parent_env_path = current_dir.parent / '.env'
-            if parent_env_path.exists():
-                load_dotenv(parent_env_path)
+            # .env 파일 로드 (engines/.env 또는 engines/engines/.env) - 개발 모드용
+            current_dir = Path(__file__).parent
+            env_path = current_dir / '.env'
+
+            if env_path.exists():
+                load_dotenv(env_path)
+            else:
+                # 상위 디렉토리에서도 시도
+                parent_env_path = current_dir.parent / '.env'
+                if parent_env_path.exists():
+                    load_dotenv(parent_env_path)
 
         api_key = os.getenv('MISTRAL_API_KEY')
         if not api_key:

@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { createRequire } from 'module'
-import { execSync } from 'child_process'
+import { execSync, spawn, ChildProcess } from 'child_process'
 import fs from 'fs'
 import type BetterSqlite3 from 'better-sqlite3'
 
@@ -21,6 +21,50 @@ let blockingWindow: BrowserWindow | null = null
 let wsClient: any = null
 let pendingBlockingData: any = null
 let isRestarting = false
+let backendProcess: ChildProcess | null = null
+let pythonProcesses: Set<number> = new Set() // Track spawned Python processes for cleanup
+
+// ========================================
+// Get bundled Python paths
+// ========================================
+function getBundledPythonPath(): string {
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    const resourcesPath = process.resourcesPath
+
+    if (process.platform === 'win32') {
+      return path.join(resourcesPath, 'python', 'python.exe')
+    } else if (process.platform === 'darwin') {
+      return path.join(resourcesPath, 'python', 'bin', 'python3')
+    } else { // Linux
+      return path.join(resourcesPath, 'python', 'bin', 'python3')
+    }
+  } else {
+    // Development mode - use system Python
+    return process.platform === 'win32' ? 'python' : 'python3'
+  }
+}
+
+function getBackendServerPath(): string {
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    const resourcesPath = process.resourcesPath
+    const serverDir = path.join(resourcesPath, 'server')
+
+    if (process.platform === 'win32') {
+      return path.join(serverDir, '82ch-server.exe')
+    } else {
+      // macOS and Linux
+      return path.join(serverDir, '82ch-server')
+    }
+  } else {
+    // Development mode - use server.py
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, 'server.py')
+  }
+}
 
 // Disable 82ch proxy and restore config files
 function restoreConfigFiles() {
@@ -30,11 +74,14 @@ function restoreConfigFiles() {
     const projectRoot = path.join(__dirname, '..', '..')
     const configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
 
-    // Use python3 on macOS/Linux, python on Windows
-    const pythonCmd = process.platform === 'win32' ? 'python' : 'python3'
+    // Use bundled Python in production, system Python in dev
+    const pythonCmd = getBundledPythonPath()
+
+    console.log(`[Electron] Using Python: ${pythonCmd}`)
+    console.log(`[Electron] Config finder: ${configFinderPath}`)
 
     // Use --disable to remove proxy from local servers and delete remote servers
-    execSync(`${pythonCmd} "${configFinderPath}" --disable --app all`, {
+    execSync(`"${pythonCmd}" "${configFinderPath}" --disable --app all`, {
       cwd: projectRoot,
       stdio: 'pipe',
       timeout: 10000
@@ -47,10 +94,162 @@ function restoreConfigFiles() {
   }
 }
 
+// Start backend server in production mode
+function startBackendServer() {
+  // Only start backend in production (packaged app)
+  if (process.env.VITE_DEV_SERVER_URL) {
+    console.log('[Backend] Running in dev mode - backend should be started externally')
+    return
+  }
+
+  try {
+    console.log('[Backend] Starting Python backend server...')
+
+    // Get resource paths
+    const isPackaged = app.isPackaged
+    const serverPath = getBackendServerPath() // Use helper function for exe/py selection
+    let workingDir: string
+    let dataDir: string
+
+    if (isPackaged) {
+      // In production, resources are in app.asar.unpacked or extraResources
+      const resourcesPath = process.resourcesPath
+      workingDir = path.join(resourcesPath, 'server')
+      dataDir = path.join(app.getPath('userData'), 'data')
+    } else {
+      // In development
+      const projectRoot = path.join(__dirname, '..', '..')
+      workingDir = projectRoot
+      dataDir = path.join(projectRoot, 'data')
+    }
+
+    console.log('[Backend] Server path:', serverPath)
+    console.log('[Backend] Working dir:', workingDir)
+    console.log('[Backend] Data dir:', dataDir)
+    console.log('[Backend] Packaged:', isPackaged)
+
+    // Ensure data directory exists
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+      console.log('[Backend] Created data directory:', dataDir)
+    }
+
+    // Set DB_PATH, CONFIG_PATH and ENV_PATH environment variables
+    const dbPath = path.join(dataDir, 'mcp_observer.db')
+    const configPath = path.join(dataDir, 'config.conf')
+    const envPath = path.join(dataDir, '.env')
+    console.log('[Backend] DB path:', dbPath)
+    console.log('[Backend] Config path:', configPath)
+    console.log('[Backend] Env path:', envPath)
+
+    let command: string
+    let args: string[]
+
+    if (isPackaged) {
+      // Production: Run executable directly
+      command = serverPath
+      args = []
+      console.log('[Backend] Running as executable')
+    } else {
+      // Development: Run with Python interpreter
+      const pythonCmd = getBundledPythonPath()
+      command = pythonCmd
+      args = [serverPath]
+      console.log('[Backend] Running with Python:', pythonCmd)
+    }
+
+    // Get bundled Python and config_finder paths to pass to backend
+    const pythonCmd = getBundledPythonPath()
+    let configFinderPath: string
+    let cliProxyPath: string
+
+    if (isPackaged) {
+      const resourcesPath = process.resourcesPath
+      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
+      cliProxyPath = path.join(resourcesPath, 'cli', 'cli_proxy.py')
+    } else {
+      const projectRoot = path.join(__dirname, '..', '..')
+      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+      cliProxyPath = path.join(projectRoot, 'cli_proxy.py')
+    }
+
+    // Start backend process
+    backendProcess = spawn(command, args, {
+      cwd: workingDir,
+      env: {
+        ...process.env,
+        DB_PATH: dbPath,
+        CONFIG_PATH: configPath,
+        ENV_PATH: envPath,
+        BUNDLED_PYTHON_PATH: pythonCmd,  // Pass bundled Python path
+        CONFIG_FINDER_PATH: configFinderPath,  // Pass config_finder.py path
+        MCP_PROXY_PYTHON_PATH: pythonCmd,  // For config_finder.py to use
+        MCP_PROXY_SCRIPT_PATH: cliProxyPath,  // For config_finder.py to use
+        PYTHONUNBUFFERED: '1'  // Ensure real-time output
+      },
+      stdio: ['ignore', 'pipe', 'pipe']
+    })
+
+    // Track the PID for cleanup
+    if (backendProcess.pid) {
+      pythonProcesses.add(backendProcess.pid)
+      console.log('[Backend] Server started with PID:', backendProcess.pid)
+    }
+
+    // Log stdout
+    backendProcess.stdout?.on('data', (data) => {
+      const output = data.toString().trim()
+      if (output) {
+        console.log(`[Backend] ${output}`)
+      }
+    })
+
+    // Log stderr
+    backendProcess.stderr?.on('data', (data) => {
+      const output = data.toString().trim()
+      if (output) {
+        console.error(`[Backend Error] ${output}`)
+      }
+    })
+
+    backendProcess.on('error', (error) => {
+      console.error('[Backend] Failed to start:', error)
+    })
+
+    backendProcess.on('exit', (code, signal) => {
+      console.log(`[Backend] Process exited with code ${code} and signal ${signal}`)
+      if (backendProcess?.pid) {
+        pythonProcesses.delete(backendProcess.pid)
+      }
+      backendProcess = null
+    })
+  } catch (error) {
+    console.error('[Backend] Error starting server:', error)
+  }
+}
+
 // Kill backend server function
 function killBackendServer() {
+  console.log('[Backend] Terminating backend and all Python processes...')
+
+  // 1. Kill spawned backend process if exists
+  if (backendProcess) {
+    try {
+      console.log(`[Backend] Terminating backend process PID: ${backendProcess.pid}`)
+      backendProcess.kill('SIGTERM')
+      if (backendProcess.pid) {
+        pythonProcesses.delete(backendProcess.pid)
+      }
+      backendProcess = null
+      console.log('[Backend] Backend process terminated')
+    } catch (error) {
+      console.error('[Backend] Error terminating backend process:', error)
+    }
+  }
+
+  // 2. Kill any process on port 8282 as fallback
   try {
-    console.log('[Electron] Killing backend server on port 8282...')
+    console.log('[Electron] Killing any process on port 8282...')
     if (process.platform === 'win32') {
       // Windows
       execSync('FOR /F "tokens=5" %P IN (\'netstat -ano ^| findstr :8282 ^| findstr LISTENING\') DO taskkill /PID %P /F', {
@@ -61,20 +260,112 @@ function killBackendServer() {
       // macOS/Linux
       execSync('lsof -ti:8282 | xargs kill -9', { stdio: 'ignore' })
     }
-    console.log('[Electron] Backend server killed successfully')
+    console.log('[Electron] Port 8282 cleaned up')
   } catch (error) {
     // Server might not be running, ignore error
-    console.log('[Electron] No backend server to kill or already stopped')
+    console.log('[Electron] No process on port 8282 or already stopped')
+  }
+
+  // 3. Kill all tracked Python processes spawned by bundled Python
+  if (pythonProcesses.size > 0) {
+    console.log(`[Electron] Killing ${pythonProcesses.size} tracked Python processes...`)
+
+    for (const pid of pythonProcesses) {
+      try {
+        if (process.platform === 'win32') {
+          execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' })
+        } else {
+          execSync(`kill -9 ${pid}`, { stdio: 'ignore' })
+        }
+        console.log(`[Electron] Killed Python process PID: ${pid}`)
+      } catch (error) {
+        console.log(`[Electron] Failed to kill PID ${pid} (may already be dead)`)
+      }
+    }
+
+    pythonProcesses.clear()
+  }
+
+  // 4. Additional cleanup: Kill ALL python.exe processes started from our bundled Python location
+  if (app.isPackaged) {
+    try {
+      const pythonPath = getBundledPythonPath()
+      const pythonDir = path.dirname(pythonPath)
+
+      console.log(`[Electron] Killing all Python processes from: ${pythonDir}`)
+
+      if (process.platform === 'win32') {
+        // Windows: Find all python.exe processes and check their image path
+        try {
+          const output = execSync(
+            `wmic process where "name='python.exe'" get ProcessId,ExecutablePath`,
+            { encoding: 'utf-8' }
+          )
+
+          const lines = output.split('\n').slice(1) // Skip header
+          for (const line of lines) {
+            const trimmed = line.trim()
+            if (!trimmed) continue
+
+            // Check if this python.exe is from our bundled location
+            if (trimmed.includes(pythonDir)) {
+              const pidMatch = trimmed.match(/(\d+)\s*$/)
+              if (pidMatch) {
+                const pid = pidMatch[1]
+                try {
+                  execSync(`taskkill /PID ${pid} /F /T`, { stdio: 'ignore' })
+                  console.log(`[Electron] Killed bundled Python process PID: ${pid}`)
+                } catch (e) {
+                  // Process may have already exited
+                }
+              }
+            }
+          }
+        } catch (error) {
+          // wmic command failed, likely no python.exe processes running
+          console.log('[Electron] No python.exe processes found')
+        }
+      } else {
+        // macOS/Linux: Find processes using our bundled Python
+        try {
+          const grepPattern = pythonDir.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          execSync(`ps aux | grep "${grepPattern}" | grep -v grep | awk '{print $2}' | xargs kill -9`, {
+            stdio: 'ignore'
+          })
+          console.log('[Electron] Killed all bundled Python processes')
+        } catch (error) {
+          // No processes found or all killed
+          console.log('[Electron] No bundled Python processes found')
+        }
+      }
+    } catch (error) {
+      console.error('[Electron] Error during comprehensive Python cleanup:', error)
+    }
   }
 }
 
 const createWindow = () => {
+  // Use .ico for Windows, .png for other platforms
+  // In production, icons are in app.asar.unpacked/icons
+  // In development, icons are in front/icons
+  let iconPath: string
+  if (app.isPackaged) {
+    const iconFileName = process.platform === 'win32' ? 'dandan.ico' : 'dandan.png'
+    iconPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'icons', iconFileName)
+  } else {
+    const iconFileName = process.platform === 'win32' ? 'dandan.ico' : 'dandan.png'
+    iconPath = path.join(__dirname, '..', 'icons', iconFileName)
+  }
+
+  console.log('[Electron] Icon path:', iconPath)
+  console.log('[Electron] Icon exists:', fs.existsSync(iconPath))
+
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
     minWidth: 800,
     minHeight: 600,
-    icon: path.join(__dirname, '..', 'icons', 'dandan.png'),
+    icon: iconPath,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
@@ -155,8 +446,157 @@ function createBlockingWindow(blockingData: any) {
   })
 }
 
+// Install cleanup agents on first run
+function installCleanupAgents() {
+  if (!app.isPackaged) return // Only in production
+
+  if (process.platform === 'darwin') {
+    installMacOSCleanupAgent()
+  } else if (process.platform === 'win32') {
+    installWindowsCleanupTask()
+  }
+}
+
+// Install macOS cleanup agent
+function installMacOSCleanupAgent() {
+  try {
+    const homeDir = require('os').homedir()
+    const plistPath = path.join(homeDir, 'Library', 'LaunchAgents', 'com.82ch.mcp-dandan.cleanup.plist')
+
+    // Check if already installed
+    if (fs.existsSync(plistPath)) {
+      console.log('[macOS] Cleanup agent already installed')
+      return
+    }
+
+    const plistContent = `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.82ch.mcp-dandan.cleanup</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/sh</string>
+    <string>-c</string>
+    <string>
+    if [ ! -d "/Applications/MCP-Dandan.app" ] &amp;&amp; [ ! -d "$HOME/Applications/MCP-Dandan.app" ]; then
+      rm -rf "$HOME/Library/Application Support/mcp-dandan"
+      rm -rf "$HOME/.config/mcp-dandan"
+      launchctl unload "$HOME/Library/LaunchAgents/com.82ch.mcp-dandan.cleanup.plist" 2>/dev/null
+      rm -f "$HOME/Library/LaunchAgents/com.82ch.mcp-dandan.cleanup.plist"
+    fi
+    </string>
+  </array>
+
+  <key>StartInterval</key>
+  <integer>60</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+</dict>
+</plist>
+`
+
+    const launchAgentsDir = path.join(homeDir, 'Library', 'LaunchAgents')
+    if (!fs.existsSync(launchAgentsDir)) {
+      fs.mkdirSync(launchAgentsDir, { recursive: true })
+    }
+
+    fs.writeFileSync(plistPath, plistContent, 'utf-8')
+    console.log('[macOS] Cleanup agent installed successfully')
+
+    // Try to load the agent
+    try {
+      execSync(`launchctl load "${plistPath}"`, { stdio: 'ignore' })
+      console.log('[macOS] Cleanup agent loaded')
+    } catch (err) {
+      console.log('[macOS] Cleanup agent will load on next login')
+    }
+  } catch (error) {
+    console.error('[macOS] Failed to install cleanup agent:', error)
+  }
+}
+
+// Install Windows cleanup scheduled task
+function installWindowsCleanupTask() {
+  try {
+    const taskName = 'MCP-Dandan-Cleanup'
+
+    // Check if task already exists
+    try {
+      execSync(`schtasks /Query /TN "${taskName}"`, { stdio: 'ignore' })
+      console.log('[Windows] Cleanup task already installed')
+      return
+    } catch {
+      // Task doesn't exist, continue with installation
+    }
+
+    const appData = app.getPath('appData')
+    const dataPath = path.join(appData, 'mcp-dandan')
+    const exePath = process.execPath
+
+    // Ensure mcp-dandan directory exists
+    if (!fs.existsSync(dataPath)) {
+      fs.mkdirSync(dataPath, { recursive: true })
+    }
+
+    // Put cleanup script INSIDE mcp-dandan folder so it gets deleted together
+    const scriptPath = path.join(dataPath, 'cleanup.ps1')
+
+    // Create PowerShell cleanup script
+    const scriptContent = `
+# MCP-Dandan Cleanup Script
+$exePath = "${exePath.replace(/\\/g, '\\\\')}"
+$dataPath = "${dataPath.replace(/\\/g, '\\\\')}"
+
+# Check if MCP-Dandan.exe exists
+if (-not (Test-Path $exePath)) {
+    # App is uninstalled, clean up data
+    if (Test-Path $dataPath) {
+        Remove-Item -Path $dataPath -Recurse -Force -ErrorAction SilentlyContinue
+    }
+    # Remove this scheduled task
+    schtasks /Delete /TN "MCP-Dandan-Cleanup" /F 2>$null
+}
+`
+
+    fs.writeFileSync(scriptPath, scriptContent, 'utf-8')
+    console.log('[Windows] Cleanup script created at:', scriptPath)
+
+    // Create VBScript wrapper to run PowerShell completely hidden (no window flash)
+    const vbsPath = path.join(dataPath, 'cleanup.vbs')
+    const vbsContent = `Set objShell = CreateObject("WScript.Shell")
+objShell.Run "powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -NoProfile -File ""${scriptPath.replace(/\\/g, '\\\\')}""", 0, False
+Set objShell = Nothing`
+
+    fs.writeFileSync(vbsPath, vbsContent, 'utf-8')
+    console.log('[Windows] VBScript wrapper created at:', vbsPath)
+
+    // Create scheduled task to run VBScript (completely hidden, no window flash)
+    const createCmd = `schtasks /Create /TN "${taskName}" /TR "wscript.exe \\"${vbsPath}\\"" /SC MINUTE /MO 1 /F`
+
+    try {
+      execSync(createCmd, { stdio: 'pipe', encoding: 'utf-8' })
+      console.log('[Windows] Cleanup scheduled task created successfully')
+    } catch (error: any) {
+      console.error('[Windows] Failed to create scheduled task:', error.message)
+      throw error
+    }
+  } catch (error) {
+    console.error('[Windows] Failed to install cleanup task:', error)
+  }
+}
+
 // 앱이 준비되면 윈도우 생성
 app.whenReady().then(async () => {
+  // Install cleanup agents on first run (registers external cleanup scripts)
+  installCleanupAgents()
+
+  // Start backend server in production mode
+  startBackendServer()
+
   // Wait for backend server to be ready before initializing database
   const backendReady = await waitForBackend()
 
@@ -290,22 +730,23 @@ function connectWebSocket() {
 
 function initializeDatabase() {
   try {
-    // Use DB_PATH from environment variable or default path
-    // In development: front/../data/mcp_observer.db
-    // In production: can be set via DB_PATH env var
+    // Determine DB path based on packaged vs development mode
     let dbPath: string
-    if (process.env.DB_PATH) {
-      dbPath = process.env.DB_PATH
+    const isPackaged = app.isPackaged
+
+    if (isPackaged) {
+      // In production, use the same path as the backend server
+      const dataDir = path.join(app.getPath('userData'), 'data')
+      dbPath = path.join(dataDir, 'mcp_observer.db')
     } else {
-      // Default: go up one directory from electron folder to project root
+      // In development, use project root data directory
       const projectRoot = path.join(__dirname, '..', '..')
       dbPath = path.join(projectRoot, 'data', 'mcp_observer.db')
     }
 
     console.log(`[DB] Initializing database...`)
     console.log(`[DB] Database path: ${dbPath}`)
-    console.log(`[DB] __dirname: ${__dirname}`)
-    console.log(`[DB] app.getAppPath(): ${app.getAppPath()}`)
+    console.log(`[DB] Packaged mode: ${isPackaged}`)
 
     db = new Database(dbPath, {
       readonly: true,
@@ -737,8 +1178,20 @@ ipcMain.handle('api:tool:update-safety', async (_event, mcpTag: string, toolName
 
 // Config file path
 function getConfigPath() {
-  const projectRoot = path.join(__dirname, '..', '..')
-  return path.join(projectRoot, 'config.conf')
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    // In production, use userData directory
+    const dataDir = path.join(app.getPath('userData'), 'data')
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    return path.join(dataDir, 'config.conf')
+  } else {
+    // In development, use project root
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, 'config.conf')
+  }
 }
 
 // Parse config.conf file
@@ -816,10 +1269,11 @@ ipcMain.handle('config:get', () => {
   console.log(`[IPC] config:get called`)
   try {
     const configPath = getConfigPath()
+    console.log(`[IPC] Config path: ${configPath}`)
 
     // Create default config if not exists
     if (!fs.existsSync(configPath)) {
-      console.log(`[IPC] config.conf not found, creating default`)
+      console.log(`[IPC] config.conf not found at ${configPath}, creating default`)
       const defaultConfig = {
         Engine: {
           tools_poisoning_engine: true,
@@ -831,12 +1285,13 @@ ipcMain.handle('config:get', () => {
       }
       const content = generateConfig(defaultConfig)
       fs.writeFileSync(configPath, content, 'utf-8')
+      console.log(`[IPC] Default config created at ${configPath}`)
       return defaultConfig
     }
 
     const content = fs.readFileSync(configPath, 'utf-8')
     const config = parseConfig(content)
-    console.log(`[IPC] config:get returning config`)
+    console.log(`[IPC] config:get returning config from ${configPath}`)
     return config
   } catch (error) {
     console.error('[IPC] Error reading config:', error)
@@ -861,8 +1316,20 @@ ipcMain.handle('config:save', (_event, config: any) => {
 
 // Get .env file path
 function getEnvPath() {
-  const projectRoot = path.join(__dirname, '..', '..')
-  return path.join(projectRoot, '.env')
+  const isPackaged = app.isPackaged
+
+  if (isPackaged) {
+    // In production, use userData directory
+    const dataDir = path.join(app.getPath('userData'), 'data')
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true })
+    }
+    return path.join(dataDir, '.env')
+  } else {
+    // In development, use project root
+    const projectRoot = path.join(__dirname, '..', '..')
+    return path.join(projectRoot, '.env')
+  }
 }
 
 // Get env variables
@@ -870,9 +1337,13 @@ ipcMain.handle('env:get', () => {
   console.log(`[IPC] env:get called`)
   try {
     const envPath = getEnvPath()
+    console.log(`[IPC] Env path: ${envPath}`)
+
     if (!fs.existsSync(envPath)) {
+      console.log(`[IPC] .env file not found at ${envPath}, returning empty`)
       return { MISTRAL_API_KEY: '' }
     }
+
     const content = fs.readFileSync(envPath, 'utf-8')
     const env: any = {}
     const lines = content.split('\n')
@@ -882,7 +1353,7 @@ ipcMain.handle('env:get', () => {
         env[match[1].trim()] = match[2].trim()
       }
     }
-    console.log(`[IPC] env:get returning env`)
+    console.log(`[IPC] env:get returning env from ${envPath}`)
     return env
   } catch (error) {
     console.error('[IPC] Error reading env:', error)
