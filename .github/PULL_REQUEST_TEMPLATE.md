@@ -1,28 +1,28 @@
-## 📝 개요
+## 📝 Overview
 <!--
-이 PR이 어떤 변경을 포함하는지 간단히 요약해 주세요.
-예: 로그 필터링 조건 추가, 멀티라인 처리 개선, 설정 유효성 강화 등
+Briefly summarize what changes this PR includes.
+Example: Add log filtering conditions, improve multiline handling, enhance configuration validation, etc.
 -->
-- [Feat] 옵저버 모니터링 추가 
+- [Feat] Add your work
 
 
-## 📋 변경 사항
+## 📋 Changes
 <!--
-개요에서 작성한 내용을 상세히 작성해 주세요. 
+Describe the details of what you mentioned in the overview.
 -->
-- 주요 수정/추가 내용 요약
+- Summary of main modifications/additions
 
-## 📌 관련 이슈
+## 📌 Related Issues
 <!--
-연관된 이슈가 있다면 아래에 링크하세요.
-예: Fixes #12 또는 Related to #34
+Link related issues if any.
+Example: Fixes #12 or Related to #34
 -->
 
-- x
+- N/A
 
 
 
 
-## 💬 기타
-<!-- 논의가 필요한 부분이나 리뷰어가 확인해야 할 사항이 있다면 작성해 주세요. -->
-- 리뷰 시 참고할 사항이나 주의점
+## 💬 Additional Notes
+<!-- Write any points that need discussion or that reviewers should check. -->
+- Notes or points of attention for reviewers

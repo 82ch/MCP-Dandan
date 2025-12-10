@@ -269,6 +269,23 @@ Output:
                 # Update tool safety in mcpl table (score 기반)
                 await self.db.update_tool_safety(mcp_tag, tool_name, llm_score)
 
+                # WebSocket으로 실시간 업데이트 브로드캐스트
+                try:
+                    from websocket_handler import ws_handler
+                    # score 기반 safety 값 결정 (DB와 동일한 로직)
+                    if llm_score >= 80:
+                        safety_value = 3  # 조치필요
+                    elif llm_score >= 40:
+                        safety_value = 2  # 조치권장
+                    else:
+                        safety_value = 1  # 안전
+
+                    asyncio.create_task(
+                        ws_handler.broadcast_tool_safety_update(mcp_tag, tool_name, safety_value)
+                    )
+                except Exception as e:
+                    safe_print(f"[ToolsPoisoningEngine] Failed to broadcast tool safety update: {e}")
+
                 if verdict == 'DENY':
                     # 악성으로 판정된 경우에만 결과 생성
                     detection_time = datetime.now().isoformat()
