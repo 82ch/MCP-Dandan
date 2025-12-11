@@ -96,4 +96,13 @@ https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 
 https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067
 
+---
+> ## Full Documentation  
+> For detailed explanations and technical documentation, please refer to the  
+> **[MCP-Dandan Wiki](https://github.com/82ch/MCP-Dandan/wiki)**.
+>
+> **Have questions or suggestions?**  
+> Please visit the **[Discussions](https://github.com/82ch/MCP-Dandan/discussions)** tab.
+---
+
 
