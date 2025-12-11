@@ -407,7 +407,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
         <div className="flex gap-2">
           <button
             onClick={handleExportDatabase}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
             title="Export all threat data to CSV"
           >
             <Download size={16} />
@@ -415,8 +415,7 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
           </button>
           <button
             onClick={handleDeleteDatabase}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
-            title="Delete all database data and restart"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 text-sm rounded-lg border border-red-300 hover:bg-red-50 transition-colors"
           >
             <Trash2 size={16} />
             <span>Reset Data</span>
