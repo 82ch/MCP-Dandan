@@ -31,18 +31,14 @@ class Database:
         if self.conn is not None:
             return
 
-        # 데이터베이스 파일이 없으면 초기화 필요
-        is_new_db = not self.db_path.exists()
-
         self.conn = await aiosqlite.connect(str(self.db_path))
 
         # WAL 모드 활성화 (성능 향상)
         await self.conn.execute("PRAGMA journal_mode=WAL")
         await self.conn.execute("PRAGMA synchronous=NORMAL")
 
-        # 새 데이터베이스면 스키마 초기화
-        if is_new_db:
-            await self._initialize_schema()
+        # always schema initalize (CREATE TABLE IF NOT EXISTS)
+        await self._initialize_schema()
 
         safe_print(f'Database 연결됨: {self.db_path}')
 
