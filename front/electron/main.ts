@@ -1384,81 +1384,75 @@ ipcMain.handle('app:restart', () => {
   app.exit(0)
 })
 
-// Enable MCP protection (patch MCP configs to use bundled Python + cli_proxy)
-ipcMain.handle('config:enable-protection', async () => {
-  console.log(`[IPC] config:enable-protection called`)
+// Export database to CSV
+ipcMain.handle('database:export', async () => {
+  console.log(`[IPC] database:export called`)
   try {
-    const pythonCmd = getBundledPythonPath()
-    const isPackaged = app.isPackaged
+    const response = await fetch('http://127.0.0.1:8282/database/export')
 
-    let cliProxyPath: string
-    let configFinderPath: string
-
-    if (isPackaged) {
-      // Production: use bundled paths
-      const resourcesPath = process.resourcesPath
-      cliProxyPath = path.join(resourcesPath, 'cli', 'cli_proxy.py')
-      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
-    } else {
-      // Development: use project paths
-      const projectRoot = path.join(__dirname, '..', '..')
-      cliProxyPath = path.join(projectRoot, 'cli_proxy.py')
-      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`)
     }
 
-    console.log(`[IPC] Python: ${pythonCmd}`)
-    console.log(`[IPC] CLI Proxy: ${cliProxyPath}`)
-    console.log(`[IPC] Config Finder: ${configFinderPath}`)
+    // Get the CSV data as blob
+    const blob = await response.blob()
+    const buffer = Buffer.from(await blob.arrayBuffer())
 
-    // Run config_finder.py to patch MCP configs
-    // Pass bundled Python path and CLI proxy path as environment variables
-    execSync(`"${pythonCmd}" "${configFinderPath}" --enable --app all`, {
-      stdio: 'pipe',
-      timeout: 10000,
-      env: {
-        ...process.env,
-        MCP_PROXY_PYTHON_PATH: pythonCmd,
-        MCP_PROXY_SCRIPT_PATH: cliProxyPath
+    // Extract filename from Content-Disposition header
+    const contentDisposition = response.headers.get('Content-Disposition')
+    let filename = '82ch_threats.csv'
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+      if (filenameMatch) {
+        filename = filenameMatch[1]
       }
+    }
+
+    // Show save dialog
+    const { dialog } = require('electron')
+    const { filePath, canceled } = await dialog.showSaveDialog({
+      title: 'Export Threats Database',
+      defaultPath: filename,
+      filters: [
+        { name: 'CSV Files', extensions: ['csv'] },
+        { name: 'All Files', extensions: ['*'] }
+      ]
     })
 
-    console.log(`[IPC] MCP protection enabled successfully`)
-    return { success: true }
-  } catch (error) {
-    console.error('[IPC] Failed to enable protection:', error)
-    return { success: false, error: String(error) }
+    if (canceled || !filePath) {
+      console.log('[IPC] Export canceled by user')
+      return { success: false, canceled: true }
+    }
+
+    // Write file
+    fs.writeFileSync(filePath, buffer)
+    console.log(`[IPC] Database exported to: ${filePath}`)
+
+    return { success: true, filePath }
+  } catch (error: any) {
+    console.error('[IPC] Error exporting database:', error)
+    return { success: false, error: error.message }
   }
 })
 
-// Disable MCP protection (restore original MCP configs)
-ipcMain.handle('config:disable-protection', async () => {
-  console.log(`[IPC] config:disable-protection called`)
+// Delete database
+ipcMain.handle('database:delete', async () => {
+  console.log(`[IPC] database:delete called`)
   try {
-    const pythonCmd = getBundledPythonPath()
-    const isPackaged = app.isPackaged
-
-    let configFinderPath: string
-
-    if (isPackaged) {
-      const resourcesPath = process.resourcesPath
-      configFinderPath = path.join(resourcesPath, 'transports', 'config_finder.py')
-    } else {
-      const projectRoot = path.join(__dirname, '..', '..')
-      configFinderPath = path.join(projectRoot, 'transports', 'config_finder.py')
-    }
-
-    console.log(`[IPC] Config Finder: ${configFinderPath}`)
-
-    // Run config_finder.py with --disable flag
-    execSync(`"${pythonCmd}" "${configFinderPath}" --disable --app all`, {
-      stdio: 'pipe',
-      timeout: 10000
+    const response = await fetch('http://127.0.0.1:8282/database/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
     })
 
-    console.log(`[IPC] MCP protection disabled successfully`)
-    return { success: true }
-  } catch (error) {
-    console.error('[IPC] Failed to disable protection:', error)
-    return { success: false, error: String(error) }
+    const result = await response.json()
+    console.log(`[IPC] Delete result:`, result)
+
+    // No restart needed - backend reinitializes the database automatically
+    // Frontend will receive reload_all event via WebSocket
+
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error deleting database:', error)
+    return { success: false, error: error.message }
   }
 })

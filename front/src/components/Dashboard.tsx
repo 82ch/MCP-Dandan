@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { AlertTriangle, Shield, FileWarning, Database, UserX, LucideIcon } from 'lucide-react'
+import { AlertTriangle, Shield, FileWarning, Database, UserX, LucideIcon, Download, Trash2 } from 'lucide-react'
 import type { MCPServer, DetectedEvent, ThreatStats, TimelineData } from '../types'
 
 interface ThreatDefinition {
@@ -351,9 +351,77 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
     }
   }
 
+  const handleExportDatabase = async () => {
+    try {
+      const result = await window.electronAPI.exportDatabase()
+      if (result.success && result.filePath) {
+        alert(`Database exported successfully to:\n${result.filePath}`)
+      } else if (result.canceled) {
+        // User canceled, do nothing
+      } else {
+        alert(`Failed to export database: ${result.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error exporting database:', error)
+      alert('Failed to export database')
+    }
+  }
+
+  const handleDeleteDatabase = async () => {
+    const confirmed = confirm(
+      'Are you sure you want to delete the entire database?\n\n' +
+      'This will:\n' +
+      '- Delete all threat detection data\n' +
+      '- Delete all MCP server records\n' +
+      '- Reset to a fresh database\n\n' +
+      'This action cannot be undone!'
+    )
+
+    if (!confirmed) return
+
+    console.log('[Dashboard] Deleting database...')
+
+    try {
+      const result = await window.electronAPI.deleteDatabase()
+      if (result.success) {
+        // Show success message - page will auto-reload via WebSocket
+        alert(
+          'Database deleted successfully!\n\n' +
+          'The page will refresh automatically.'
+        )
+        // WebSocket will broadcast reload_all event, which triggers auto-refresh
+      } else {
+        alert(`Failed to delete database: ${result.error || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error deleting database:', error)
+      alert('Failed to delete database')
+    }
+  }
+
   return (
     <div id="dashboard-container" className="h-full overflow-y-auto overflow-x-hidden bg-gray-50 p-6">
-      <h1 className="text-2xl font-bold text-gray-800 mb-6">Dashboard</h1>
+      {/* Header with Database Management Buttons */}
+      <div className="flex items-center justify-between mb-6">
+        <h1 className="text-2xl font-bold text-gray-800">Dashboard</h1>
+        <div className="flex gap-2">
+          <button
+            onClick={handleExportDatabase}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-gray-700 text-sm rounded-lg border border-gray-300 hover:bg-gray-50 transition-colors"
+            title="Export all threat data to CSV"
+          >
+            <Download size={16} />
+            <span>Export Data</span>
+          </button>
+          <button
+            onClick={handleDeleteDatabase}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 text-sm rounded-lg border border-red-300 hover:bg-red-50 transition-colors"
+          >
+            <Trash2 size={16} />
+            <span>Reset Data</span>
+          </button>
+        </div>
+      </div>
 
       {/* Detected Events Table - Full Width */}
       <div className="bg-white rounded-lg shadow mb-6" data-tutorial="detected-table">

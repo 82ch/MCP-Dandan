@@ -31,12 +31,28 @@ function App() {
 
   const isDraggingVertical = useRef(false)
   const isDraggingHorizontal = useRef(false)
+  const selectedServerIdRef = useRef<string | number | null>(null)
+
+  // Update ref when selectedServer changes
+  useEffect(() => {
+    selectedServerIdRef.current = selectedServer?.id ?? null
+  }, [selectedServer])
 
   // Memoize fetch functions to avoid recreating on every render
   const fetchServers = useCallback(async () => {
     try {
       const data = await window.electronAPI.getServers()
       setMcpServers(data)
+
+      // Update selectedServer if it exists (to reflect tool safety changes in real-time)
+      // Use ref to avoid adding selectedServer to dependencies
+      if (selectedServerIdRef.current !== null) {
+        const updatedServer = data.find((s: MCPServer) => s.id === selectedServerIdRef.current)
+        if (updatedServer) {
+          setSelectedServer(updatedServer)
+        }
+      }
+
       setLoading(false)
     } catch (error) {
       console.error('Error fetching servers:', error)
