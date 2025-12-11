@@ -90,7 +90,7 @@ const CustomRulesTab: React.FC = () => {
         loadRules(false);
       } else {
         const errorMsg = data.error?.includes('UNIQUE constraint') || data.error?.includes('insert custom rule')
-          ? '이미 같은 이름의 규칙이 존재합니다. 다른 이름을 사용해주세요.'
+          ? 'A rule with the same name already exists. Please use a different name.'
           : `Failed to add rule: ${data.error}`;
         alert(errorMsg);
       }
@@ -170,16 +170,16 @@ const CustomRulesTab: React.FC = () => {
         </div>
       )}
 
-      <div className="flex justify-between items-center">
+      <div className="flex justify-between items-start mb-4">
         <div>
-          <h3 className="text-lg font-semibold">Custom YARA Rules for PII Detection</h3>
-          <p className="text-sm text-gray-600 mt-1">Add custom patterns to detect sensitive information</p>
+          <h3 className="text-base font-semibold">Custom PII Rules</h3>
+          <p className="text-xs text-gray-600 mt-0.5">Add custom detection patterns</p>
         </div>
         <button
           onClick={() => setShowAddModal(true)}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+          className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 whitespace-nowrap flex-shrink-0"
         >
-          Add Custom Rule
+          + Add
         </button>
       </div>
 
@@ -245,7 +245,13 @@ const CustomRulesTab: React.FC = () => {
                 </div>
               </div>
               <div className="mt-1.5 text-xs text-gray-500">
-                Created: {new Date(rule.created_at).toLocaleString()}
+                Created: {new Date(rule.created_at).toLocaleString('en-US', {
+                  year: 'numeric',
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit'
+                })}
               </div>
             </div>
           ))}
