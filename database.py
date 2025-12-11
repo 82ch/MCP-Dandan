@@ -524,3 +524,151 @@ class Database:
         except Exception as e:
             safe_print(f'[DB] Failed to set tool safety manually: {e}')
             return False
+
+    # ========================================================================
+    # Custom Rules Methods
+    async def insert_custom_rule(self, engine_name: str, rule_name: str, rule_content: str,
+                                 category: str = None, description: str = None) -> Optional[int]:
+        """
+        Insert a new custom YARA rule.
+
+        Args:
+            engine_name: Engine name (e.g., 'pii_leak_engine')
+            rule_name: YARA rule name
+            rule_content: Full YARA rule content
+            category: Optional category (PII, Financial, etc.)
+            description: Optional user description
+
+        Returns:
+            Rule ID if successful, None otherwise
+
+        Raises:
+            Exception: If insertion fails (e.g., duplicate rule name)
+        """
+        try:
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO custom_rules (engine_name, rule_name, rule_content, category, description)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (engine_name, rule_name, rule_content, category, description)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule inserted: {engine_name}/{rule_name}')
+            return cursor.lastrowid
+
+        except Exception as e:
+            error_msg = str(e)
+            if 'UNIQUE constraint' in error_msg:
+                safe_print(f'[DB] Duplicate custom rule: {engine_name}/{rule_name}')
+                raise Exception(f'Rule "{rule_name}" already exists for this engine')
+            else:
+                safe_print(f'[DB] Failed to insert custom rule: {e}')
+                raise
+
+    async def get_custom_rules(self, engine_name: str = None, enabled_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get custom rules, optionally filtered by engine name.
+
+        Args:
+            engine_name: Optional engine name to filter by
+            enabled_only: If True, only return enabled rules
+
+        Returns:
+            List of custom rules
+        """
+        try:
+            query = "SELECT * FROM custom_rules WHERE 1=1"
+            params = []
+
+            if engine_name:
+                query += " AND engine_name = ?"
+                params.append(engine_name)
+
+            if enabled_only:
+                query += " AND enabled = 1"
+
+            query += " ORDER BY created_at DESC"
+
+            async with self.conn.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                columns = [description[0] for description in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to get custom rules: {e}')
+            return []
+
+    async def get_custom_rules_content(self, engine_name: str) -> str:
+        """
+        Get combined YARA rule content for an engine (enabled rules only).
+
+        Args:
+            engine_name: Engine name
+
+        Returns:
+            Combined YARA rule content as a single string
+        """
+        try:
+            rules = await self.get_custom_rules(engine_name, enabled_only=True)
+            if not rules:
+                return ""
+
+            # Combine all rule contents with newlines
+            combined = "\n\n".join(rule['rule_content'] for rule in rules)
+            return combined
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to get custom rules content: {e}')
+            return ""
+
+    async def delete_custom_rule(self, rule_id: int) -> bool:
+        """
+        Delete a custom rule by ID.
+
+        Args:
+            rule_id: Rule ID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.conn.execute(
+                "DELETE FROM custom_rules WHERE id = ?",
+                (rule_id,)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule deleted: {rule_id}')
+            return True
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to delete custom rule: {e}')
+            return False
+
+    async def toggle_custom_rule(self, rule_id: int, enabled: bool) -> bool:
+        """
+        Enable or disable a custom rule.
+
+        Args:
+            rule_id: Rule ID
+            enabled: True to enable, False to disable
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.conn.execute(
+                """
+                UPDATE custom_rules
+                SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (1 if enabled else 0, rule_id)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule {"enabled" if enabled else "disabled"}: {rule_id}')
+            return True
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to toggle custom rule: {e}')
+            return False

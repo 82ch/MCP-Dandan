@@ -24,6 +24,10 @@ interface ElectronAPI {
   restartApp: () => Promise<void>
   exportDatabase: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>
   deleteDatabase: () => Promise<{ success: boolean; message?: string; error?: string }>
+  getCustomRules: (engineName: string) => Promise<any>
+  addCustomRule: (data: any) => Promise<any>
+  deleteCustomRule: (ruleId: number) => Promise<any>
+  toggleCustomRule: (ruleId: number, enabled: boolean) => Promise<any>
   platform: string
   versions: {
     node: string

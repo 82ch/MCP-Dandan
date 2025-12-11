@@ -210,6 +210,20 @@ class WebSocketHandler:
         })
         safe_print(f'[WebSocket] Broadcasted tool_safety_update: {mcp_tag}/{tool_name} -> {safety}')
 
+    async def broadcast_custom_rule_update(self, engine_name: str):
+        """
+        Notify clients that custom rules have been updated for an engine.
+
+        Args:
+            engine_name: Engine name (e.g., 'pii_leak_engine')
+        """
+        await self.broadcast('custom_rule_update', {
+            'engine_name': engine_name,
+            'message': f'Custom rules updated for {engine_name}',
+            'action': 'refresh_custom_rules'
+        })
+        safe_print(f'[WebSocket] Broadcasted custom_rule_update: {engine_name}')
+
     async def broadcast_blocking_request(self, request_id: str, event_data: dict,
                                          detection_results: list, engine_name: str,
                                          severity: str, server_name: str, tool_name: str):
