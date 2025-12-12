@@ -79,12 +79,9 @@ Uses semantic analysis to detect misuse of MCP tools:
 
 ### Engine Setting
 <p align="center">
-
-
-
 </p>
 
-https://github.com/user-attachments/assets/3a8dfd7a-2ea2-442e-8c00-e831d5b8f46c
+https://github.com/user-attachments/assets/3d6f2304-0a6b-492e-9f2d-bba76df98b4c
 
 
 <p align="center">
