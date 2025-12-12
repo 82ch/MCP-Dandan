@@ -127,13 +127,13 @@ function createBlockingWindow(blockingData: any) {
     resizable: true,
     alwaysOnTop: true,
     skipTaskbar: false,
+    transparent: true,
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false,
     },
-    backgroundColor: '#ffffff',
   })
 
   // Load blocking modal page
@@ -982,6 +982,69 @@ ipcMain.handle('database:delete', async () => {
     return result
   } catch (error: any) {
     console.error('[IPC] Error deleting database:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+// Custom Rules API handlers
+ipcMain.handle('api:custom-rules:get', async (_event, engineName: string) => {
+  console.log(`[IPC] api:custom-rules:get called with engine: ${engineName}`)
+  try {
+    const response = await fetch(`http://127.0.0.1:8282/rules/custom?engine_name=${engineName}`)
+    const result = await response.json()
+    console.log(`[IPC] Custom rules get result:`, result)
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error getting custom rules:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('api:custom-rules:add', async (_event, data: any) => {
+  console.log(`[IPC] api:custom-rules:add called`)
+  try {
+    const response = await fetch('http://127.0.0.1:8282/rules/custom', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    })
+    const result = await response.json()
+    console.log(`[IPC] Custom rule add result:`, result)
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error adding custom rule:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('api:custom-rules:delete', async (_event, ruleId: number) => {
+  console.log(`[IPC] api:custom-rules:delete called with id: ${ruleId}`)
+  try {
+    const response = await fetch(`http://127.0.0.1:8282/rules/custom/${ruleId}`, {
+      method: 'DELETE'
+    })
+    const result = await response.json()
+    console.log(`[IPC] Custom rule delete result:`, result)
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error deleting custom rule:', error)
+    return { success: false, error: error.message }
+  }
+})
+
+ipcMain.handle('api:custom-rules:toggle', async (_event, ruleId: number, enabled: boolean) => {
+  console.log(`[IPC] api:custom-rules:toggle called with id: ${ruleId}, enabled: ${enabled}`)
+  try {
+    const response = await fetch('http://127.0.0.1:8282/rules/custom/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rule_id: ruleId, enabled })
+    })
+    const result = await response.json()
+    console.log(`[IPC] Custom rule toggle result:`, result)
+    return result
+  } catch (error: any) {
+    console.error('[IPC] Error toggling custom rule:', error)
     return { success: false, error: error.message }
   }
 })

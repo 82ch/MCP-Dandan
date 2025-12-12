@@ -3,6 +3,7 @@ from typing import Any
 from utils import safe_print
 import yara
 import os
+import asyncio
 
 
 class PIILeakEngine(BaseEngine):
@@ -16,7 +17,18 @@ class PIILeakEngine(BaseEngine):
             producers=['local', 'remote']
         )
 
+        self.db = db
+        self.rules = None
+        self.custom_rules = None
+
         # Load YARA rules from external file
+        self._load_builtin_rules()
+
+        # Load custom rules from database (async)
+        asyncio.create_task(self._load_custom_rules())
+
+    def _load_builtin_rules(self):
+        """Load built-in YARA rules from external file."""
         try:
             current_dir = os.path.dirname(os.path.abspath(__file__))
             project_root = os.path.dirname(current_dir)
@@ -26,11 +38,34 @@ class PIILeakEngine(BaseEngine):
                 raise FileNotFoundError(f"YARA rules file not found: {yara_file}")
 
             self.rules = yara.compile(filepath=yara_file)
-            safe_print(f"[PIILeakEngine] YARA rules loaded from {yara_file}")
+            safe_print(f"[PIILeakEngine] Built-in YARA rules loaded from {yara_file}")
 
         except Exception as e:
-            safe_print(f"[PIILeakEngine] Failed to load YARA rules: {e}")
+            safe_print(f"[PIILeakEngine] Failed to load built-in YARA rules: {e}")
             self.rules = None
+
+    async def _load_custom_rules(self):
+        """Load custom YARA rules from database."""
+        try:
+            custom_content = await self.db.get_custom_rules_content('pii_leak_engine')
+            if custom_content:
+                try:
+                    self.custom_rules = yara.compile(source=custom_content)
+                    safe_print(f"[PIILeakEngine] Custom YARA rules loaded from database")
+                except Exception as e:
+                    safe_print(f"[PIILeakEngine] Failed to compile custom rules: {e}")
+                    self.custom_rules = None
+            else:
+                safe_print(f"[PIILeakEngine] No custom rules found in database")
+                self.custom_rules = None
+        except Exception as e:
+            safe_print(f"[PIILeakEngine] Failed to load custom rules: {e}")
+            self.custom_rules = None
+
+    async def reload_rules(self):
+        """Reload custom rules from database."""
+        safe_print(f"[PIILeakEngine] Reloading custom rules...")
+        await self._load_custom_rules()
 
     def should_process(self, data: dict) -> bool:
         """Check if this event should be processed (tools/call requests and responses)."""
@@ -91,26 +126,44 @@ class PIILeakEngine(BaseEngine):
         }
 
     def _detect_pii(self, text: str) -> list[dict]:
-        """Detect PII using YARA rules."""
-        try:
-            matches = self.rules.match(data=text)
-            findings = []
+        """Detect PII using YARA rules (built-in + custom)."""
+        findings = []
 
-            for match in matches:
-                for string_match in match.strings:
-                    instance = string_match.instances[0]
-                    findings.append({
-                        'rule': match.rule,
-                        'category': match.meta.get('category', 'Unknown'),
-                        'description': match.meta.get('description', match.rule),
-                        'matched_text': instance.matched_data.decode('utf-8', errors='ignore'),
-                        'reason': f"{match.meta.get('description', match.rule)}: {instance.matched_data.decode('utf-8', errors='ignore')}"
-                    })
+        # Run built-in rules
+        if self.rules:
+            try:
+                matches = self.rules.match(data=text)
+                for match in matches:
+                    for string_match in match.strings:
+                        instance = string_match.instances[0]
+                        findings.append({
+                            'rule': match.rule,
+                            'category': match.meta.get('category', 'Unknown'),
+                            'description': match.meta.get('description', match.rule),
+                            'matched_text': instance.matched_data.decode('utf-8', errors='ignore'),
+                            'reason': f"{match.meta.get('description', match.rule)}: {instance.matched_data.decode('utf-8', errors='ignore')}"
+                        })
+            except Exception as e:
+                safe_print(f"[PIILeakEngine] Built-in YARA matching error: {e}")
 
-            return findings
-        except Exception as e:
-            safe_print(f"[PIILeakEngine] YARA matching error: {e}")
-            return []
+        # Run custom rules
+        if self.custom_rules:
+            try:
+                custom_matches = self.custom_rules.match(data=text)
+                for match in custom_matches:
+                    for string_match in match.strings:
+                        instance = string_match.instances[0]
+                        findings.append({
+                            'rule': f"{match.rule} (custom)",
+                            'category': match.meta.get('category', 'Custom'),
+                            'description': match.meta.get('description', match.rule),
+                            'matched_text': instance.matched_data.decode('utf-8', errors='ignore'),
+                            'reason': f"[Custom Rule] {match.meta.get('description', match.rule)}: {instance.matched_data.decode('utf-8', errors='ignore')}"
+                        })
+            except Exception as e:
+                safe_print(f"[PIILeakEngine] Custom YARA matching error: {e}")
+
+        return findings
 
     def _extract_analysis_text(self, data: dict) -> str:
         """Extract text from MCP request and response for analysis."""
@@ -145,12 +198,15 @@ class PIILeakEngine(BaseEngine):
         return ' '.join(texts)
 
     def _calculate_severity(self, matches: list[dict]) -> str:
-        """Calculate severity based on PII category (Financial/Medical = high, PII = medium)."""
+        """Calculate severity based on PII category (Financial/Medical/Custom = high, PII = medium)."""
         categories = {m['category'] for m in matches}
 
-        if categories & {'Financial PII', 'Medical PII'}:
+        # Check if any match is from a custom rule
+        has_custom = any('(custom)' in m.get('rule', '') for m in matches)
+
+        if has_custom or categories & {'Financial PII', 'Medical PII'}:
             return 'high'
-        elif 'PII' in categories:
+        elif 'PII' in categories or 'Custom' in categories:
             return 'medium'
         else:
             return 'low'

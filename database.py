@@ -31,45 +31,41 @@ class Database:
         if self.conn is not None:
             return
 
-        # 데이터베이스 파일이 없으면 초기화 필요
-        is_new_db = not self.db_path.exists()
-
         self.conn = await aiosqlite.connect(str(self.db_path))
 
         # WAL 모드 활성화 (성능 향상)
         await self.conn.execute("PRAGMA journal_mode=WAL")
         await self.conn.execute("PRAGMA synchronous=NORMAL")
 
-        # 새 데이터베이스면 스키마 초기화
-        if is_new_db:
-            await self._initialize_schema()
+        # always schema initalize (CREATE TABLE IF NOT EXISTS)
+        await self._initialize_schema()
 
-        safe_print(f'Database 연결됨: {self.db_path}')
+        safe_print(f'Database connected: {self.db_path}')
 
     async def close(self):
         if self.conn:
             await self.conn.close()
             self.conn = None
-            safe_print('Database 연결 종료됨')
+            safe_print('Database connection closed')
 
     async def _initialize_schema(self):
         if not self.schema_path.exists():
-            safe_print(f'스키마 파일이 없습니다: {self.schema_path}')
+            safe_print(f'Schema file not found: {self.schema_path}')
             return
 
         try:
-            # 스키마 SQL 읽기
+            # Read schema SQL
             with open(self.schema_path, 'r', encoding='utf-8') as f:
                 schema_sql = f.read()
 
-            # 스키마 실행
+            # Execute schema
             await self.conn.executescript(schema_sql)
             await self.conn.commit()
 
-            safe_print(f'데이터베이스 스키마 초기화 완료')
+            safe_print(f'Database schema initialization complete')
 
         except Exception as e:
-            safe_print(f'스키마 초기화 실패: {e}')
+            safe_print(f'Schema initialization failed: {e}')
             raise
 
     async def insert_raw_event(self, event: Dict[str, Any]) -> Optional[int]:
@@ -118,7 +114,7 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            safe_print(f'raw_event 저장 실패: {e}')
+            safe_print(f'Failed to save raw_event: {e}')
             return None
         
     # RPC 이벤트 저장
@@ -176,11 +172,11 @@ class Database:
                     row = await cursor.fetchone()
                     if row:
                         method = row[0]
-                        safe_print(f'[DB] Response 메시지의 method를 Request에서 찾음: {method} (id={message_id})')
+                        safe_print(f'[DB] Found method from Request for Response message: {method} (id={message_id})')
                     else:
-                        safe_print(f'[DB] Warning: Response 메시지의 Request를 찾을 수 없음 (id={message_id}, mcpTag={mcpTag})')
+                        safe_print(f'[DB] Warning: Could not find Request for Response message (id={message_id}, mcpTag={mcpTag})')
                 except Exception as e:
-                    safe_print(f'[DB] Response method 조회 실패: {e}')
+                    safe_print(f'[DB] Failed to query Response method: {e}')
 
             cursor = await self.conn.execute(
                 """
@@ -195,7 +191,7 @@ class Database:
             return cursor.lastrowid
 
         except Exception as e:
-            safe_print(f'rpc_event 저장 실패: {e}')
+            safe_print(f'Failed to save rpc_event: {e}')
             return None
 
     # 엔진 결과 저장
@@ -238,11 +234,11 @@ class Database:
             )
 
             await self.conn.commit()
-            safe_print(f'[OK] engine_result 저장 완료: id={cursor.lastrowid}')
+            safe_print(f'[OK] engine_result saved successfully: id={cursor.lastrowid}')
             return cursor.lastrowid
 
         except Exception as e:
-            safe_print(f'[ERROR] engine_result 저장 실패: {e}')
+            safe_print(f'[ERROR] Failed to save engine_result: {e}')
             import traceback
             traceback.print_exc()
             return None
@@ -265,7 +261,7 @@ class Database:
                 return [dict(zip(columns, row)) for row in rows]
 
         except Exception as e:
-            safe_print(f'[ERROR] 이벤트 조회 실패: {e}')
+            safe_print(f'[ERROR] Failed to query events: {e}')
             return []
 
     async def get_event_statistics(self) -> Dict[str, Any]:
@@ -299,7 +295,7 @@ class Database:
             return stats
 
         except Exception as e:
-            safe_print(f'통계 조회 실패: {e}')
+            safe_print(f'Failed to query statistics: {e}')
             return {}
     
     async def is_null_check(self, table_name: str) -> bool:
@@ -400,7 +396,7 @@ class Database:
                 return [dict(zip(columns, row)) for row in rows]
 
         except Exception as e:
-            safe_print(f'mcpl 조회 실패: {e}')
+            safe_print(f'Failed to query mcpl: {e}')
             return []
 
     async def get_tool_safety_status(self, mcp_tag: str, tool_name: str) -> int | None:
@@ -523,4 +519,152 @@ class Database:
 
         except Exception as e:
             safe_print(f'[DB] Failed to set tool safety manually: {e}')
+            return False
+
+    # ========================================================================
+    # Custom Rules Methods
+    async def insert_custom_rule(self, engine_name: str, rule_name: str, rule_content: str,
+                                 category: str = None, description: str = None) -> Optional[int]:
+        """
+        Insert a new custom YARA rule.
+
+        Args:
+            engine_name: Engine name (e.g., 'pii_leak_engine')
+            rule_name: YARA rule name
+            rule_content: Full YARA rule content
+            category: Optional category (PII, Financial, etc.)
+            description: Optional user description
+
+        Returns:
+            Rule ID if successful, None otherwise
+
+        Raises:
+            Exception: If insertion fails (e.g., duplicate rule name)
+        """
+        try:
+            cursor = await self.conn.execute(
+                """
+                INSERT INTO custom_rules (engine_name, rule_name, rule_content, category, description)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (engine_name, rule_name, rule_content, category, description)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule inserted: {engine_name}/{rule_name}')
+            return cursor.lastrowid
+
+        except Exception as e:
+            error_msg = str(e)
+            if 'UNIQUE constraint' in error_msg:
+                safe_print(f'[DB] Duplicate custom rule: {engine_name}/{rule_name}')
+                raise Exception(f'Rule "{rule_name}" already exists for this engine')
+            else:
+                safe_print(f'[DB] Failed to insert custom rule: {e}')
+                raise
+
+    async def get_custom_rules(self, engine_name: str = None, enabled_only: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get custom rules, optionally filtered by engine name.
+
+        Args:
+            engine_name: Optional engine name to filter by
+            enabled_only: If True, only return enabled rules
+
+        Returns:
+            List of custom rules
+        """
+        try:
+            query = "SELECT * FROM custom_rules WHERE 1=1"
+            params = []
+
+            if engine_name:
+                query += " AND engine_name = ?"
+                params.append(engine_name)
+
+            if enabled_only:
+                query += " AND enabled = 1"
+
+            query += " ORDER BY created_at DESC"
+
+            async with self.conn.execute(query, params) as cursor:
+                rows = await cursor.fetchall()
+                columns = [description[0] for description in cursor.description]
+                return [dict(zip(columns, row)) for row in rows]
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to get custom rules: {e}')
+            return []
+
+    async def get_custom_rules_content(self, engine_name: str) -> str:
+        """
+        Get combined YARA rule content for an engine (enabled rules only).
+
+        Args:
+            engine_name: Engine name
+
+        Returns:
+            Combined YARA rule content as a single string
+        """
+        try:
+            rules = await self.get_custom_rules(engine_name, enabled_only=True)
+            if not rules:
+                return ""
+
+            # Combine all rule contents with newlines
+            combined = "\n\n".join(rule['rule_content'] for rule in rules)
+            return combined
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to get custom rules content: {e}')
+            return ""
+
+    async def delete_custom_rule(self, rule_id: int) -> bool:
+        """
+        Delete a custom rule by ID.
+
+        Args:
+            rule_id: Rule ID to delete
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.conn.execute(
+                "DELETE FROM custom_rules WHERE id = ?",
+                (rule_id,)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule deleted: {rule_id}')
+            return True
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to delete custom rule: {e}')
+            return False
+
+    async def toggle_custom_rule(self, rule_id: int, enabled: bool) -> bool:
+        """
+        Enable or disable a custom rule.
+
+        Args:
+            rule_id: Rule ID
+            enabled: True to enable, False to disable
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            await self.conn.execute(
+                """
+                UPDATE custom_rules
+                SET enabled = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+                """,
+                (1 if enabled else 0, rule_id)
+            )
+            await self.conn.commit()
+            safe_print(f'[DB] Custom rule {"enabled" if enabled else "disabled"}: {rule_id}')
+            return True
+
+        except Exception as e:
+            safe_print(f'[DB] Failed to toggle custom rule: {e}')
             return False

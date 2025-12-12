@@ -546,6 +546,291 @@ async def handle_delete_database(request):
         )
 
 
+async def handle_get_custom_rules(request):
+    """
+    Get all custom rules, optionally filtered by engine name.
+
+    Query params:
+        engine_name: Optional engine name filter (e.g., 'pii_leak_engine')
+
+    Response:
+        {
+            "rules": [
+                {
+                    "id": 1,
+                    "engine_name": "pii_leak_engine",
+                    "rule_name": "custom_pattern",
+                    "rule_content": "rule CustomPattern { ... }",
+                    "enabled": 1,
+                    "category": "PII",
+                    "description": "Custom PII pattern",
+                    "created_at": "2025-01-01 00:00:00",
+                    "updated_at": "2025-01-01 00:00:00"
+                }
+            ]
+        }
+    """
+    import json
+
+    try:
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        engine_name = request.rel_url.query.get('engine_name')
+        rules = await db.get_custom_rules(engine_name=engine_name)
+
+        return web.Response(
+            text=json.dumps({"rules": rules}),
+            content_type='application/json'
+        )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_get_custom_rules: {e}")
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
+async def handle_add_custom_rule(request):
+    """
+    Add a new custom YARA rule.
+
+    Request body:
+        {
+            "engine_name": "pii_leak_engine",
+            "rule_name": "custom_pattern",
+            "rule_content": "rule CustomPattern { strings: $a = \"pattern\" condition: $a }",
+            "category": "PII",  // optional
+            "description": "Custom PII pattern"  // optional
+        }
+
+    Response:
+        { "success": true, "rule_id": 1 }
+    """
+    import json
+    import yara
+
+    try:
+        data = await request.json()
+        engine_name = data.get('engine_name')
+        rule_name = data.get('rule_name')
+        rule_content = data.get('rule_content')
+        category = data.get('category')
+        description = data.get('description')
+
+        if not engine_name or not rule_name or not rule_content:
+            return web.Response(
+                status=400,
+                text=json.dumps({"error": "engine_name, rule_name, and rule_content are required"}),
+                content_type='application/json'
+            )
+
+        # Validate YARA rule syntax
+        try:
+            yara.compile(source=rule_content)
+        except Exception as e:
+            return web.Response(
+                status=400,
+                text=json.dumps({"error": f"Invalid YARA rule syntax: {str(e)}"}),
+                content_type='application/json'
+            )
+
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        try:
+            rule_id = await db.insert_custom_rule(
+                engine_name=engine_name,
+                rule_name=rule_name,
+                rule_content=rule_content,
+                category=category,
+                description=description
+            )
+
+            # Reload rules in the engine
+            event_hub = request.app.get('event_hub')
+            if event_hub:
+                await event_hub.reload_engine_rules(engine_name)
+
+            # Broadcast rule update via WebSocket
+            if ws_handler:
+                asyncio.create_task(ws_handler.broadcast_custom_rule_update(engine_name))
+
+            return web.Response(
+                text=json.dumps({"success": True, "rule_id": rule_id}),
+                content_type='application/json'
+            )
+        except Exception as db_error:
+            # Handle database-specific errors (e.g., duplicate rule)
+            error_msg = str(db_error)
+            if 'already exists' in error_msg:
+                return web.Response(
+                    status=400,
+                    text=json.dumps({"error": error_msg}),
+                    content_type='application/json'
+                )
+            else:
+                return web.Response(
+                    status=500,
+                    text=json.dumps({"error": f"Failed to insert custom rule: {error_msg}"}),
+                    content_type='application/json'
+                )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_add_custom_rule: {e}")
+        import traceback
+        traceback.print_exc()
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
+async def handle_delete_custom_rule(request):
+    """
+    Delete a custom rule by ID.
+
+    URL param:
+        rule_id: Rule ID to delete
+
+    Response:
+        { "success": true }
+    """
+    import json
+
+    try:
+        rule_id = int(request.match_info.get('rule_id'))
+
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        # Get rule info before deletion for reload
+        rules = await db.get_custom_rules()
+        rule_to_delete = next((r for r in rules if r['id'] == rule_id), None)
+
+        success = await db.delete_custom_rule(rule_id)
+
+        if success:
+            # Reload rules in the engine if we found the rule
+            if rule_to_delete:
+                event_hub = request.app.get('event_hub')
+                if event_hub:
+                    await event_hub.reload_engine_rules(rule_to_delete['engine_name'])
+
+                # Broadcast rule update via WebSocket
+                if ws_handler:
+                    asyncio.create_task(ws_handler.broadcast_custom_rule_update(rule_to_delete['engine_name']))
+
+            return web.Response(
+                text=json.dumps({"success": True}),
+                content_type='application/json'
+            )
+        else:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Failed to delete custom rule"}),
+                content_type='application/json'
+            )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_delete_custom_rule: {e}")
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
+async def handle_toggle_custom_rule(request):
+    """
+    Enable or disable a custom rule.
+
+    Request body:
+        {
+            "rule_id": 1,
+            "enabled": true
+        }
+
+    Response:
+        { "success": true }
+    """
+    import json
+
+    try:
+        data = await request.json()
+        rule_id = data.get('rule_id')
+        enabled = data.get('enabled')
+
+        if rule_id is None or enabled is None:
+            return web.Response(
+                status=400,
+                text=json.dumps({"error": "rule_id and enabled are required"}),
+                content_type='application/json'
+            )
+
+        db = request.app.get('db')
+        if not db:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Database not available"}),
+                content_type='application/json'
+            )
+
+        # Get rule info before toggle for reload
+        rules = await db.get_custom_rules()
+        rule_to_toggle = next((r for r in rules if r['id'] == rule_id), None)
+
+        success = await db.toggle_custom_rule(rule_id, enabled)
+
+        if success:
+            # Reload rules in the engine if we found the rule
+            if rule_to_toggle:
+                event_hub = request.app.get('event_hub')
+                if event_hub:
+                    await event_hub.reload_engine_rules(rule_to_toggle['engine_name'])
+
+                # Broadcast rule update via WebSocket
+                if ws_handler:
+                    asyncio.create_task(ws_handler.broadcast_custom_rule_update(rule_to_toggle['engine_name']))
+
+            return web.Response(
+                text=json.dumps({"success": True}),
+                content_type='application/json'
+            )
+        else:
+            return web.Response(
+                status=500,
+                text=json.dumps({"error": "Failed to toggle custom rule"}),
+                content_type='application/json'
+            )
+
+    except Exception as e:
+        safe_print(f"[Server] Error in handle_toggle_custom_rule: {e}")
+        return web.Response(
+            status=500,
+            text=json.dumps({"error": str(e)}),
+            content_type='application/json'
+        )
+
+
 def setup_routes(app):
     """Setup application routes."""
 
@@ -571,6 +856,12 @@ def setup_routes(app):
     app.router.add_get('/database/export', handle_export_threats)
     app.router.add_post('/database/delete', handle_delete_database)
 
+    # Custom rules API endpoints
+    app.router.add_get('/rules/custom', handle_get_custom_rules)
+    app.router.add_post('/rules/custom', handle_add_custom_rule)
+    app.router.add_delete('/rules/custom/{rule_id}', handle_delete_custom_rule)
+    app.router.add_post('/rules/custom/toggle', handle_toggle_custom_rule)
+
     safe_print(f"[Server] Routes configured:")
     safe_print(f"  GET  /health - Health check")
     safe_print(f"  GET  /ws - WebSocket endpoint (real-time updates)")
@@ -581,6 +872,10 @@ def setup_routes(app):
     safe_print(f"  POST /tools/safety/update - Update tool safety manually")
     safe_print(f"  GET  /database/export - Export threats to CSV")
     safe_print(f"  POST /database/delete - Delete database and restart")
+    safe_print(f"  GET  /rules/custom - Get custom rules")
+    safe_print(f"  POST /rules/custom - Add custom rule")
+    safe_print(f"  DELETE /rules/custom/{{rule_id}} - Delete custom rule")
+    safe_print(f"  POST /rules/custom/toggle - Toggle custom rule")
 
 
 async def on_startup(app):
