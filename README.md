@@ -17,7 +17,7 @@
 MCP-Dandan is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
 
 
-https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
+https://github.com/user-attachments/assets/928686ab-a5aa-4486-8d8e-d4a9592adc3e
 
 
 ## Features
@@ -26,7 +26,7 @@ https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
 - **Multi-Engine Threat Detection**:
   - Command Injection Detection
   - File System Exposure Detection
-  - PII Leak Detection
+  - PII Leak Detection(custom rules supported)
   - Data Exfiltration Detection
   - Tools Poisoning Detection (LLM-based)
 - **Desktop UI**: Electron-based application with interactive dashboard
@@ -65,8 +65,8 @@ Identifies potential command injection patterns in tool calls.
 ### 2. File System Exposure Engine
 Monitors unauthorized file system access attempts.
 
-### 3. PII Leak Engine
-Detects potential leakage of personally identifiable information.
+### 3. PII Leak Engine (custom rules supported)
+Detects potential PII leakage with built-in rules and optional user-defined customization.
 
 ### 4. Data Exfiltration Engine
 Identifies suspicious data transfer patterns.
@@ -77,13 +77,20 @@ Uses semantic analysis to detect misuse of MCP tools:
 - Scores alignment (0-100) with detailed breakdown
 - Auto-categorizes severity: none/low/medium/high
 
-### Mistral API Key
+### Engine Setting
 <p align="center">
 
-https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
+
 
 </p>
-<p align="center">Input your MISTRAL_API_KEY for Tool Poisoning Engine</p>
+
+https://github.com/user-attachments/assets/3a8dfd7a-2ea2-442e-8c00-e831d5b8f46c
+
+
+<p align="center">
+Input your <b>MISTRAL_API_KEY</b> to enable the Tools Poisoning Engine, and configure detection settings as needed.
+</p>
+
 
 ## Desktop UI Features
 
@@ -93,9 +100,7 @@ https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 - **Settings Panel**: Configure detection engines and system behavior
 - **Chat Panel**: Interact with the system and view logs
 
-
-https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067
-
+https://github.com/user-attachments/assets/19bcbdfb-c893-468d-a8a6-1c7b70a1c7b7
 
 > ## Full Documentation  
 > For detailed explanations and technical documentation, please refer to the  
