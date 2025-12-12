@@ -7,6 +7,10 @@
 <p align="center">
   <img width="124" height="124" alt="image" src="https://github.com/user-attachments/assets/679e148e-b328-4ebe-b301-d8c17f7e4e93" />
 
+
+
+
+
 </p>
 <p align="center">MCP-Dandan</p>
 
@@ -17,7 +21,9 @@
 MCP-Dandan is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
 
 
-https://github.com/user-attachments/assets/02eaa237-f95d-4711-8d6b-ee31ab05468f
+
+
+https://github.com/user-attachments/assets/3df35c00-502a-4463-996c-cb276edd2290
 
 
 ## Features
@@ -80,7 +86,7 @@ Uses semantic analysis to detect misuse of MCP tools:
 ### Mistral API Key
 <p align="center">
 
-https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
+https://github.com/user-attachments/assets/a4d4713a-cebe-4214-b710-9abad88a24b3
 
 </p>
 <p align="center">Input your MISTRAL_API_KEY for Tool Poisoning Engine</p>
@@ -94,7 +100,9 @@ https://github.com/user-attachments/assets/07ffcf8a-f4d7-4013-8cce-9a18fb3cf261
 - **Chat Panel**: Interact with the system and view logs
 
 
-https://github.com/user-attachments/assets/0d19c049-07a9-439a-9e99-634aeb029067
+
+https://github.com/user-attachments/assets/000eea9d-b243-45fe-990f-64f30a99a973
+
 
 
 > ## Full Documentation  
