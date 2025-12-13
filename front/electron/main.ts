@@ -446,6 +446,37 @@ function createBlockingWindow(blockingData: any) {
   })
 }
 
+// Install SSL certificates for Python on macOS
+function installPythonCertificates() {
+  if (!app.isPackaged) return // Only in production
+  if (process.platform !== 'darwin') return // macOS only
+
+  try {
+    console.log('[macOS] Installing Python SSL certificates...')
+    const resourcesPath = process.resourcesPath
+    const certScriptPath = path.join(resourcesPath, 'scripts', 'mcp_python_install_certificates.py')
+    const pythonCmd = getBundledPythonPath()
+
+    console.log(`[macOS] Python: ${pythonCmd}`)
+    console.log(`[macOS] Certificate script: ${certScriptPath}`)
+
+    if (!fs.existsSync(certScriptPath)) {
+      console.log('[macOS] Certificate installation script not found, skipping')
+      return
+    }
+
+    // Run certificate installation script
+    execSync(`"${pythonCmd}" "${certScriptPath}"`, {
+      stdio: 'pipe',
+      timeout: 30000
+    })
+    console.log('[macOS] Python SSL certificates installed successfully')
+  } catch (error: any) {
+    // Non-fatal error - log and continue
+    console.log('[macOS] Certificate installation failed (non-fatal):', error.message)
+  }
+}
+
 // Install cleanup agents on first run
 function installCleanupAgents() {
   if (!app.isPackaged) return // Only in production
@@ -591,6 +622,9 @@ Set objShell = Nothing`
 
 // 앱이 준비되면 윈도우 생성
 app.whenReady().then(async () => {
+  // Install Python SSL certificates on macOS (must run before backend server)
+  installPythonCertificates()
+
   // Install cleanup agents on first run (registers external cleanup scripts)
   installCleanupAgents()
 

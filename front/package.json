@@ -144,6 +144,10 @@
           "from": "../transports",
           "to": "transports",
           "filter": ["**/*.py"]
+        },
+        {
+          "from": "../mcp_python_install_certificates.py",
+          "to": "scripts/mcp_python_install_certificates.py"
         }
       ]
     },
