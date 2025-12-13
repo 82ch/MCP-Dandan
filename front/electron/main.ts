@@ -584,12 +584,14 @@ $dataPath = "${dataPath.replace(/\\/g, '\\\\')}"
 
 # Check if MCP-Dandan.exe exists
 if (-not (Test-Path $exePath)) {
-    # App is uninstalled, clean up data
+    # App is uninstalled, clean up in correct order
+    # 1. First, remove the scheduled task (before deleting the script files)
+    schtasks /Delete /TN "MCP-Dandan-Cleanup" /F 2>$null
+
+    # 2. Then, clean up data directory
     if (Test-Path $dataPath) {
         Remove-Item -Path $dataPath -Recurse -Force -ErrorAction SilentlyContinue
     }
-    # Remove this scheduled task
-    schtasks /Delete /TN "MCP-Dandan-Cleanup" /F 2>$null
 }
 `
 
