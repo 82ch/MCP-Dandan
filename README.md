@@ -16,6 +16,11 @@
 
 MCP-Dandan is an integrated monitoring service that observes MCP (Model Context Protocol) communications and detects security threats in real time. It features a modern desktop UI built with Electron for easy monitoring and management.
 
+Currently, MCP-Dandan is listed in **well-known MCP-related open-source collections** and can be found in the following repositories:
+- [Awesome MCP Servers – Security](https://github.com/punkpeye/awesome-mcp-servers?tab=readme-ov-file#security)
+- [Awesome MCP Security – Tools & Code](https://github.com/Puliczek/awesome-mcp-security?tab=readme-ov-file#%E2%80%8D-tools-and-code)
+
+
 
 https://github.com/user-attachments/assets/928686ab-a5aa-4486-8d8e-d4a9592adc3e
 
