@@ -107,16 +107,16 @@ class CommandInjectionEngine(BaseEngine):
         ]
 
     def process(self, data: Any) -> Any:
-        safe_print(f"[CommandInjectionEngine] 입력 데이터: {data}")
+        safe_print(f"[CommandInjectionEngine] Input data: {data}")
 
-        # 분석할 텍스트 추출
+        # Extract text for analysis
         analysis_text = self._extract_analysis_text(data)
 
         if not analysis_text:
-            safe_print(f"[CommandInjectionEngine] 분석할 텍스트 없음, 무시\n")
+            safe_print(f"[CommandInjectionEngine] No text to analyze, skipping\n")
             return None
 
-        safe_print(f"[CommandInjectionEngine] 분석 중: {analysis_text[:200]}")
+        safe_print(f"[CommandInjectionEngine] Analyzing: {analysis_text[:200]}")
 
         findings = []
         severity = 'none'
@@ -178,15 +178,15 @@ class CommandInjectionEngine(BaseEngine):
             if severity == 'none':
                 severity = 'high'
 
-        # severity가 'none'인 경우 (탐지되지 않음) None 반환
+        # Return None if severity is 'none' (nothing detected)
         if severity == 'none':
-            safe_print(f"[CommandInjectionEngine] 이상 없음, 탐지되지 않음\n")
+            safe_print(f"[CommandInjectionEngine] No issues detected\n")
             return None
 
         # Calculate score based on severity and findings count
         score = self._calculate_score(severity, len(findings))
 
-        # 결과 반환 (탐지된 경우만 반환)
+        # Return result (only when detected)
         references = []
         if 'ts' in data:
             references.append(f"id-{data['ts']}")
@@ -204,8 +204,8 @@ class CommandInjectionEngine(BaseEngine):
             }
         }
 
-        safe_print(f"[CommandInjectionEngine] Command Injection 의심! severity={severity}, score={score}")
-        safe_print(f"[CommandInjectionEngine] 탐지 결과: {len(findings)}개 발견\n")
+        safe_print(f"[CommandInjectionEngine] Command Injection suspected! severity={severity}, score={score}")
+        safe_print(f"[CommandInjectionEngine] Detection result: {len(findings)} findings\n")
 
         return result
 

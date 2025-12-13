@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { X, Save } from 'lucide-react'
+import CustomRulesTab from './CustomRulesTab'
 
 interface SettingsModalProps {
   isOpen: boolean
@@ -17,6 +18,7 @@ interface ConfigData {
 }
 
 function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
+  const [activeTab, setActiveTab] = useState<'engines' | 'apikeys' | 'customrules'>('engines')
   const [config, setConfig] = useState<ConfigData | null>(null)
   const [apiKey, setApiKey] = useState<string>('')
   const [loading, setLoading] = useState(false)
@@ -94,105 +96,148 @@ function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
           </button>
         </div>
 
+        {/* Tabs */}
+        <div className="flex border-b border-gray-200">
+          <button
+            onClick={() => setActiveTab('engines')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'engines'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Engines
+          </button>
+          <button
+            onClick={() => setActiveTab('apikeys')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'apikeys'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            API Keys
+          </button>
+          <button
+            onClick={() => setActiveTab('customrules')}
+            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
+              activeTab === 'customrules'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Custom Rules
+          </button>
+        </div>
+
         {/* Content */}
-        <div className="p-4 max-h-[60vh] overflow-y-auto">
+        <div className="p-4 max-h-[70vh] overflow-y-auto">
           {loading ? (
             <div className="flex items-center justify-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500"></div>
             </div>
           ) : error ? (
             <div className="text-red-500 text-center py-4">{error}</div>
-          ) : config ? (
-            <div className="space-y-6">
-              {/* Engine Section */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">Detection Engines</h3>
-                <div className="space-y-3">
-                  <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Tools Poisoning Engine</span>
-                    <input
-                      type="checkbox"
-                      checked={config.Engine.tools_poisoning_engine}
-                      onChange={() => handleEngineToggle('tools_poisoning_engine')}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Command Injection Engine</span>
-                    <input
-                      type="checkbox"
-                      checked={config.Engine.command_injection_engine}
-                      onChange={() => handleEngineToggle('command_injection_engine')}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">Data Exfiltration Engine</span>
-                    <input
-                      type="checkbox"
-                      checked={config.Engine.data_exfiltration_engine}
-                      onChange={() => handleEngineToggle('data_exfiltration_engine')}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">File System Exposure Engine</span>
-                    <input
-                      type="checkbox"
-                      checked={config.Engine.file_system_exposure_engine}
-                      onChange={() => handleEngineToggle('file_system_exposure_engine')}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                  <label className="flex items-center justify-between">
-                    <span className="text-sm text-gray-600">PII Leak Engine</span>
-                    <input
-                      type="checkbox"
-                      checked={config.Engine.pii_leak_engine}
-                      onChange={() => handleEngineToggle('pii_leak_engine')}
-                      className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
-                    />
-                  </label>
-                </div>
-              </div>
-
-              {/* API Key Section */}
-              <div>
-                <h3 className="text-sm font-medium text-gray-700 mb-3">API Keys</h3>
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-sm text-gray-600 mb-1">Mistral API Key</label>
-                    <input
-                      type="password"
-                      value={apiKey}
-                      onChange={(e) => setApiKey(e.target.value)}
-                      placeholder="Enter your Mistral API key"
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    />
+          ) : (
+            <>
+              {/* Engines Tab */}
+              {activeTab === 'engines' && config && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">Detection Engines</h3>
+                  <div className="space-y-3">
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Tools Poisoning Engine</span>
+                      <input
+                        type="checkbox"
+                        checked={config.Engine.tools_poisoning_engine}
+                        onChange={() => handleEngineToggle('tools_poisoning_engine')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Command Injection Engine</span>
+                      <input
+                        type="checkbox"
+                        checked={config.Engine.command_injection_engine}
+                        onChange={() => handleEngineToggle('command_injection_engine')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">Data Exfiltration Engine</span>
+                      <input
+                        type="checkbox"
+                        checked={config.Engine.data_exfiltration_engine}
+                        onChange={() => handleEngineToggle('data_exfiltration_engine')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">File System Exposure Engine</span>
+                      <input
+                        type="checkbox"
+                        checked={config.Engine.file_system_exposure_engine}
+                        onChange={() => handleEngineToggle('file_system_exposure_engine')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
+                    <label className="flex items-center justify-between">
+                      <span className="text-sm text-gray-600">PII Leak Engine</span>
+                      <input
+                        type="checkbox"
+                        checked={config.Engine.pii_leak_engine}
+                        onChange={() => handleEngineToggle('pii_leak_engine')}
+                        className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500"
+                      />
+                    </label>
                   </div>
                 </div>
-              </div>
-            </div>
-          ) : null}
+              )}
+
+              {/* API Keys Tab */}
+              {activeTab === 'apikeys' && (
+                <div>
+                  <h3 className="text-sm font-medium text-gray-700 mb-3">API Keys</h3>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="block text-sm text-gray-600 mb-1">Mistral API Key</label>
+                      <input
+                        type="password"
+                        value={apiKey}
+                        onChange={(e) => setApiKey(e.target.value)}
+                        placeholder="Enter your Mistral API key"
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Custom Rules Tab */}
+              {activeTab === 'customrules' && <CustomRulesTab />}
+            </>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="flex justify-end gap-2 p-4 border-t border-gray-200">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={saveConfig}
-            disabled={saving || !config}
-            className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Save size={16} />
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-        </div>
+        {activeTab !== 'customrules' && (
+          <div className="flex justify-end gap-2 p-4 border-t border-gray-200">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={saveConfig}
+              disabled={saving || !config}
+              className="flex items-center gap-2 px-4 py-2 text-sm text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Save size={16} />
+              {saving ? 'Saving...' : 'Save'}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

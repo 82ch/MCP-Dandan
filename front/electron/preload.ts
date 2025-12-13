@@ -51,6 +51,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportDatabase: () => ipcRenderer.invoke('database:export'),
   deleteDatabase: () => ipcRenderer.invoke('database:delete'),
 
+  // Custom Rules APIs
+  getCustomRules: (engineName: string) => ipcRenderer.invoke('api:custom-rules:get', engineName),
+  addCustomRule: (data: any) => ipcRenderer.invoke('api:custom-rules:add', data),
+  deleteCustomRule: (ruleId: number) => ipcRenderer.invoke('api:custom-rules:delete', ruleId),
+  toggleCustomRule: (ruleId: number, enabled: boolean) => ipcRenderer.invoke('api:custom-rules:toggle', ruleId, enabled),
+
   // 필요에 따라 추가 API 노출
   platform: process.platform,
   versions: {
@@ -87,6 +93,10 @@ declare global {
       restartApp: () => Promise<void>
       exportDatabase: () => Promise<{ success: boolean; filePath?: string; canceled?: boolean; error?: string }>
       deleteDatabase: () => Promise<{ success: boolean; message?: string; error?: string }>
+      getCustomRules: (engineName: string) => Promise<any>
+      addCustomRule: (data: any) => Promise<any>
+      deleteCustomRule: (ruleId: number) => Promise<any>
+      toggleCustomRule: (ruleId: number, enabled: boolean) => Promise<any>
       platform: string
       versions: {
         node: string

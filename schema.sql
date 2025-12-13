@@ -67,3 +67,19 @@ Create table if not exists mcpl (
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(mcpTag, tool)    -- mcpTag와 tool 조합으로 유니크 제약
 );
+
+-- Custom YARA Rules
+CREATE TABLE IF NOT EXISTS custom_rules (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    engine_name TEXT NOT NULL,      -- 'pii_leak_engine', 'command_injection_engine', etc.
+    rule_name TEXT NOT NULL,        -- YARA rule name
+    rule_content TEXT NOT NULL,     -- Full YARA rule syntax
+    enabled INTEGER DEFAULT 1,      -- 1: enabled, 0: disabled
+    category TEXT,                  -- PII, Financial, Medical, etc.
+    description TEXT,               -- User description
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(engine_name, rule_name)
+);
+CREATE INDEX IF NOT EXISTS idx_custom_rules_engine ON custom_rules(engine_name);
+CREATE INDEX IF NOT EXISTS idx_custom_rules_enabled ON custom_rules(enabled);

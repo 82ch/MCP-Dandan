@@ -415,7 +415,8 @@ function Dashboard({ setSelectedServer, servers, setSelectedMessageId, isTutoria
           </button>
           <button
             onClick={handleDeleteDatabase}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-red-600 text-sm rounded-lg border border-red-300 hover:bg-red-50 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700 transition-colors"
+            title="Delete all database data and restart"
           >
             <Trash2 size={16} />
             <span>Reset Data</span>

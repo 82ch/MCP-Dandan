@@ -410,3 +410,38 @@ class EventHub:
 
         except Exception as e:
             safe_print(f'[EventHub] Error analyzing mcpl tools: {e}')
+
+    async def reload_engine_rules(self, engine_name: str):
+        """
+        Reload custom rules for a specific engine.
+
+        Args:
+            engine_name: Name of the engine (e.g., 'pii_leak_engine')
+        """
+        try:
+            # Map engine_name to class name
+            engine_class_map = {
+                'pii_leak_engine': 'PIILeakEngine',
+                'command_injection_engine': 'CommandInjectionEngine',
+                'file_system_exposure_engine': 'FileSystemExposureEngine',
+            }
+
+            target_class_name = engine_class_map.get(engine_name)
+            if not target_class_name:
+                safe_print(f'[EventHub] Unknown engine name: {engine_name}')
+                return
+
+            # Find and reload the engine
+            for engine in self.engines:
+                if engine.name == target_class_name:
+                    if hasattr(engine, 'reload_rules'):
+                        await engine.reload_rules()
+                        safe_print(f'[EventHub] Reloaded rules for {target_class_name}')
+                    else:
+                        safe_print(f'[EventHub] {target_class_name} does not support rule reloading')
+                    break
+            else:
+                safe_print(f'[EventHub] Engine {target_class_name} not found')
+
+        except Exception as e:
+            safe_print(f'[EventHub] Error reloading engine rules: {e}')
