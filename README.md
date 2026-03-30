@@ -25,6 +25,10 @@ Currently, MCP-Dandan is listed in **well-known MCP-related open-source collecti
 https://github.com/user-attachments/assets/928686ab-a5aa-4486-8d8e-d4a9592adc3e
 
 
+## Hosted deployment
+
+A hosted deployment is available on [Fronteir AI](https://fronteir.ai/mcp/82ch-mcp-dandan).
+
 ## Features
 
 - **Real-time MCP Traffic Monitoring**: Intercepts and analyzes MCP communications
